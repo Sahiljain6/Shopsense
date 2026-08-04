@@ -9,7 +9,7 @@ from backend.app.core.config import get_settings
 from backend.app.db.session import get_db
 from backend.app.models import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 
