@@ -27,6 +27,7 @@ jobs:
       - run: pytest
         env:
           DATABASE_URL: sqlite+pysqlite:///./ci.db
+          PYTHONPATH: ${{ github.workspace }}
       - run: cd frontend && npm install && npm test && npm run build
       - run: docker build -f docker/backend.Dockerfile . && docker build -f docker/frontend.Dockerfile .
       - name: Deploy to Render
