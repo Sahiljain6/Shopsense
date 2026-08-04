@@ -1,22 +1,30 @@
-# ShopSense – AI Powered Conversational Shopping Assistant
+# ShopSense Chatbot
 
-Production-ready monorepo for a conversational shopping assistant with a Next.js frontend, FastAPI backend, PostgreSQL, Redis, Pinecone-ready RAG services, Docker Compose, CI/CD, and observability.
+A simple static HTML chatbot website that can be deployed on GitHub Pages.
 
-## Quick start
+## Files
 
-```bash
-cp .env.example .env
-docker compose up --build
-```
+- `index.html` - the page structure.
+- `styles.css` - the responsive design.
+- `script.js` - the chatbot logic and API call.
 
-- Frontend: http://localhost:3000
-- Backend: http://localhost:8000
-- Swagger: http://localhost:8000/docs
-- Prometheus: http://localhost:9090
-- Grafana: http://localhost:3001
+## Use locally
 
-## Architecture
+Open `index.html` in your browser. You can chat immediately in demo mode.
 
-Client Layer → API Gateway → Orchestration Service → LLM Provider (OpenAI GPT-5.5 or Gemini) → Data & Retrieval Layer → Observability + CI/CD.
+To test live AI replies:
 
-See `docs/architecture.md`, `docs/api.md`, `docs/installation.md`, `docs/deployment.md`, and `docs/developer-guide.md`.
+1. Paste an API key into the **API key** field.
+2. Keep the endpoint as `https://api.openai.com/v1/chat/completions`, or replace it with your own proxy URL.
+3. Click **Save settings**.
+4. Send a chat message.
+
+> Important: GitHub Pages is public. Do not hard-code a real secret key in this repo. For production, deploy a small backend/proxy that keeps the key on the server.
+
+## Deploy to GitHub Pages
+
+1. Push this repository to GitHub.
+2. Open **Settings → Pages**.
+3. Set **Source** to **Deploy from a branch**.
+4. Select your branch and the repository root folder.
+5. Save, then open the GitHub Pages URL after deployment finishes.
