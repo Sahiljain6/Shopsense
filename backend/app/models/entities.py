@@ -3,6 +3,7 @@ from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.db.session import Base
 
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -12,11 +13,13 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+
 class Category(Base):
     __tablename__ = "categories"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True)
     slug: Mapped[str] = mapped_column(String(140), unique=True)
+
 
 class Product(Base):
     __tablename__ = "products"
@@ -33,6 +36,7 @@ class Product(Base):
     attributes: Mapped[dict] = mapped_column(JSON, default=dict)
     category = relationship("Category")
 
+
 class Review(Base):
     __tablename__ = "reviews"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -44,12 +48,14 @@ class Review(Base):
     sentiment: Mapped[str] = mapped_column(String(40), default="neutral")
     product = relationship("Product")
 
+
 class Order(Base):
     __tablename__ = "orders"
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     status: Mapped[str] = mapped_column(String(40), default="created")
     total: Mapped[float] = mapped_column(Float, default=0)
+
 
 class ChatHistory(Base):
     __tablename__ = "chat_history"
@@ -60,11 +66,13 @@ class ChatHistory(Base):
     memory: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+
 class Wishlist(Base):
     __tablename__ = "wishlist"
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+
 
 class SavedRecommendation(Base):
     __tablename__ = "saved_recommendations"
