@@ -1,0 +1,1 @@
+export default function Admin(){return <main className="p-8"><h1 className="text-3xl font-bold">Admin Dashboard</h1><div className="mt-6 grid gap-4 md:grid-cols-5">{['Products','Users','Analytics','Reviews','Inventory'].map(x=><div className="rounded-xl bg-slate-900 p-5" key={x}>{x}</div>)}</div></main>}
