@@ -1,0 +1,2 @@
+import Link from 'next/link';
+export default function Home(){return <main className="mx-auto max-w-5xl p-8"><section className="py-24"><h1 className="text-5xl font-bold">ShopSense</h1><p className="mt-4 text-xl text-slate-300">AI Powered Conversational Shopping Assistant with catalog-grounded recommendations.</p><Link href="/chat" className="mt-8 inline-block rounded-xl bg-indigo-500 px-6 py-3 font-semibold">Start shopping</Link></section></main>}

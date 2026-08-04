@@ -1,0 +1,2 @@
+import type { Product } from '../lib/api';
+export function ProductCard({product}:{product:Product}) { return <article className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl"><img src={product.image_url} alt={product.name} className="h-36 w-full rounded-xl object-cover"/><h3 className="mt-3 font-semibold">{product.name}</h3><p className="text-sm text-slate-400">{product.brand}</p><p className="mt-2">{product.currency} {product.price.toLocaleString()}</p><p className="text-sm">★ {product.rating} · Stock {product.stock}</p></article>; }
