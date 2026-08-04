@@ -1,0 +1,1 @@
+{"scripts":{"test":"cd frontend && npm test"},"devDependencies":{"@playwright/test":"^1.54.2"}}
