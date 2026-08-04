@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ShopSense Chatbot</title>
+    <meta
+      name="description"
+      content="A simple GitHub Pages chatbot website that can call an AI API endpoint."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero" aria-labelledby="site-title">
+        <p class="eyebrow">ShopSense</p>
+        <h1 id="site-title">Simple AI Chatbot Website</h1>
+        <p class="hero-copy">
+          Deploy this static site with GitHub Pages and chat with an AI shopping assistant.
+          Add your API key locally in the browser, or point the app to your own secure API proxy.
+        </p>
+      </section>
+
+      <section class="chat-card" aria-label="Chatbot">
+        <div class="settings-panel">
+          <label for="apiKey">API key</label>
+          <input id="apiKey" type="password" placeholder="Paste API key for local testing" autocomplete="off" />
+
+          <label for="endpoint">API endpoint</label>
+          <input id="endpoint" type="url" value="https://api.openai.com/v1/chat/completions" />
+
+          <label for="model">Model</label>
+          <input id="model" type="text" value="gpt-4o-mini" />
+
+          <button id="saveSettings" type="button">Save settings</button>
+          <p class="hint">
+            GitHub Pages is public. For production, use a backend proxy instead of exposing a secret key.
+          </p>
+        </div>
+
+        <div class="chat-panel">
+          <div id="messages" class="messages" aria-live="polite"></div>
+          <form id="chatForm" class="chat-form">
+            <input
+              id="userInput"
+              type="text"
+              placeholder="Ask for gift ideas, product comparisons, or buying advice..."
+              autocomplete="off"
+              required
+            />
+            <button id="sendButton" type="submit">Send</button>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
