@@ -1,0 +1,1 @@
+export default function Profile(){return <main className="mx-auto max-w-3xl p-8"><h1 className="text-3xl font-bold">Profile</h1><section className="mt-6 rounded-2xl bg-slate-900 p-6"><p>Manage your ShopSense account, saved products, and personalized shopping preferences.</p></section></main>}
