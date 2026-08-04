@@ -2,6 +2,6 @@
 line-length = 88
 target-version = ["py312"]
 [tool.pytest.ini_options]
-pythonpath = ["backend"]
+pythonpath = ["."]
 testpaths = ["tests/backend"]
 addopts = "--cov=backend/app --cov-report=term-missing --cov-fail-under=80"
