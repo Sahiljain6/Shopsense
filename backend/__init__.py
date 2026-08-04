@@ -1,3 +1,1 @@
-"""Backend package for the ShopSense API."""
-
-__all__ = []
+"""Top-level backend package for Shopsense."""
