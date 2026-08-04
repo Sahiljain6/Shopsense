@@ -1,0 +1,2 @@
+'use client';import {useEffect,useState} from 'react';import {Product,wishlist} from '../../lib/api';import {ProductCard} from '../../components/ProductCard';
+export default function Wishlist(){const[items,setItems]=useState<Product[]>([]);useEffect(()=>{wishlist().then(setItems).catch(()=>{})},[]);return <main className="p-8"><h1 className="text-3xl font-bold">Wishlist</h1><div className="mt-6 grid gap-4 md:grid-cols-4">{items.map(p=><ProductCard key={p.id} product={p}/>)}</div></main>}

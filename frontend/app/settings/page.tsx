@@ -1,0 +1,2 @@
+'use client';import {useState} from 'react';
+export default function Settings(){const[dark,setDark]=useState(true);return <main className="mx-auto max-w-3xl p-8"><h1 className="text-3xl font-bold">Settings</h1><label className="mt-6 flex items-center gap-3 rounded-2xl bg-slate-900 p-6"><input type="checkbox" checked={dark} onChange={e=>{setDark(e.target.checked);document.documentElement.classList.toggle('dark',e.target.checked)}}/>Dark mode</label></main>}
