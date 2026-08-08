@@ -18,6 +18,19 @@ def test_auth_flow(client) -> None:
     assert me.json()["email"] == "user@example.com"
 
 
+def test_cors_allows_vercel_preview_origin(client) -> None:
+    res = client.options(
+        "/auth/login",
+        headers={
+            "Origin": "https://shopsense-4a45rlij8-sahil-jain-s-projects.vercel.app",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers["access-control-allow-origin"] == "https://shopsense-4a45rlij8-sahil-jain-s-projects.vercel.app"
+
+
 def test_chat_grounding(client, db_session) -> None:
     product = seed_phone(db_session)
     res = client.post("/chat", json={"message":"recommend a budget phone under 15000"})
