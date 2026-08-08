@@ -1,7 +1,7 @@
 import json
 import re
 from sqlalchemy.orm import Session
-from openai import OpenAI
+from ollama import Client
 
 from app.core.config import get_settings
 from app.models.entities import Product
