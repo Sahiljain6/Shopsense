@@ -55,7 +55,14 @@ function setError(message) {
 
 function friendlyError(error) {
   if (error instanceof ApiError) {
-    return error.status === 401 ? "401: Session expired. Please log in again." : `${error.status}: ${error.message}`;
+    const message = error.message || "Request failed";
+    if (error.status === 0) return `Connection error: ${message}`;
+    if (error.status === 400) return `400 validation error: ${message}`;
+    if (error.status === 401) return `401 authentication error: ${message}`;
+    if (error.status === 403) return `403 authorization error: ${message}`;
+    if (error.status === 404) return `404 endpoint not found: ${message}`;
+    if (error.status >= 500) return `${error.status} backend/server error: ${message}`;
+    return `${error.status}: ${message}`;
   }
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
 }
@@ -180,7 +187,9 @@ async function handleChat(event) {
   try {
     const response = await sendChat(text, state.mode);
     const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
-    const products = ids.length ? (await getProducts(text, 12)).filter((product) => ids.includes(product.id)) : [];
+    const catalog = ids.length ? await getProducts(text, 12) : [];
+    const fallbackCatalog = ids.length && !catalog.some((product) => ids.includes(product.id)) ? await getProducts("", 12) : catalog;
+    const products = ids.length ? fallbackCatalog.filter((product) => ids.includes(product.id)) : [];
     state.messages.push({ role: "assistant", text: response.answer || "I found a few options.", response, products });
   } catch (error) {
     setError(friendlyError(error));

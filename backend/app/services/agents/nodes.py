@@ -38,7 +38,7 @@ def review_node(state: ShopSenseState) -> ShopSenseState:
 
 
 def guardrail_node(state: ShopSenseState) -> ShopSenseState:
-    response = state.get("response") or ChatResponse(answer="What product category should I search in?", clarification="What product category should I search in?")
+    response = state.get("response") or ChatResponse(answer="I can help you find products, compare options, find gifts, or choose something within your budget. What are you looking for?")
     allowed = set(state.get("product_ids", []))
     if allowed:
         response.product_ids = [pid for pid in response.product_ids if pid in allowed]
