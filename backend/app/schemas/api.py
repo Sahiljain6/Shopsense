@@ -70,6 +70,7 @@ class ReviewWrite(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
+    mode: str | None = None
 
 
 class ChatResponse(BaseModel):

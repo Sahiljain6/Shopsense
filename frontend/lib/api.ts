@@ -4,7 +4,7 @@ export const token=()=>typeof window==='undefined'?'':localStorage.getItem('toke
 async function req<T>(path:string,init:RequestInit={}):Promise<T>{const h=new Headers(init.headers);h.set('content-type','application/json');const t=token();if(t)h.set('authorization',`Bearer ${t}`);const r=await fetch(`${API}${path}`,{...init,headers:h});if(!r.ok)throw new Error(await r.text());return r.json();}
 export const login=(email:string,password:string)=>req<{access_token:string}>('/login',{method:'POST',body:JSON.stringify({email,password})});
 export const register=(email:string,password:string,full_name:string)=>req<{access_token:string}>('/register',{method:'POST',body:JSON.stringify({email,password,full_name})});
-export const chat=(message:string)=>req<{answer:string;products:Product[];clarification?:string}>('/chat',{method:'POST',body:JSON.stringify({message})});
+export const chat=(message:string,mode?:string)=>req<{answer:string;products:Product[];clarification?:string}>('/chat',{method:'POST',body:JSON.stringify({message,mode})});
 export const products=(q='')=>req<Product[]>(`/products?q=${encodeURIComponent(q)}`);
 export const wishlist=()=>req<Product[]>('/wishlist');
 export const saveWishlist=(product_id:number)=>req<{saved:boolean}>('/wishlist',{method:'POST',body:JSON.stringify({product_id})});
