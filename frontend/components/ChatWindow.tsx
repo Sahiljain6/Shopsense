@@ -52,8 +52,17 @@ export default function ChatWindow() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  useEffect(() => setAuthed(Boolean(getStoredToken())), []);
-  useEffect(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), [messages, loading]);
+  const checkedAuthRef = useRef(false);
+
+  useEffect(() => {
+    if (checkedAuthRef.current) return;
+    checkedAuthRef.current = true;
+
+    const hasToken = Boolean(getStoredToken());
+    setAuthed((current) => (current === hasToken ? current : hasToken));
+  }, []);
+
+  useEffect(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), [messages.length, loading]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
