@@ -3,7 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    openai_api_key: str = ""
+    ollama_api_key: str = ""
+ollama_model: str = "gpt-oss:120b"
     database_url: str = "sqlite:///./shopsense.db"
     jwt_secret: str = "change-me-to-something-long-and-random"
     pinecone_api_key: str = ""
