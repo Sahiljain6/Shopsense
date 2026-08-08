@@ -66,9 +66,20 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (token && PROTECTED_PATHS.some((protectedPath) => path.startsWith(protectedPath))) {
     headers.Authorization = `Bearer ${token}`;
   }
-  const res = await fetch(`${API_URL}${path}`, { ...init, headers: { ...headers, ...(init?.headers ?? {}) } });
-  if (!res.ok) throw new ApiError(res.status, await responseMessage(res));
-  return res.json() as Promise<T>;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(`${API_URL}${path}`, { ...init, signal: controller.signal, headers: { ...headers, ...(init?.headers ?? {}) } });
+    clearTimeout(timeoutId);
+    if (!res.ok) throw new ApiError(res.status, await responseMessage(res));
+    return res.json() as Promise<T>;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError(408, "The server is waking up, please wait a moment and try again.");
+    }
+    throw err;
+  }
 }
 
 export const login = (payload: AuthPayload) => apiFetch<Token>("/auth/login", { method: "POST", body: JSON.stringify(payload) });
