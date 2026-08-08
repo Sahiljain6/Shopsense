@@ -1,30 +1,14 @@
-# ShopSense Chatbot
+# ShopSense
 
-A simple static HTML chatbot website that can be deployed on GitHub Pages.
+ShopSense is a full-stack AI shopping assistant with a FastAPI backend, Next.js frontend, grounded catalog recommendations, prompt modifiers, JWT auth, guardrails, and an optional LangGraph multi-agent pipeline.
 
-## Files
+## Setup
 
-- `index.html` - the page structure.
-- `styles.css` - the responsive design.
-- `script.js` - the chatbot logic and API call.
+1. Copy `backend/.env.example` to `backend/.env` and paste a real `OPENAI_API_KEY`.
+2. Run `docker-compose up --build`.
+3. Seed demo products with `docker-compose exec backend python scripts/seed.py`.
+4. Open <http://localhost:3000/chat>.
 
-## Use locally
+Try: `recommend a budget phone under 15000`, then `compare it with a Samsung under 20000`.
 
-Open `index.html` in your browser. You can chat immediately in demo mode.
-
-To test live AI replies:
-
-1. Paste an API key into the **API key** field.
-2. Keep the endpoint as `https://api.openai.com/v1/chat/completions`, or replace it with your own proxy URL.
-3. Click **Save settings**.
-4. Send a chat message.
-
-> Important: GitHub Pages is public. Do not hard-code a real secret key in this repo. For production, deploy a small backend/proxy that keeps the key on the server.
-
-## Deploy to GitHub Pages
-
-1. Push this repository to GitHub.
-2. Open **Settings → Pages**.
-3. Set **Source** to **Deploy from a branch**.
-4. Select your branch and the repository root folder.
-5. Save, then open the GitHub Pages URL after deployment finishes.
+Set `ENABLE_MULTI_AGENT=true` in `backend/.env` and restart to test the LangGraph path. It falls back to the single-call path on graph errors.

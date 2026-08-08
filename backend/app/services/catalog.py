@@ -1,29 +1,20 @@
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
-from backend.app.models import Product, Review
+from app.models.entities import Product
 
 
 class CatalogService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
 
-    def search(self, query: str, limit: int = 10) -> list[Product]:
-        terms = [t for t in query.split() if len(t) > 2]
-        stmt = select(Product)
-        if terms:
-            filters = [
-                Product.name.ilike(f"%{t}%")
-                | Product.brand.ilike(f"%{t}%")
-                | Product.description.ilike(f"%{t}%")
-                for t in terms
-            ]
-            stmt = stmt.where(or_(*filters))
-        return list(self.db.scalars(stmt.order_by(Product.rating.desc()).limit(limit)))
+    def search(self, q: str | None = None, limit: int = 10) -> list[Product]:
+        stmt = select(Product).limit(limit)
+        if q:
+            terms = [term for term in q.lower().split() if not term.isdigit()]
+            filters = [Product.name.ilike(f"%{term}%") | Product.brand.ilike(f"%{term}%") | Product.description.ilike(f"%{term}%") for term in terms]
+            if filters:
+                stmt = select(Product).where(or_(*filters)).limit(limit)
+        return list(self.db.scalars(stmt).all())
 
-    def by_ids(self, ids: list[int]) -> list[Product]:
-        return list(self.db.scalars(select(Product).where(Product.id.in_(ids))))
-
-    def reviews(self, product_id: int) -> list[Review]:
-        return list(
-            self.db.scalars(select(Review).where(Review.product_id == product_id))
-        )
+    def get_many(self, product_ids: list[int]) -> list[Product]:
+        return list(self.db.scalars(select(Product).where(Product.id.in_(product_ids))).all())
