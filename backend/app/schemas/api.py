@@ -1,81 +1,64 @@
-from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8)
-    full_name: str
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class TokenResponse(BaseModel):
+class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
 
-class UserOut(BaseModel):
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    full_name: str = ""
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     email: EmailStr
     full_name: str
     is_admin: bool
-    created_at: datetime
-    model_config = {"from_attributes": True}
 
 
 class ProductBase(BaseModel):
-    category_id: int = 1
     name: str
     brand: str
     description: str
     price: float
-    currency: str = "USD"
+    currency: str = "INR"
     rating: float = 0
     stock: int = 0
-    image_url: str
-    attributes: dict = {}
+    image_url: str = ""
+    attributes: dict[str, object] = Field(default_factory=dict)
+    category_id: int
 
 
-class ProductOut(ProductBase):
-    id: int
-    model_config = {"from_attributes": True}
-
-
-class ProductWrite(ProductBase):
+class ProductCreate(ProductBase):
     pass
 
 
-class ReviewOut(BaseModel):
+class ProductRead(ProductBase):
+    model_config = ConfigDict(from_attributes=True)
     id: int
-    product_id: int
-    user_id: int | None = None
-    rating: float
-    title: str
-    body: str
-    sentiment: str
-    model_config = {"from_attributes": True}
-
-
-class ReviewWrite(BaseModel):
-    product_id: int
-    rating: float
-    title: str
-    body: str
-    sentiment: str = "neutral"
+    category_name: str | None = None
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=2000)
+    message: str
     mode: str | None = None
 
 
 class ChatResponse(BaseModel):
     answer: str
-    products: list[ProductOut] = []
+    product_ids: list[int] = Field(default_factory=list)
+    reasons: dict[str, str] = Field(default_factory=dict)
+    pros: dict[str, list[str]] = Field(default_factory=dict)
+    cons: dict[str, list[str]] = Field(default_factory=dict)
     clarification: str | None = None
 
 
@@ -83,17 +66,19 @@ class CompareRequest(BaseModel):
     product_ids: list[int] = Field(min_length=2, max_length=4)
 
 
-class ReviewsRequest(BaseModel):
+class ReviewSummaryRequest(BaseModel):
     product_id: int
+
+
+class ReviewRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    product_id: int
+    user_name: str
+    rating: float
+    title: str
+    body: str
 
 
 class WishlistRequest(BaseModel):
     product_id: int
-
-
-class OrderOut(BaseModel):
-    id: int
-    user_id: int
-    status: str
-    total: float
-    model_config = {"from_attributes": True}

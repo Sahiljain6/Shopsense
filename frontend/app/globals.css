@@ -1,3 +1,4 @@
-@tailwind base; @tailwind components; @tailwind utilities;
-body { @apply bg-slate-950 text-slate-100; }
-button { @apply transition hover:opacity-90; }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body { background: #f8fafc; color: #0f172a; }
