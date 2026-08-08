@@ -72,8 +72,8 @@ export default function ChatWindow() {
     setMessages((current) => [...current, { role: "user", text }]);
     try {
       const response = await sendChat(text, mode);
-      const allProducts = response.product_ids.length ? await getProducts(text, 12) : [];
-      const products = allProducts.filter((product) => response.product_ids.includes(product.id));
+      const allProducts = response.product_ids?.length ? await getProducts(text, 12) : [];
+      const products = Array.isArray(allProducts) ? allProducts.filter((p) => response.product_ids?.includes(p.id)) : [];
       setMessages((current) => [...current, { role: "assistant", text: response.answer, response, products }]);
     } catch (err) { setError(friendlyError(err)); } finally { setLoading(false); }
   }
