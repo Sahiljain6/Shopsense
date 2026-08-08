@@ -1,13 +1,15 @@
+import type { Metadata } from "next";
 import "./globals.css";
-import TopNav from "../components/TopNav";
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const metadata: Metadata = {
+  title: "ShopSense",
+  description: "A lightweight shopping assistant demo.",
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-slate-50 font-sans text-slate-950 antialiased">
-        <TopNav />
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
