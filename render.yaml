@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: shopsense-api
+    runtime: docker
+    dockerfilePath: ./docker/backend.Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000"
+      - key: ENABLE_MULTI_AGENT
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: shopsense-db
+          property: connectionString
+
+databases:
+  - name: shopsense-db
+    plan: free
+    databaseName: shopsense
+    user: shopsense
+
