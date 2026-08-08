@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="A lightweight shopping assistant demo." />
+    <title>ShopSense</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="app-container">
+        <header class="hero">
+          <div class="hero-content">
+            <div>
+              <p class="eyebrow">ShopSense</p>
+              <h1>Lightweight shopping assistant</h1>
+              <p class="hero-copy">Ask for recommendations, comparisons, gifts, or budget-friendly picks.</p>
+            </div>
+            <button id="logout-button" class="logout-button hidden" type="button">Log out</button>
+          </div>
+        </header>
+
+        <div id="error" class="alert alert-error hidden" role="alert"></div>
+
+        <section id="auth-card" class="auth-card">
+          <h2 id="auth-title">Log in to continue</h2>
+          <form id="auth-form" class="stacked-form">
+            <input id="full-name" class="form-input hidden" type="text" autocomplete="name" placeholder="Full name" />
+            <input id="email" class="form-input" type="email" autocomplete="email" placeholder="Email" required />
+            <input id="password" class="form-input" type="password" autocomplete="current-password" placeholder="Password" required />
+            <button id="auth-submit" class="primary-button full-width" type="submit">Log in</button>
+          </form>
+          <button id="toggle-auth" class="link-button" type="button">Need an account? Register</button>
+        </section>
+
+        <section id="chat-panel" class="chat-panel hidden" aria-live="polite">
+          <div id="mode-buttons" class="mode-buttons"></div>
+          <div id="messages" class="messages">
+            <div class="empty-state">Try “recommend a budget phone under 15000”.</div>
+          </div>
+          <form id="chat-form" class="chat-form">
+            <input id="chat-input" class="chat-input" type="text" placeholder="recommend a budget phone under 15000" autocomplete="off" />
+            <button id="chat-submit" class="primary-button send-button" type="submit" disabled>Send</button>
+          </form>
+        </section>
+      </section>
+    </main>
+    <script src="/config.js"></script>
+    <script src="app.js" defer></script>
+  </body>
+</html>
