@@ -1,0 +1,8 @@
+"use client";
+import { useState } from "react";
+import { getProducts, Product, sendChat } from "../lib/api";
+import ChatBubble from "./ChatBubble";
+import ClarificationPrompt from "./ClarificationPrompt";
+import ModifierToggle from "./ModifierToggle";
+import ProductCard from "./ProductCard";
+export default function ChatWindow() { const [input,setInput]=useState(""); const [mode,setMode]=useState<string|null>(null); const [messages,setMessages]=useState<{role:"user"|"assistant";text:string}[]>([]); const [products,setProducts]=useState<Product[]>([]); const [clarification,setClarification]=useState<string|null>(null); async function submit(){ if(!input.trim()) return; const text=input; setInput(""); setMessages(m=>[...m,{role:"user",text}]); const res=await sendChat(text,mode); setMessages(m=>[...m,{role:"assistant",text:res.answer}]); setClarification(res.clarification ?? null); if(res.product_ids.length){ const found=await getProducts(text,8); setProducts(found.filter(p=>res.product_ids.includes(p.id))); }} return <section className="mx-auto max-w-4xl space-y-4 p-6"><h1 className="text-3xl font-bold">ShopSense</h1><ModifierToggle mode={mode} setMode={setMode}/><div className="space-y-3">{messages.map((m,i)=><ChatBubble key={i} role={m.role} text={m.text}/>)}</div>{clarification && <ClarificationPrompt text={clarification}/>}<div className="grid gap-3 md:grid-cols-3">{products.map(p=><ProductCard key={p.id} product={p}/>)}</div><div className="flex gap-2"><input className="flex-1 rounded border p-3" value={input} onChange={e=>setInput(e.target.value)} placeholder="recommend a budget phone under 15000"/><button className="rounded bg-blue-600 px-5 text-white" onClick={submit}>Send</button></div></section>; }

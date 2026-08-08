@@ -1,0 +1,2 @@
+const modes = ["compare", "budget_optimizer", "gift_mode", "quick_answer"];
+export default function ModifierToggle({ mode, setMode }: { mode: string | null; setMode: (mode: string | null) => void }) { return <div className="flex flex-wrap gap-2">{modes.map((m) => <button key={m} onClick={() => setMode(mode === m ? null : m)} className={`rounded-full px-3 py-1 text-sm ${mode === m ? "bg-blue-600 text-white" : "bg-white border"}`}>{m.replace("_", " ")}</button>)}</div>; }
