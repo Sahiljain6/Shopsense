@@ -79,7 +79,9 @@ def chat(
     ai = AIOrchestrator()
     clarification = ai.needs_clarification(req.message)
     found = [] if clarification else CatalogService(db).search(req.message, 5)
-    answer = clarification or ai.answer(req.message, found, history)
+    answer = clarification or ai.answer(
+        req.message, found, history, requested_mode=req.mode
+    )
     db.add_all(
         [
             ChatHistory(user_id=user.id, role="user", content=req.message, memory={}),
@@ -87,12 +89,16 @@ def chat(
                 user_id=user.id,
                 role="assistant",
                 content=answer,
-                memory={"products": [p.id for p in found]},
+                memory={"products": [p.id for p in ai.last_products or found]},
             ),
         ]
     )
     db.commit()
-    return ChatResponse(answer=answer, products=found, clarification=clarification)
+    return ChatResponse(
+        answer=answer,
+        products=ai.last_products if not clarification else found,
+        clarification=clarification or ai.last_clarification,
+    )
 
 
 @router.post("/recommend", response_model=ChatResponse)
