@@ -1,0 +1,1 @@
+export default function ChatBubble({ role, text }: { role: "user" | "assistant"; text: string }) { return <div className={`rounded-2xl p-3 ${role === "user" ? "ml-auto bg-blue-600 text-white" : "mr-auto bg-white border"}`}>{text}</div>; }

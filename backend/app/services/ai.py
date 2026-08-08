@@ -1,202 +1,91 @@
 import json
-from typing import Any
+import re
+from sqlalchemy.orm import Session
+from app.core.config import get_settings
+from app.models.entities import Product
+from app.schemas.api import ChatResponse
+from app.services.catalog import CatalogService
+from app.services.prompts import MODIFIERS
 
-from openai import OpenAI
-from pinecone import Pinecone
-from backend.app.core.config import get_settings
-from backend.app.models import Product, Review
-from backend.app.services.prompts import JSON_OUTPUT_PROMPT, MODIFIERS, SYSTEM_PROMPT
-
-INJECTION_MARKERS = (
-    "ignore previous",
-    "system prompt",
-    "developer message",
-    "jailbreak",
-    "you are now",
-    "act as",
-)
+INJECTION_MARKERS = ["ignore previous", "system prompt", "developer message", "jailbreak", "act as", "you are now"]
+CATEGORIES = ["phone", "laptop", "headphone", "watch", "speaker", "tablet"]
 
 
 def select_modifiers(message: str, requested_mode: str | None = None) -> list[str]:
-    m = message.lower()
-    mods: list[str] = []
-    if requested_mode and requested_mode in MODIFIERS:
-        mods.append(requested_mode)
-    else:
-        if any(w in m for w in ("vs", "versus", "compare", "or")):
-            mods.append("compare")
-        elif any(w in m for w in ("review", "worth it", "any complaints")):
-            mods.append("review_digest")
-        else:
-            mods.append("recommend")
-    if any(w in m for w in ("budget", "cheap", "affordable", "under ")):
-        mods.append("budget_optimizer")
-    if any(w in m for w in ("gift", "present", "for my", "birthday")):
-        mods.append("gift_mode")
-    if any(w in m for w in ("spec", "specs", "technical", "detailed")):
-        mods.append("spec_nerd")
-    if any(w in m for w in ("quick", "just tell me", "tl;dr")):
-        mods.append("quick_answer")
-    return mods
+    lowered = message.lower()
+    selected: list[str] = []
+    base = requested_mode if requested_mode in MODIFIERS else None
+    if base is None:
+        base = "compare" if "compare" in lowered else "review_digest" if "review" in lowered else "recommend"
+    selected.append(base)
+    keyword_map = {"budget_optimizer": ["budget", "under", "cheap"], "gift_mode": ["gift", "birthday"], "deal_hunter": ["deal", "value"], "spec_nerd": ["spec", "ram", "processor"], "quick_answer": ["quick", "one line"]}
+    for modifier, words in keyword_map.items():
+        if modifier != base and any(word in lowered for word in words):
+            selected.append(modifier)
+    return selected
 
 
-def build_system_prompt(modifiers: list[str]) -> str:
-    return SYSTEM_PROMPT + "\n\n" + "\n".join(MODIFIERS[m] for m in modifiers)
+def needs_clarification(message: str) -> str | None:
+    lowered = message.lower()
+    if any(marker in lowered for marker in INJECTION_MARKERS):
+        return "I can help with shopping, but I can't follow prompt-changing instructions. What product category and budget should I use?"
+    has_category = any(category in lowered or category + "s" in lowered for category in CATEGORIES)
+    has_budget = bool(re.search(r"\b(under|below|budget|₹|rs\.?|inr|\d{4,6})\b", lowered))
+    has_use = any(word in lowered for word in ["gaming", "work", "student", "travel", "music", "gift", "camera"])
+    if not has_category:
+        return "Which product category should I search in?"
+    if not has_budget and not has_use:
+        return "What budget or use-case should I optimize for?"
+    return None
 
 
 class AIOrchestrator:
-    def __init__(self):
-        self.settings = get_settings()
-        self.client = (
-            OpenAI(api_key=self.settings.openai_api_key)
-            if self.settings.openai_api_key
-            else None
-        )
-        self.last_products: list[Product] = []
-        self.last_clarification: str | None = None
+    def __init__(self, db: Session) -> None:
+        self.db = db
+        self.catalog = CatalogService(db)
 
-    def embed(self, text: str) -> list[float]:
-        if self.client:
-            return (
-                self.client.embeddings.create(
-                    model=self.settings.embedding_model, input=text
-                )
-                .data[0]
-                .embedding
-            )
-        return [float((sum(map(ord, text[i::64])) % 997) / 997) for i in range(64)]
-
-    def vector_context(self, message: str, products: list[Product]) -> str:
-        if self.settings.pinecone_api_key:
-            try:
-                pc = Pinecone(api_key=self.settings.pinecone_api_key)
-                idx = pc.Index(self.settings.pinecone_index)
-                res = idx.query(
-                    vector=self.embed(message), top_k=5, include_metadata=True
-                )
-                return "\n".join(
-                    str(m.get("metadata", {})) for m in res.get("matches", [])
-                )
-            except Exception:
-                pass
-        return "\n".join(
-            f"id={p.id}; {p.name}: {p.description} {p.currency} {p.price} "
-            f"rating {p.rating} stock {p.stock} attributes {p.attributes}"
-            for p in products[:5]
-        )
-
-    def _complete(
-        self,
-        prompt: str,
-        system_prompt: str = SYSTEM_PROMPT,
-        json_mode: bool = False,
-    ) -> str:
-        if self.client:
-            kwargs: dict[str, Any] = {
-                "model": self.settings.openai_model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
-            }
-            if json_mode:
-                kwargs["response_format"] = {"type": "json_object"}
-            r = self.client.chat.completions.create(**kwargs)
-            return r.choices[0].message.content or ""
-        return ""
-
-    def needs_clarification(self, message: str) -> str | None:
-        m = message.lower()
-        if any(x in m for x in INJECTION_MARKERS):
-            return "What product category are you shopping for?"
-        if len(m.split()) < 3:
-            return "What is your budget and primary use case?"
-        if not any(ch.isdigit() for ch in m) and not any(
-            w in m for w in ("cheap", "premium", "budget", "best")
-        ):
-            return "Do you have a budget range or preferred brand?"
-        return None
-
-    def _fallback_answer(self, products: list[Product]) -> str:
-        names = ", ".join(p.name for p in products[:3])
-        return (
-            f"I recommend {names}. They best match your request by rating, stock, "
-            "and catalog relevance."
-        )
-
-    def answer(
-        self,
-        message: str,
-        products: list[Product],
-        memory: list[str] | None = None,
-        requested_mode: str | None = None,
-    ) -> str:
-        self.last_products = products[:3]
-        self.last_clarification = None
+    def answer(self, message: str, mode: str | None = None) -> ChatResponse:
+        clarification = needs_clarification(message)
+        if clarification:
+            return ChatResponse(answer=clarification, clarification=clarification)
+        products = self.catalog.search(message, limit=8)
         if not products:
-            self.last_products = []
-            return "I could not find matching catalog products. Share a category, brand, feature, or budget and I will narrow it down."
-        context = self.vector_context(message, products)
-        prompt = f"User: {message}\nMemory: {memory or []}\nCatalog context:\n{context}"
-        system_prompt = build_system_prompt(select_modifiers(message, requested_mode))
-        ai = self._complete(
-            prompt,
-            system_prompt=f"{system_prompt}\n\n{JSON_OUTPUT_PROMPT}",
-            json_mode=True,
-        )
-        if ai:
-            try:
-                payload = json.loads(ai)
-                product_map = {str(p.id): p for p in products}
-                ids = [str(pid) for pid in payload.get("product_ids", [])]
-                self.last_products = [
-                    product_map[pid] for pid in ids if pid in product_map
-                ]
-                self.last_clarification = payload.get("clarification")
-                answer = payload.get("answer") or self.last_clarification
-                if isinstance(answer, str) and answer:
-                    return answer
-            except (TypeError, ValueError, json.JSONDecodeError):
-                pass
-        plain = self._complete(
-            f"{prompt}\nGive concise recommendations with reasons.",
-            system_prompt=system_prompt,
-        )
-        return plain or self._fallback_answer(products)
+            question = "I couldn't find matching catalog products. Which category, brand, or budget should I try next?"
+            return ChatResponse(answer=question, clarification=question)
+        ranked = self._rank_products(products, message)[: (1 if "quick_answer" in select_modifiers(message, mode) else 3)]
+        return self._structured_response(ranked)
 
-    def summarize_reviews(self, reviews: list[Review]) -> dict:
-        avg = sum(r.rating for r in reviews) / len(reviews) if reviews else 0
-        pros = [r.title for r in reviews if r.rating >= 4][:5]
-        cons = [r.title for r in reviews if r.rating < 4][:5]
-        return {
-            "pros": pros,
-            "cons": cons,
-            "overall_opinion": f"Average rating {avg:.1f} from {len(reviews)} reviews.",
-            "sentiment": (
-                "positive" if avg >= 4 else "mixed" if avg >= 3 else "negative"
-            ),
-        }
+    def answer_via_agents(self, message: str, mode: str | None = None) -> ChatResponse:
+        try:
+            if not get_settings().enable_multi_agent:
+                return self.answer(message, mode)
+            from app.services.agents.graph import run_graph
+            data = run_graph({"message": message, "mode": mode, "db": self.db})
+            if isinstance(data.get("response"), ChatResponse):
+                return data["response"]
+            return self.answer(message, mode)
+        except Exception:
+            return self.answer(message, mode)
 
-    def compare(self, products: list[Product]) -> dict:
-        rows = [
-            {
-                "id": p.id,
-                "name": p.name,
-                "brand": p.brand,
-                "price": p.price,
-                "rating": p.rating,
-                "stock": p.stock,
-                "strength": p.description[:120],
-            }
-            for p in products
-        ]
-        winner = max(products, key=lambda p: (p.rating, -p.price)) if products else None
-        return {
-            "products": rows,
-            "winner": winner.name if winner else None,
-            "recommendation": (
-                f"Choose {winner.name} for the strongest rating-to-price balance."
-                if winner
-                else "No products found."
-            ),
-        }
+    def _rank_products(self, products: list[Product], message: str) -> list[Product]:
+        budget_match = re.search(r"(\d{4,6})", message)
+        budget = float(budget_match.group(1)) if budget_match else None
+        filtered = [p for p in products if budget is None or p.price <= budget] or products
+        return sorted(filtered, key=lambda p: (-p.rating, p.price))
+
+    def _structured_response(self, products: list[Product]) -> ChatResponse:
+        ids = [p.id for p in products]
+        names = ", ".join(f"{p.name} ({p.currency} {p.price:.0f})" for p in products)
+        return ChatResponse(
+            answer=f"Top grounded picks: {names}.",
+            product_ids=ids,
+            reasons={str(p.id): f"Strong fit from the current catalog with {p.rating:.1f} rating." for p in products},
+            pros={str(p.id): ["Catalog-backed choice", "Good rating", "Clear price"] for p in products},
+            cons={str(p.id): ["Check detailed specs before purchase"] for p in products},
+        )
+
+
+def validate_product_ids(response: ChatResponse, products: list[Product]) -> ChatResponse:
+    allowed = {p.id for p in products}
+    response.product_ids = [pid for pid in response.product_ids if pid in allowed]
+    return response

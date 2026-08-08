@@ -1,17 +1,23 @@
+from collections.abc import Generator
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from backend.app.core.config import get_settings
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from app.core.config import get_settings
 
 
 class Base(DeclarativeBase):
     pass
 
 
-engine = create_engine(get_settings().database_url, pool_pre_ping=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+def _connect_args(url: str) -> dict[str, object]:
+    return {"check_same_thread": False} if url.startswith("sqlite") else {}
 
 
-def get_db():
+settings = get_settings()
+engine = create_engine(settings.database_url, connect_args=_connect_args(settings.database_url))
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+
+def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db

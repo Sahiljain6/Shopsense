@@ -1,251 +1,148 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from backend.app.core.security import (
-    admin_user,
-    create_token,
-    current_user,
-    hash_password,
-    verify_password,
-)
-from backend.app.db.session import get_db
-from backend.app.models import ChatHistory, Order, Product, Review, User, Wishlist
-from backend.app.schemas.api import (
-    ChatRequest,
-    ChatResponse,
-    CompareRequest,
-    LoginRequest,
-    OrderOut,
-    ProductOut,
-    ProductWrite,
-    RegisterRequest,
-    ReviewOut,
-    ReviewsRequest,
-    TokenResponse,
-    UserOut,
-    WishlistRequest,
-)
-from backend.app.services.ai import AIOrchestrator
-from backend.app.services.catalog import CatalogService
+from app.core.security import create_access_token, get_current_user, hash_password, require_admin, verify_password
+from app.db.session import get_db
+from app.models.entities import ChatHistory, Order, Product, Review, User, Wishlist
+from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, ProductCreate, ProductRead, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
+from app.services.ai import AIOrchestrator
+from app.services.catalog import CatalogService
 
 router = APIRouter()
 
 
-@router.post("/register", response_model=TokenResponse)
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
-    if db.scalar(select(User).where(User.email == req.email)):
-        raise HTTPException(409, "Email already registered")
-    user = User(
-        email=req.email,
-        full_name=req.full_name,
-        hashed_password=hash_password(req.password),
-    )
-    db.add(user)
-    db.commit()
-    return TokenResponse(access_token=create_token(req.email))
+def _product_read(product: Product) -> ProductRead:
+    data = ProductRead.model_validate(product)
+    data.category_name = product.category.name if product.category else None
+    return data
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(req: LoginRequest, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == req.email))
-    if not user or not verify_password(req.password, user.hashed_password):
-        raise HTTPException(401, "Invalid credentials")
-    return TokenResponse(access_token=create_token(req.email))
-
-
-@router.get("/me", response_model=UserOut)
-def me(user: User = Depends(current_user)):
+@router.post("/auth/register", response_model=UserRead)
+def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
+    if db.scalar(select(User).where(User.email == payload.email)):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user = User(email=payload.email, full_name=payload.full_name, hashed_password=hash_password(payload.password))
+    db.add(user); db.commit(); db.refresh(user)
     return user
 
 
-@router.get("/products", response_model=list[ProductOut])
-def products(q: str = "", limit: int = 50, db: Session = Depends(get_db)):
-    return CatalogService(db).search(q, limit)
+@router.post("/auth/login", response_model=Token)
+def login(payload: UserLogin, db: Session = Depends(get_db)) -> Token:
+    user = db.scalar(select(User).where(User.email == payload.email))
+    if user is None or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return Token(access_token=create_access_token(user.email))
+
+
+@router.get("/auth/me", response_model=UserRead)
+def me(user: User = Depends(get_current_user)) -> User:
+    return user
+
+
+@router.get("/products", response_model=list[ProductRead])
+def products(q: str | None = None, limit: int = 10, db: Session = Depends(get_db)) -> list[ProductRead]:
+    return [_product_read(p) for p in CatalogService(db).search(q, limit)]
 
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(
-    req: ChatRequest, db: Session = Depends(get_db), user: User = Depends(current_user)
-):
-    history = [
-        h.content
-        for h in db.scalars(
-            select(ChatHistory)
-            .where(ChatHistory.user_id == user.id)
-            .order_by(ChatHistory.created_at.desc())
-            .limit(8)
-        )
-    ]
-    ai = AIOrchestrator()
-    clarification = ai.needs_clarification(req.message)
-    found = [] if clarification else CatalogService(db).search(req.message, 5)
-    answer = clarification or ai.answer(
-        req.message, found, history, requested_mode=req.mode
-    )
-    db.add_all(
-        [
-            ChatHistory(user_id=user.id, role="user", content=req.message, memory={}),
-            ChatHistory(
-                user_id=user.id,
-                role="assistant",
-                content=answer,
-                memory={"products": [p.id for p in ai.last_products or found]},
-            ),
-        ]
-    )
+def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+    response = AIOrchestrator(db).answer_via_agents(payload.message, payload.mode)
+    db.add(ChatHistory(user_id=None, message=payload.message, response=response.model_dump()))
     db.commit()
-    return ChatResponse(
-        answer=answer,
-        products=ai.last_products if not clarification else found,
-        clarification=clarification or ai.last_clarification,
-    )
+    return response
 
 
-@router.post("/recommend", response_model=ChatResponse)
-def recommend(
-    req: ChatRequest, db: Session = Depends(get_db), user: User = Depends(current_user)
-):
-    return chat(req, db, user)
+@router.post("/compare", response_model=ChatResponse)
+def compare(payload: CompareRequest, db: Session = Depends(get_db)) -> ChatResponse:
+    products = CatalogService(db).get_many(payload.product_ids)
+    if len(products) < 2:
+        raise HTTPException(status_code=404, detail="Need at least two valid products")
+    names = ", ".join(p.name for p in products)
+    return ChatResponse(answer=f"Comparison grounded in catalog: {names}.", product_ids=[p.id for p in products])
 
 
-@router.post("/compare")
-def compare(
-    req: CompareRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(current_user),
-):
-    return AIOrchestrator().compare(CatalogService(db).by_ids(req.product_ids))
+@router.post("/reviews/summary", response_model=ChatResponse)
+def review_summary(payload: ReviewSummaryRequest, db: Session = Depends(get_db)) -> ChatResponse:
+    reviews = list(db.scalars(select(Review).where(Review.product_id == payload.product_id)).all())
+    if not reviews:
+        return ChatResponse(answer="No reviews available for this product.", product_ids=[payload.product_id])
+    avg = sum(r.rating for r in reviews) / len(reviews)
+    return ChatResponse(answer=f"{len(reviews)} reviews average {avg:.1f}/5. Common themes are value, build quality, and usability.", product_ids=[payload.product_id])
 
 
-@router.post("/reviews/summary")
-def reviews(req: ReviewsRequest, db: Session = Depends(get_db)):
-    return AIOrchestrator().summarize_reviews(
-        CatalogService(db).reviews(req.product_id)
-    )
-
-
-@router.get("/reviews/{product_id}", response_model=list[ReviewOut])
-def product_reviews(product_id: int, db: Session = Depends(get_db)):
-    return CatalogService(db).reviews(product_id)
+@router.get("/reviews/{product_id}", response_model=list[ReviewRead])
+def reviews(product_id: int, db: Session = Depends(get_db)) -> list[Review]:
+    return list(db.scalars(select(Review).where(Review.product_id == product_id)).all())
 
 
 @router.get("/history")
-def history(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    return list(
-        db.scalars(
-            select(ChatHistory)
-            .where(ChatHistory.user_id == user.id)
-            .order_by(ChatHistory.created_at.desc())
-            .limit(50)
-        )
-    )
+def history(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[dict[str, object]]:
+    rows = db.scalars(select(ChatHistory).where(ChatHistory.user_id == user.id).order_by(ChatHistory.created_at.desc())).all()
+    return [{"message": row.message, "response": row.response, "created_at": row.created_at.isoformat()} for row in rows]
 
 
-@router.get("/wishlist", response_model=list[ProductOut])
-def get_wishlist(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    return list(
-        db.scalars(
-            select(Product)
-            .join(Wishlist, Wishlist.product_id == Product.id)
-            .where(Wishlist.user_id == user.id)
-        )
-    )
+@router.get("/wishlist", response_model=list[int])
+def wishlist(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[int]:
+    return list(db.scalars(select(Wishlist.product_id).where(Wishlist.user_id == user.id)).all())
 
 
-@router.post("/wishlist")
-def wishlist(
-    req: WishlistRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(current_user),
-):
-    if not db.get(Product, req.product_id):
-        raise HTTPException(404, "Product not found")
-    if not db.scalar(
-        select(Wishlist).where(
-            Wishlist.user_id == user.id, Wishlist.product_id == req.product_id
-        )
-    ):
-        db.add(Wishlist(user_id=user.id, product_id=req.product_id))
-        db.commit()
-    return {"saved": True}
+@router.post("/wishlist", response_model=list[int])
+def add_wishlist(payload: WishlistRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[int]:
+    if not db.scalar(select(Wishlist).where(Wishlist.user_id == user.id, Wishlist.product_id == payload.product_id)):
+        db.add(Wishlist(user_id=user.id, product_id=payload.product_id)); db.commit()
+    return wishlist(db, user)
 
 
-@router.delete("/wishlist/{product_id}")
-def remove_wishlist(
-    product_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)
-):
-    item = db.scalar(
-        select(Wishlist).where(
-            Wishlist.user_id == user.id, Wishlist.product_id == product_id
-        )
-    )
-    if item:
-        db.delete(item)
-        db.commit()
-    return {"removed": True}
+@router.delete("/wishlist/{product_id}", response_model=list[int])
+def delete_wishlist(product_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[int]:
+    row = db.scalar(select(Wishlist).where(Wishlist.user_id == user.id, Wishlist.product_id == product_id))
+    if row:
+        db.delete(row); db.commit()
+    return wishlist(db, user)
 
 
 @router.get("/admin/analytics")
-def analytics(db: Session = Depends(get_db), user: User = Depends(admin_user)):
-    return {
-        "products": db.scalar(select(func.count(Product.id))),
-        "users": db.scalar(select(func.count(User.id))),
-        "reviews": db.scalar(select(func.count(Review.id))),
-        "orders": db.scalar(select(func.count(Order.id))),
-        "revenue": db.scalar(select(func.coalesce(func.sum(Order.total), 0))),
-    }
+def admin_analytics(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> dict[str, int]:
+    return {"users": db.scalar(select(func.count(User.id))) or 0, "products": db.scalar(select(func.count(Product.id))) or 0, "orders": db.scalar(select(func.count(Order.id))) or 0}
 
 
-@router.get("/admin/users", response_model=list[UserOut])
-def admin_users(db: Session = Depends(get_db), user: User = Depends(admin_user)):
-    return list(db.scalars(select(User).limit(200)))
+@router.get("/admin/users", response_model=list[UserRead])
+def admin_users(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> list[User]:
+    return list(db.scalars(select(User)).all())
 
 
-@router.post("/admin/products", response_model=ProductOut)
-def create_product(
-    req: ProductWrite, db: Session = Depends(get_db), user: User = Depends(admin_user)
-):
-    p = Product(**req.model_dump())
-    db.add(p)
-    db.commit()
-    db.refresh(p)
-    return p
+@router.get("/admin/reviews", response_model=list[ReviewRead])
+def admin_reviews(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> list[Review]:
+    return list(db.scalars(select(Review)).all())
 
 
-@router.put("/admin/products/{product_id}", response_model=ProductOut)
-def update_product(
-    product_id: int,
-    req: ProductWrite,
-    db: Session = Depends(get_db),
-    user: User = Depends(admin_user),
-):
-    p = db.get(Product, product_id)
-    if not p:
-        raise HTTPException(404, "Product not found")
-    for k, v in req.model_dump().items():
-        setattr(p, k, v)
-    db.commit()
-    db.refresh(p)
-    return p
+@router.get("/admin/orders")
+def admin_orders(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> list[dict[str, object]]:
+    return [{"id": o.id, "user_id": o.user_id, "total": o.total, "status": o.status} for o in db.scalars(select(Order)).all()]
+
+
+@router.post("/admin/products/{product_id}", response_model=ProductRead)
+def create_product(product_id: int, payload: ProductCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)) -> ProductRead:
+    product = Product(id=product_id, **payload.model_dump())
+    db.add(product); db.commit(); db.refresh(product)
+    return _product_read(product)
+
+
+@router.put("/admin/products/{product_id}", response_model=ProductRead)
+def update_product(product_id: int, payload: ProductCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)) -> ProductRead:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    for key, value in payload.model_dump().items():
+        setattr(product, key, value)
+    db.commit(); db.refresh(product)
+    return _product_read(product)
 
 
 @router.delete("/admin/products/{product_id}")
-def delete_product(
-    product_id: int, db: Session = Depends(get_db), user: User = Depends(admin_user)
-):
-    p = db.get(Product, product_id)
-    if not p:
-        raise HTTPException(404, "Product not found")
-    db.delete(p)
-    db.commit()
-    return {"deleted": True}
-
-
-@router.get("/admin/reviews", response_model=list[ReviewOut])
-def admin_reviews(db: Session = Depends(get_db), user: User = Depends(admin_user)):
-    return list(db.scalars(select(Review).limit(200)))
-
-
-@router.get("/admin/orders", response_model=list[OrderOut])
-def admin_orders(db: Session = Depends(get_db), user: User = Depends(admin_user)):
-    return list(db.scalars(select(Order).limit(200)))
+def delete_product(product_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)) -> dict[str, bool]:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    db.delete(product); db.commit()
+    return {"ok": True}

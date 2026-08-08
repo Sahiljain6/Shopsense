@@ -1,35 +1,29 @@
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
+  db:
+    image: postgres:16
     environment:
       POSTGRES_USER: shopsense
       POSTGRES_PASSWORD: shopsense
       POSTGRES_DB: shopsense
     ports: ["5432:5432"]
     volumes: ["postgres_data:/var/lib/postgresql/data"]
-  redis:
-    image: redis:7-alpine
-    ports: ["6379:6379"]
   backend:
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
-    env_file: .env
-    depends_on: [postgres, redis]
+    env_file: backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://shopsense:shopsense@db:5432/shopsense
     ports: ["8000:8000"]
+    depends_on: [db]
+    volumes: ["./backend:/app"]
   frontend:
     build:
       context: .
       dockerfile: docker/frontend.Dockerfile
-    env_file: .env
-    depends_on: [backend]
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
     ports: ["3000:3000"]
-  prometheus:
-    image: prom/prometheus
-    volumes: ["./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
-    ports: ["9090:9090"]
-  grafana:
-    image: grafana/grafana
-    ports: ["3001:3000"]
+    depends_on: [backend]
 volumes:
   postgres_data:
