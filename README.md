@@ -4,7 +4,7 @@
 
 First request may take up to 50 seconds if the backend has been idle (free-tier hosting) — please wait for the response rather than refreshing.
 
-ShopSense is a full-stack AI shopping assistant with a FastAPI backend, Next.js frontend, grounded catalog recommendations, prompt modifiers, JWT auth, guardrails, and an optional LangGraph multi-agent pipeline.
+ShopSense is a full-stack AI shopping assistant with a FastAPI backend, static HTML/CSS/JavaScript frontend, grounded catalog recommendations, prompt modifiers, JWT auth, guardrails, and an optional LangGraph multi-agent pipeline.
 
 Authentication is required to use chat: open the live demo, choose **Register** to create an account, or log in with an existing email and password before sending prompts.
 

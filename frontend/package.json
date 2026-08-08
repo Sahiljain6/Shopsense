@@ -3,23 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -H 0.0.0.0",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "@types/node": "^22.13.0",
-    "@types/react": "^19.0.8",
-    "@types/react-dom": "^19.0.3",
-    "next": "16.2.11",
-    "react": "19.2.6",
-    "react-dom": "19.2.6"
-  },
-  "devDependencies": {
-    "typescript": "^5.7.3",
-    "tailwindcss": "^3.4.17",
-    "postcss": "^8.5.1",
-    "autoprefixer": "^10.4.20"
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "node -e \"console.log('Static frontend: no build step required.')\"",
+    "lint": "node --check server.js && node --check app.js"
   }
 }
