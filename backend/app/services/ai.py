@@ -9,41 +9,20 @@ from app.schemas.api import ChatResponse
 from app.services.catalog import CatalogService
 from app.services.prompts import MODIFIERS
 
-INJECTION_MARKERS = [
-    "ignore previous",
-    "system prompt",
-    "developer message",
-    "jailbreak"
-]
-
-CATEGORIES = [
-    "phone", "mobile", "smartphone",
-    "laptop", "notebook",
-    "headphone", "headphones", "earbuds", "earphones",
-    "watch", "smartwatch",
-    "speaker", "tablet"
-]
-
 
 def select_modifiers(message: str, requested_mode: str | None = None) -> list[str]:
     lowered = message.lower()
-    selected = []
 
-    base = requested_mode if requested_mode in MODIFIERS else None
+    base = requested_mode if requested_mode in MODIFIERS else (
+        "compare" if "compare" in lowered
+        else "review_digest" if "review" in lowered
+        else "recommend"
+    )
 
-    if base is None:
-        base = (
-            "compare"
-            if "compare" in lowered
-            else "review_digest"
-            if "review" in lowered
-            else "recommend"
-        )
-
-    selected.append(base)
+    selected = [base]
 
     keyword_map = {
-        "budget_optimizer": ["budget", "under", "cheap", "below", "upto"],
+        "budget_optimizer": ["budget", "under", "cheap", "below", "upto", "lakh"],
         "gift_mode": ["gift", "birthday", "rakshabandhan"],
         "deal_hunter": ["deal", "value"],
         "spec_nerd": ["spec", "ram", "processor"],
@@ -73,7 +52,7 @@ def extract_budget(message: str) -> float | None:
         return float(thousand.group(1)) * 1000
 
     amount = re.search(
-        r"(?:under|below|upto|up to|within|budget)?\s*[₹rs\.]*\s*(\d{4,7})",
+        r"(?:under|below|upto|up to|within|budget|around)?\s*[₹rs\.]*\s*(\d{4,7})",
         text
     )
 
@@ -117,8 +96,15 @@ class AIOrchestrator:
 
         self.client = None
 
-        if settings.openai_api_key:
-            self.client = OpenAI(api_key=settings.openai_api_key)
+        if settings.ollama_api_key:
+            self.client = Client(
+                host="https://ollama.com",
+                headers={
+                    "Authorization": f"Bearer {settings.ollama_api_key}"
+                }
+            )
+
+        self.model = settings.ollama_model
 
     def answer(self, message: str, mode: str | None = None) -> ChatResponse:
 
@@ -135,17 +121,17 @@ class AIOrchestrator:
                 if product.price <= budget
             ]
 
-        products = self._rank_products(products, message)
+        products = self._rank_products(products)
 
-        if not products:
-            return self._general_ai_response(message)
+        if products:
+            products = products[:(
+                1 if "quick_answer" in select_modifiers(message, mode)
+                else 3
+            )]
 
-        products = products[:(
-            1 if "quick_answer" in select_modifiers(message, mode)
-            else 3
-        )]
+            return self._generate_ai_response(message, products)
 
-        return self._generate_ai_response(message, products)
+        return self._general_ai_response(message)
 
     def answer_via_agents(
         self,
@@ -175,14 +161,13 @@ class AIOrchestrator:
 
     def _rank_products(
         self,
-        products: list[Product],
-        message: str
+        products: list[Product]
     ) -> list[Product]:
 
         return sorted(
             products,
             key=lambda product: (
-                -product.rating,
+                -(product.rating or 0),
                 product.price
             )
         )
@@ -194,9 +179,6 @@ class AIOrchestrator:
     ) -> ChatResponse:
 
         ids = [product.id for product in products]
-
-        if not self.client:
-            return self._structured_response(products)
 
         product_context = []
 
@@ -214,68 +196,94 @@ class AIOrchestrator:
             })
 
         prompt = f"""
-You are ShopSense, a helpful shopping assistant.
+You are ShopSense, an intelligent shopping assistant.
 
 User request:
 {message}
 
-These are the ONLY products you are allowed to recommend:
+Available products from the ShopSense catalog:
 
-{json.dumps(product_context, ensure_ascii=False)}
+{json.dumps(product_context, ensure_ascii=False, default=str)}
 
-Give a concise, useful shopping recommendation.
+Give a helpful and natural recommendation.
 
-Explain why the products fit the user's request.
+Use ONLY the products provided above.
 
-Never invent products, prices, ratings, specifications or URLs.
+Never invent:
+- product names
+- prices
+- ratings
+- specifications
+- URLs
+- brands
 
-If the user mentioned a budget, respect it.
+Respect the user's budget if one was mentioned.
 
-If the user mentioned a gift, occasion or use case, consider it.
+Consider the user's:
+- occasion
+- recipient
+- use case
+- budget
+- preferences
 
-Return only the natural language answer.
+If this is a gift request, explain briefly why the selected products
+would make suitable gifts.
+
+Keep the response concise and useful.
 """
 
+        if not self.client:
+            return self._structured_response(products)
+
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+            response = self.client.chat(
+                model=self.model,
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are ShopSense, a helpful and concise shopping assistant."
+                        "content": (
+                            "You are ShopSense, a helpful shopping "
+                            "assistant. Recommend only real products "
+                            "provided in the catalog context."
+                        )
                     },
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                temperature=0.3,
-                max_tokens=400
+                stream=False
             )
 
-            answer = response.choices[0].message.content or ""
+            answer = response.message.content
 
             return ChatResponse(
                 answer=answer,
                 product_ids=ids,
                 reasons={
                     str(product.id):
-                    f"Recommended based on relevance and {product.rating:.1f}/5 rating."
+                    f"Recommended based on relevance and "
+                    f"{product.rating:.1f}/5 rating."
                     for product in products
                 },
                 pros={
-                    str(product.id):
-                    ["Catalog-backed product", "Good rating", "Real catalog price"]
+                    str(product.id): [
+                        "Catalog-backed product",
+                        "Good rating",
+                        "Real catalog price"
+                    ]
                     for product in products
                 },
                 cons={
-                    str(product.id):
-                    ["Check detailed specifications before purchase"]
+                    str(product.id): [
+                        "Check detailed specifications before purchase"
+                    ]
                     for product in products
                 }
             )
 
-        except Exception:
+        except Exception as error:
+            print(f"Ollama API error: {type(error).__name__}")
             return self._structured_response(products)
 
     def _general_ai_response(self, message: str) -> ChatResponse:
@@ -283,21 +291,24 @@ Return only the natural language answer.
         if not self.client:
             return ChatResponse(
                 answer=(
-                    "I couldn't find matching products in the current catalog. "
-                    "Try another shopping request."
+                    "I can help you find products, compare options, "
+                    "and choose products based on your needs."
                 )
             )
 
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+            response = self.client.chat(
+                model=self.model,
                 messages=[
                     {
                         "role": "system",
                         "content": (
-                            "You are ShopSense, a helpful shopping assistant. "
-                            "Answer naturally. Do not force users to provide a "
-                            "category or budget."
+                            "You are ShopSense, a helpful shopping "
+                            "assistant. Answer naturally. "
+                            "Do not force the user to provide a category "
+                            "or budget. If no catalog product is available, "
+                            "give general shopping advice without inventing "
+                            "specific products."
                         )
                     },
                     {
@@ -305,19 +316,21 @@ Return only the natural language answer.
                         "content": message
                     }
                 ],
-                temperature=0.5,
-                max_tokens=300
+                stream=False
             )
 
-            answer = response.choices[0].message.content or ""
+            return ChatResponse(
+                answer=response.message.content
+            )
 
-            return ChatResponse(answer=answer)
+        except Exception as error:
+            print(f"Ollama API error: {type(error).__name__}")
 
-        except Exception:
             return ChatResponse(
                 answer=(
-                    "I couldn't find an exact product match right now, "
-                    "but I can still help you with shopping advice."
+                    "I can help you with shopping recommendations, "
+                    "product comparisons, budgets, gifts, and general "
+                    "shopping advice."
                 )
             )
 
@@ -342,13 +355,17 @@ Return only the natural language answer.
                 for product in products
             },
             pros={
-                str(product.id):
-                ["Catalog-backed choice", "Good rating", "Clear price"]
+                str(product.id): [
+                    "Catalog-backed choice",
+                    "Good rating",
+                    "Clear price"
+                ]
                 for product in products
             },
             cons={
-                str(product.id):
-                ["Check detailed specifications before purchase"]
+                str(product.id): [
+                    "Check detailed specifications before purchase"
+                ]
                 for product in products
             }
         )
