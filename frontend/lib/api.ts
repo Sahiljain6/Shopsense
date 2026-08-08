@@ -53,8 +53,8 @@ async function responseMessage(res: Response) {
   const text = await res.text();
   if (!text) return res.statusText || "Request failed";
   try {
-    const data = JSON.parse(text) as { detail?: string };
-    return data.detail || text;
+    const data = JSON.parse(text) as { detail?: string; message?: string };
+    return data.detail || data.message || text;
   } catch {
     return text;
   }
@@ -66,19 +66,27 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (token && PROTECTED_PATHS.some((protectedPath) => path.startsWith(protectedPath))) {
     headers.Authorization = `Bearer ${token}`;
   }
+
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
   try {
-    const res = await fetch(`${API_URL}${path}`, { ...init, signal: controller.signal, headers: { ...headers, ...(init?.headers ?? {}) } });
-    clearTimeout(timeoutId);
+    const res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: { ...headers, ...(init?.headers ?? {}) },
+    });
+
     if (!res.ok) throw new ApiError(res.status, await responseMessage(res));
-    return res.json() as Promise<T>;
+    return (await res.json()) as T;
   } catch (err) {
-    clearTimeout(timeoutId);
+    if (err instanceof ApiError) throw err;
     if (err instanceof DOMException && err.name === "AbortError") {
-      throw new ApiError(408, "The server is waking up, please wait a moment and try again.");
+      throw new ApiError(408, "The request timed out after 15 seconds. Please try again.");
     }
-    throw err;
+    throw new ApiError(0, err instanceof Error ? err.message : "Network request failed. Please try again.");
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 }
 
