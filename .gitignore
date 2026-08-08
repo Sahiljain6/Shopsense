@@ -10,3 +10,13 @@ node_modules/
 out/
 coverage/
 .DS_Store
+# Python
+*.pyc
+
+# Env files — NEVER commit real secrets
+frontend/.env.local
+
+# Node / Next.js
+frontend/.next/
+
+# OS
