@@ -88,3 +88,12 @@ class ReviewRead(BaseModel):
 
 class WishlistRequest(BaseModel):
     product_id: int
+
+
+class FetchLinkRequest(BaseModel):
+    url: str
+
+
+class FetchLinkResponse(BaseModel):
+    product: ProductRead
+    created: bool
