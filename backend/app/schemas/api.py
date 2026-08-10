@@ -48,9 +48,15 @@ class ProductRead(ProductBase):
     category_name: str | None = None
 
 
+class ChatTurn(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     message: str
     mode: str | None = None
+    history: list[ChatTurn] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
