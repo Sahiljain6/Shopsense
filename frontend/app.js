@@ -107,7 +107,7 @@ async function register(payload) {
   await apiFetch("/auth/register", { method: "POST", body: JSON.stringify(payload) });
   return login({ email: payload.email, password: payload.password });
 }
-const sendChat = (message, mode) => apiFetch("/chat", { method: "POST", body: JSON.stringify({ message, mode }) });
+const sendChat = (message, mode, history) => apiFetch("/chat", { method: "POST", body: JSON.stringify({ message, mode, history }) });
 const getProducts = (q = "", limit = 8) => apiFetch(`/products?q=${encodeURIComponent(q)}&limit=${limit}`);
 
 function renderProductCard(product, response) {
@@ -182,10 +182,11 @@ async function handleChat(event) {
   elements.chatInput.value = "";
   setError(null);
   state.chatLoading = true;
+  const history = state.messages.slice(-8).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
   state.messages.push({ role: "user", text });
   render();
   try {
-    const response = await sendChat(text, state.mode);
+    const response = await sendChat(text, state.mode, history);
     const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
     const catalog = ids.length ? await getProducts(text, 12) : [];
     const fallbackCatalog = ids.length && !catalog.some((product) => ids.includes(product.id)) ? await getProducts("", 12) : catalog;
