@@ -117,30 +117,34 @@ class AIOrchestrator:
             self.provider = "ollama"
             self.model = settings.ollama_model
 
-    def _chat(self, system: str, user: str) -> str | None:
+    def _chat(
+        self,
+        system: str,
+        user: str,
+        history: list[dict[str, str]] | None = None
+    ) -> str | None:
         """Call whichever provider is configured (Groq preferred, Ollama fallback).
-        Returns None on failure or if no provider is configured."""
+        `history` is prior turns as [{"role": "user"|"assistant", "content": ...}, ...],
+        oldest first. Returns None on failure or if no provider is configured."""
 
         if not self.client:
             return None
+
+        messages = [{"role": "system", "content": system}]
+        messages.extend(history or [])
+        messages.append({"role": "user", "content": user})
 
         try:
             if self.provider == "groq":
                 response = self.client.chat.completions.create(
                     model=self.model,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user}
-                    ]
+                    messages=messages
                 )
                 return response.choices[0].message.content
 
             response = self.client.chat(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user}
-                ],
+                messages=messages,
                 stream=False
             )
             return response.message.content
@@ -149,7 +153,12 @@ class AIOrchestrator:
             print(f"{self.provider} API error: {type(error).__name__}: {error}")
             return None
 
-    def answer(self, message: str, mode: str | None = None) -> ChatResponse:
+    def answer(
+        self,
+        message: str,
+        mode: str | None = None,
+        history: list[dict[str, str]] | None = None
+    ) -> ChatResponse:
 
         normalized = normalize_query(message)
 
@@ -172,19 +181,20 @@ class AIOrchestrator:
                 else 3
             )]
 
-            return self._generate_ai_response(message, products)
+            return self._generate_ai_response(message, products, history)
 
-        return self._general_ai_response(message)
+        return self._general_ai_response(message, history)
 
     def answer_via_agents(
         self,
         message: str,
-        mode: str | None = None
+        mode: str | None = None,
+        history: list[dict[str, str]] | None = None
     ) -> ChatResponse:
 
         try:
             if not get_settings().enable_multi_agent:
-                return self.answer(message, mode)
+                return self.answer(message, mode, history)
 
             from app.services.agents.graph import run_graph
 
@@ -197,10 +207,10 @@ class AIOrchestrator:
             if isinstance(data.get("response"), ChatResponse):
                 return data["response"]
 
-            return self.answer(message, mode)
+            return self.answer(message, mode, history)
 
         except Exception:
-            return self.answer(message, mode)
+            return self.answer(message, mode, history)
 
     def _rank_products(
         self,
@@ -218,7 +228,8 @@ class AIOrchestrator:
     def _generate_ai_response(
         self,
         message: str,
-        products: list[Product]
+        products: list[Product],
+        history: list[dict[str, str]] | None = None
     ) -> ChatResponse:
 
         ids = [product.id for product in products]
@@ -279,9 +290,12 @@ Keep the response concise and useful.
             system=(
                 "You are ShopSense, a helpful shopping "
                 "assistant. Recommend only real products "
-                "provided in the catalog context."
+                "provided in the catalog context. Use the "
+                "conversation history to understand context "
+                "like budget or brand mentioned earlier."
             ),
-            user=prompt
+            user=prompt,
+            history=history
         )
 
         if answer is None:
@@ -312,7 +326,11 @@ Keep the response concise and useful.
                 }
             )
 
-    def _general_ai_response(self, message: str) -> ChatResponse:
+    def _general_ai_response(
+        self,
+        message: str,
+        history: list[dict[str, str]] | None = None
+    ) -> ChatResponse:
 
         answer = self._chat(
             system=(
@@ -321,9 +339,12 @@ Keep the response concise and useful.
                 "Do not force the user to provide a category "
                 "or budget. If no catalog product is available, "
                 "give general shopping advice without inventing "
-                "specific products."
+                "specific products. Use the conversation history "
+                "to stay consistent with earlier context like "
+                "budget or brand."
             ),
-            user=message
+            user=message,
+            history=history
         )
 
         if answer is None:
