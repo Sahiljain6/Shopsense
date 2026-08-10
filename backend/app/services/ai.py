@@ -2,6 +2,7 @@ import json
 import re
 from sqlalchemy.orm import Session
 from ollama import Client
+from openai import OpenAI
 
 from app.core.config import get_settings
 from app.models.entities import Product
@@ -95,16 +96,58 @@ class AIOrchestrator:
         settings = get_settings()
 
         self.client = None
+        self.provider: str | None = None
+        self.model = None
 
-        if settings.ollama_api_key:
+        if settings.groq_api_key:
+            self.client = OpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=settings.groq_api_key
+            )
+            self.provider = "groq"
+            self.model = settings.groq_model
+
+        elif settings.ollama_api_key:
             self.client = Client(
                 host="https://ollama.com",
                 headers={
                     "Authorization": f"Bearer {settings.ollama_api_key}"
                 }
             )
+            self.provider = "ollama"
+            self.model = settings.ollama_model
 
-        self.model = settings.ollama_model
+    def _chat(self, system: str, user: str) -> str | None:
+        """Call whichever provider is configured (Groq preferred, Ollama fallback).
+        Returns None on failure or if no provider is configured."""
+
+        if not self.client:
+            return None
+
+        try:
+            if self.provider == "groq":
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user}
+                    ]
+                )
+                return response.choices[0].message.content
+
+            response = self.client.chat(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user}
+                ],
+                stream=False
+            )
+            return response.message.content
+
+        except Exception as error:
+            print(f"{self.provider} API error: {type(error).__name__}: {error}")
+            return None
 
     def answer(self, message: str, mode: str | None = None) -> ChatResponse:
 
@@ -232,32 +275,19 @@ would make suitable gifts.
 Keep the response concise and useful.
 """
 
-        if not self.client:
+        answer = self._chat(
+            system=(
+                "You are ShopSense, a helpful shopping "
+                "assistant. Recommend only real products "
+                "provided in the catalog context."
+            ),
+            user=prompt
+        )
+
+        if answer is None:
             return self._structured_response(products)
 
-        try:
-            response = self.client.chat(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are ShopSense, a helpful shopping "
-                            "assistant. Recommend only real products "
-                            "provided in the catalog context."
-                        )
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                stream=False
-            )
-
-            answer = response.message.content
-
-            return ChatResponse(
+        return ChatResponse(
                 answer=answer,
                 product_ids=ids,
                 reasons={
@@ -282,50 +312,21 @@ Keep the response concise and useful.
                 }
             )
 
-        except Exception as error:
-            print(f"Ollama API error: {type(error).__name__}")
-            return self._structured_response(products)
-
     def _general_ai_response(self, message: str) -> ChatResponse:
 
-        if not self.client:
-            return ChatResponse(
-                answer=(
-                    "I can help you find products, compare options, "
-                    "and choose products based on your needs."
-                )
-            )
+        answer = self._chat(
+            system=(
+                "You are ShopSense, a helpful shopping "
+                "assistant. Answer naturally. "
+                "Do not force the user to provide a category "
+                "or budget. If no catalog product is available, "
+                "give general shopping advice without inventing "
+                "specific products."
+            ),
+            user=message
+        )
 
-        try:
-            response = self.client.chat(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are ShopSense, a helpful shopping "
-                            "assistant. Answer naturally. "
-                            "Do not force the user to provide a category "
-                            "or budget. If no catalog product is available, "
-                            "give general shopping advice without inventing "
-                            "specific products."
-                        )
-                    },
-                    {
-                        "role": "user",
-                        "content": message
-                    }
-                ],
-                stream=False
-            )
-
-            return ChatResponse(
-                answer=response.message.content
-            )
-
-        except Exception as error:
-            print(f"Ollama API error: {type(error).__name__}")
-
+        if answer is None:
             return ChatResponse(
                 answer=(
                     "I can help you with shopping recommendations, "
@@ -333,6 +334,8 @@ Keep the response concise and useful.
                     "shopping advice."
                 )
             )
+
+        return ChatResponse(answer=answer)
 
     def _structured_response(
         self,
