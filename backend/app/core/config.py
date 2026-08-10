@@ -4,7 +4,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     ollama_api_key: str = ""
-    ollama_model: str = "gpt-oss:120b"
+    ollama_model: str = "llama3.1:8b"
+
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
 
     database_url: str = "sqlite:///./shopsense.db"
 
