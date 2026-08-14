@@ -4,6 +4,8 @@ import re
 import httpx
 from bs4 import BeautifulSoup
 
+from app.core.config import get_settings
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -14,11 +16,10 @@ HEADERS = {
 }
 
 
-def scrape_product(url: str) -> dict | None:
-    """Fetch a product page and extract name/price/image/brand.
-    Tries schema.org JSON-LD first (most reliable), falls back to
-    Open Graph / product meta tags. Returns None if no usable price
-    could be found (e.g. JS-rendered page, or site blocked us)."""
+def _fetch_html(url: str) -> str | None:
+    """Try a direct fetch first (fast, free). If the site blocks us or
+    errors out and SCRAPERAPI_KEY is configured, retry through ScraperAPI's
+    proxy (handles JS-rendering/anti-bot sites for a small credit cost)."""
 
     try:
         with httpx.Client(
@@ -28,10 +29,40 @@ def scrape_product(url: str) -> dict | None:
         ) as client:
             response = client.get(url)
             response.raise_for_status()
+            return response.text
+    except httpx.HTTPError:
+        pass
+
+    settings = get_settings()
+
+    if not settings.scraperapi_key:
+        return None
+
+    try:
+        with httpx.Client(timeout=30) as client:
+            response = client.get(
+                "https://api.scraperapi.com/",
+                params={"api_key": settings.scraperapi_key, "url": url}
+            )
+            response.raise_for_status()
+            return response.text
     except httpx.HTTPError:
         return None
 
-    soup = BeautifulSoup(response.text, "html.parser")
+
+def scrape_product(url: str) -> dict | None:
+    """Fetch a product page and extract name/price/image/brand.
+    Tries schema.org JSON-LD first (most reliable), falls back to
+    Open Graph / product meta tags. Returns None if no usable price
+    could be found (e.g. JS-rendered page, or site blocked us and no
+    ScraperAPI fallback is configured)."""
+
+    html = _fetch_html(url)
+
+    if html is None:
+        return None
+
+    soup = BeautifulSoup(html, "html.parser")
 
     data = _from_json_ld(soup) or _from_meta_tags(soup)
 
