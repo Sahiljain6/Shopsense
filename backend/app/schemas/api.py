@@ -97,3 +97,15 @@ class FetchLinkRequest(BaseModel):
 class FetchLinkResponse(BaseModel):
     product: ProductRead
     created: bool
+
+
+class PriceHistoryEntry(BaseModel):
+    price: float
+    currency: str
+    captured_at: str
+
+
+class PriceHistoryResponse(BaseModel):
+    product_id: int
+    source_url: str | None = None
+    history: list[PriceHistoryEntry]
