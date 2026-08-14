@@ -34,7 +34,16 @@ const elements = {
   chatForm: document.getElementById("chat-form"),
   chatInput: document.getElementById("chat-input"),
   chatSubmit: document.getElementById("chat-submit"),
+  linkForm: document.getElementById("link-form"),
+  linkInput: document.getElementById("link-input"),
+  linkSubmit: document.getElementById("link-submit"),
+  imageForm: document.getElementById("image-form"),
+  imageInput: document.getElementById("image-input"),
+  imageSubmit: document.getElementById("image-submit"),
 };
+
+const linkState = { loading: false };
+const imageState = { loading: false };
 
 class ApiError extends Error {
   constructor(status, message) {
@@ -79,7 +88,8 @@ async function responseMessage(response) {
 }
 
 async function apiFetch(path, options = {}) {
-  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  const isFormData = options.body instanceof FormData;
+  const headers = { ...(isFormData ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}) };
   const token = localStorage.getItem(TOKEN_KEY);
   if (token && PROTECTED_PATHS.some((protectedPath) => path.startsWith(protectedPath))) {
     headers.Authorization = `Bearer ${token}`;
@@ -108,6 +118,13 @@ async function register(payload) {
   return login({ email: payload.email, password: payload.password });
 }
 const sendChat = (message, mode, history) => apiFetch("/chat", { method: "POST", body: JSON.stringify({ message, mode, history }) });
+const fetchLink = (url) => apiFetch("/fetch-link", { method: "POST", body: JSON.stringify({ url }) });
+const fetchPriceHistory = (productId) => apiFetch(`/products/${productId}/price-history`);
+const identifyImage = (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiFetch("/identify-image", { method: "POST", body: formData });
+};
 const getProducts = (q = "", limit = 8) => apiFetch(`/products?q=${encodeURIComponent(q)}&limit=${limit}`);
 
 function renderProductCard(product, response) {
@@ -123,6 +140,8 @@ function renderProductCard(product, response) {
       ${response?.reasons?.[key] ? `<p class="reason">${escapeHtml(response.reasons[key])}</p>` : ""}
       ${pros.length ? `<p class="pros">Pros: ${escapeHtml(pros.join(", "))}</p>` : ""}
       ${cons.length ? `<p class="cons">Cons: ${escapeHtml(cons.join(", "))}</p>` : ""}
+      <button class="link-button" type="button" data-history-id="${product.id}">View price history</button>
+      <div class="price-history" data-history-panel="${product.id}"></div>
     </div>
   </article>`;
 }
@@ -153,6 +172,10 @@ function render() {
   elements.modeButtons.innerHTML = MODES.map((item) => `<button class="mode-button ${state.mode === item.id ? "active" : ""}" type="button" data-mode="${item.id}">${item.label}</button>`).join("");
   elements.chatSubmit.textContent = state.chatLoading ? "Sending…" : "Send";
   elements.chatSubmit.disabled = state.chatLoading || !elements.chatInput.value.trim();
+  elements.linkSubmit.textContent = linkState.loading ? "Fetching…" : "Fetch";
+  elements.linkSubmit.disabled = linkState.loading || !elements.linkInput.value.trim();
+  elements.imageSubmit.textContent = imageState.loading ? "Identifying…" : "Identify";
+  elements.imageSubmit.disabled = imageState.loading || !elements.imageInput.files.length;
   renderMessages();
 }
 
@@ -200,9 +223,99 @@ async function handleChat(event) {
   }
 }
 
+async function handleFetchLink(event) {
+  event.preventDefault();
+  const url = elements.linkInput.value.trim();
+  if (!url || linkState.loading) return;
+  elements.linkInput.value = "";
+  setError(null);
+  linkState.loading = true;
+  state.messages.push({ role: "user", text: `Fetch link: ${url}` });
+  render();
+  try {
+    const result = await fetchLink(url);
+    const label = result.created ? "Added to catalog" : "Price updated in catalog";
+    state.messages.push({
+      role: "assistant",
+      text: `${label}: ${result.product.name}`,
+      response: {},
+      products: [result.product],
+    });
+  } catch (error) {
+    setError(friendlyError(error));
+  } finally {
+    linkState.loading = false;
+    render();
+  }
+}
+
+async function handleImageUpload(event) {
+  event.preventDefault();
+  const file = elements.imageInput.files[0];
+  if (!file || imageState.loading) return;
+  setError(null);
+  imageState.loading = true;
+  state.messages.push({ role: "user", text: `Uploaded image: ${file.name}` });
+  render();
+  try {
+    const response = await identifyImage(file);
+    const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
+    const catalog = ids.length ? await getProducts("", 20) : [];
+    const products = ids.length ? catalog.filter((product) => ids.includes(product.id)) : [];
+    state.messages.push({ role: "assistant", text: response.answer || "Here's what I found.", response, products });
+  } catch (error) {
+    setError(friendlyError(error));
+  } finally {
+    imageState.loading = false;
+    elements.imageForm.reset();
+    render();
+  }
+}
+
+async function handlePriceHistoryClick(event) {
+  const button = event.target.closest("[data-history-id]");
+  if (!button) return;
+
+  const productId = button.dataset.historyId;
+  const panel = elements.messages.querySelector(`[data-history-panel="${productId}"]`);
+  if (!panel) return;
+
+  if (panel.dataset.loaded === "true") {
+    panel.classList.toggle("hidden");
+    return;
+  }
+
+  button.textContent = "Loading…";
+  button.disabled = true;
+
+  try {
+    const result = await fetchPriceHistory(productId);
+    if (!result.history.length) {
+      panel.innerHTML = '<p class="reason">No price history yet — this product hasn\u2019t been re-fetched over time.</p>';
+    } else {
+      const rows = result.history.map((entry) => {
+        const date = new Date(entry.captured_at).toLocaleDateString();
+        return `<li>${escapeHtml(date)} — ${escapeHtml(entry.currency)} ${escapeHtml(entry.price)}</li>`;
+      }).join("");
+      panel.innerHTML = `<ul class="price-history-list">${rows}</ul>`;
+    }
+    panel.dataset.loaded = "true";
+  } catch (error) {
+    panel.innerHTML = `<p class="cons">${escapeHtml(friendlyError(error))}</p>`;
+  } finally {
+    button.textContent = "View price history";
+    button.disabled = false;
+  }
+}
+
 elements.authForm.addEventListener("submit", handleAuth);
 elements.chatForm.addEventListener("submit", handleChat);
 elements.chatInput.addEventListener("input", render);
+elements.linkForm.addEventListener("submit", handleFetchLink);
+elements.linkInput.addEventListener("input", render);
+elements.imageForm.addEventListener("submit", handleImageUpload);
+elements.imageInput.addEventListener("change", render);
+elements.messages.addEventListener("click", handlePriceHistoryClick);
 elements.toggleAuth.addEventListener("click", () => { state.isRegister = !state.isRegister; setError(null); render(); });
 elements.logoutButton.addEventListener("click", () => { localStorage.removeItem(TOKEN_KEY); state.authed = false; state.messages = []; setError(null); render(); });
 elements.modeButtons.addEventListener("click", (event) => {
