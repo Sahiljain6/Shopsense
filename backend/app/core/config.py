@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
 
+    scraperapi_key: str = ""
+    google_vision_api_key: str = ""
+
     database_url: str = "sqlite:///./shopsense.db"
 
     jwt_secret: str = "change-me-to-something-long-and-random"
@@ -23,7 +26,7 @@ class Settings(BaseSettings):
     cors_origins: str = (
         "http://localhost:3000,"
         "http://127.0.0.1:3000,"
-        "https://shopsense.vercel.app"
+        "https://shopsense-gmeelq7ml-sahil-jain-s-projects.vercel.app"
     )
 
     cors_origin_regex: str = r"https://.*\.vercel\.app"
