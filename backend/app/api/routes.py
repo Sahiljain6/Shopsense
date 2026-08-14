@@ -1,12 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+import httpx
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from app.core.config import get_settings
 from app.core.security import create_access_token, get_current_user, hash_password, require_admin, verify_password
 from app.db.session import get_db
 from app.models.entities import ChatHistory, Order, Product, Review, User, Wishlist
-from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, ProductCreate, ProductRead, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
+from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, PriceHistoryResponse, ProductCreate, ProductRead, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
 from app.services.ai import AIOrchestrator
 from app.services.catalog import CatalogService
+from app.services.scraper import scrape_product
+from app.services.vision import identify_image
 
 router = APIRouter()
 
@@ -51,6 +55,75 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     db.add(ChatHistory(user_id=None, message=payload.message, response=response.model_dump()))
     db.commit()
     return response
+
+
+@router.post("/fetch-link", response_model=FetchLinkResponse)
+def fetch_link(payload: FetchLinkRequest, db: Session = Depends(get_db)) -> FetchLinkResponse:
+    scraped = scrape_product(payload.url)
+    if scraped is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Couldn't extract product details from that link. The site may block scrapers or render prices with JavaScript."
+        )
+    product, created = CatalogService(db).upsert_from_scrape(scraped, payload.url)
+    return FetchLinkResponse(product=_product_read(product), created=created)
+
+
+@router.get("/products/{product_id}/price-history", response_model=PriceHistoryResponse)
+def price_history(product_id: int, db: Session = Depends(get_db)) -> PriceHistoryResponse:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    history = product.attributes.get("price_history", [])
+
+    return PriceHistoryResponse(
+        product_id=product.id,
+        source_url=product.attributes.get("source_url"),
+        history=history
+    )
+
+
+@router.post("/identify-image", response_model=ChatResponse)
+async def identify_image_route(file: UploadFile = File(...), db: Session = Depends(get_db)) -> ChatResponse:
+    settings = get_settings()
+
+    if not settings.google_vision_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Image search isn't configured yet — GOOGLE_VISION_API_KEY is missing on the server."
+        )
+
+    image_bytes = await file.read()
+
+    try:
+        labels = identify_image(image_bytes, settings.google_vision_api_key)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Couldn't analyze that image right now. Try again shortly.")
+
+    if not labels:
+        return ChatResponse(answer="I couldn't identify anything specific in that image. Try a clearer or closer photo.")
+
+    top_labels = labels[:5]
+    query = " ".join(top_labels)
+    products = CatalogService(db).search(query, limit=6)
+
+    detected = ", ".join(top_labels)
+
+    if not products:
+        return ChatResponse(answer=f"I detected: {detected}. No close matches in the catalog yet — try pasting a product link instead.")
+
+    ids = [product.id for product in products]
+    names = ", ".join(f"{product.name} ({product.currency} {product.price:.0f})" for product in products)
+
+    return ChatResponse(
+        answer=f"I detected: {detected}. Closest catalog matches: {names}.",
+        product_ids=ids,
+        reasons={
+            str(product.id): f"Matched from image labels: {', '.join(top_labels[:3])}"
+            for product in products
+        }
+    )
 
 
 @router.post("/compare", response_model=ChatResponse)
@@ -147,3 +220,4 @@ def delete_product(product_id: int, db: Session = Depends(get_db), _: User = Dep
         raise HTTPException(status_code=404, detail="Product not found")
     db.delete(product); db.commit()
     return {"ok": True}
+    
