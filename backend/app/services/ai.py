@@ -128,16 +128,25 @@ class AIOrchestrator:
         self.model = None
         self.active_models: list[str] = []
 
+        openai_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
         gemini_key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
         groq_key = settings.groq_api_key or os.getenv("GROQ_API_KEY")
         ollama_key = settings.ollama_api_key or os.getenv("OLLAMA_API_KEY")
 
         self.gemini_api_key = None
-        if gemini_key:
+
+        if openai_key and openai_key.strip():
+            clean_key = openai_key.strip().strip("'").strip('"')
+            self.client = OpenAI(api_key=clean_key)
+            self.provider = "openai"
+            self.model = settings.openai_model or "gpt-4o-mini"
+
+        elif gemini_key and gemini_key.strip():
             self.provider = "gemini"
             self.gemini_api_key = gemini_key.strip().strip("'").strip('"')
+            self.model = settings.gemini_model or "gemini-1.5-flash"
 
-        elif groq_key:
+        elif groq_key and groq_key.strip():
             clean_key = groq_key.strip().strip("'").strip('"')
             self.client = OpenAI(
                 base_url="https://api.groq.com/openai/v1",
@@ -147,7 +156,7 @@ class AIOrchestrator:
             self.active_models = get_active_groq_models(clean_key)
             self.model = self.active_models[0] if self.active_models else "llama-3.3-70b-versatile"
 
-        elif ollama_key:
+        elif ollama_key and ollama_key.strip():
             clean_key = ollama_key.strip().strip("'").strip('"')
             self.client = Client(
                 host="https://ollama.com",
@@ -164,32 +173,35 @@ class AIOrchestrator:
         user: str,
         history: list[dict[str, str]] | None = None
     ) -> str | None:
-        """Call whichever provider is configured (Gemini 1.5 Flash preferred, Groq/Ollama fallback)."""
+        """Call whichever provider is configured (OpenAI, Gemini, Groq, Ollama)."""
 
         if self.provider == "gemini" and self.gemini_api_key:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_api_key}"
-            payload = {
-                "system_instruction": {
-                    "parts": [{"text": system}]
-                },
-                "contents": [
-                    {"parts": [{"text": user}]}
-                ]
-            }
-            try:
-                import httpx
-                with httpx.Client(timeout=15) as client:
-                    resp = client.post(url, json=payload)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            if parts:
-                                return parts[0].get("text")
-                    print(f"Gemini API Notice ({resp.status_code}): {resp.text}")
-            except Exception as err:
-                print(f"Gemini API error: {err}")
+            # Try official Gemini REST endpoint
+            models_to_try = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-2.0-flash", "gemini-1.5-pro"]
+            for model_name in models_to_try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_api_key}"
+                payload = {
+                    "system_instruction": {
+                        "parts": [{"text": system}]
+                    },
+                    "contents": [
+                        {"parts": [{"text": user}]}
+                    ]
+                }
+                try:
+                    import httpx
+                    with httpx.Client(timeout=15) as client:
+                        resp = client.post(url, json=payload)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                parts = candidates[0].get("content", {}).get("parts", [])
+                                if parts:
+                                    return parts[0].get("text")
+                        print(f"Gemini ({model_name}) Notice ({resp.status_code}): {resp.text[:150]}")
+                except Exception as err:
+                    print(f"Gemini ({model_name}) API error: {err}")
 
         if not self.client and self.provider != "gemini":
             return None
@@ -203,6 +215,21 @@ class AIOrchestrator:
                         "content": str(turn["content"])
                     })
         clean_messages.append({"role": "user", "content": user})
+
+        if self.provider == "openai" and self.client:
+            candidate_models = [self.model, "gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
+            for model_name in candidate_models:
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model_name,
+                        messages=clean_messages
+                    )
+                    if response and response.choices:
+                        return response.choices[0].message.content
+                except Exception as error:
+                    print(f"OpenAI API error with model '{model_name}': {type(error).__name__}: {error}")
+                    continue
+            return None
 
         if self.provider == "groq" and self.client:
             candidate_models = self.active_models or ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
