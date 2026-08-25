@@ -38,8 +38,15 @@ h2 { margin: 0; font-size: 1.5rem; }
 .message-bubble.user { margin-left: auto; background: #2563eb; color: white; }
 .message-bubble.assistant { margin-right: auto; border: 1px solid #e2e8f0; background: white; color: #1e293b; }
 .typing { display: inline-flex; margin-right: auto; border: 1px solid #e2e8f0; border-radius: 1rem; background: white; color: #64748b; padding: .75rem 1rem; font-size: .875rem; box-shadow: 0 1px 2px rgba(15,23,42,.08); }
-.chat-form { display: flex; gap: .75rem; margin-top: 1rem; }
+.chat-form { display: flex; gap: .75rem; margin-top: 1rem; align-items: center; }
 .chat-input { flex: 1; border-radius: 1rem; box-shadow: 0 1px 2px rgba(15,23,42,.06); }
+.chat-input:disabled { background: #f1f5f9; color: #94a3b8; }
+.attach-button { flex-shrink: 0; width: 2.75rem; height: 2.75rem; display: flex; align-items: center; justify-content: center; border: 1px solid #e2e8f0; border-radius: 999px; background: white; font-size: 1.1rem; }
+.attach-button:hover { background: #f1f5f9; }
+.attach-button.active { border-color: #2563eb; background: #eff6ff; }
+.attachment-preview { margin-top: .75rem; }
+.attachment-chip { display: inline-flex; align-items: center; gap: .5rem; border: 1px solid #bfdbfe; border-radius: 999px; background: #eff6ff; color: #1d4ed8; padding: .4rem .75rem; font-size: .8rem; font-weight: 700; }
+.attachment-chip button { border: 0; background: transparent; color: #1d4ed8; font-weight: 700; cursor: pointer; padding: 0 0 0 .25rem; }
 .send-button { border-radius: 1rem; padding-left: 1.5rem; padding-right: 1.5rem; }
 .product-grid { display: grid; gap: 1rem; margin-top: .75rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
 .product-card { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 1rem; background: white; box-shadow: 0 1px 2px rgba(15,23,42,.08); }
