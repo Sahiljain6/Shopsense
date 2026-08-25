@@ -20,8 +20,13 @@ export default function App() {
     setError(null);
   }, []);
 
-  const handleError = useCallback((msg) => setError(msg), []);
-  const handleClearError = useCallback(() => setError(null), []);
+  const handleError = useCallback((msg) => {
+    setError(msg);
+  }, []);
+
+  const handleClearError = useCallback(() => {
+    setError(null);
+  }, []);
 
   return (
     <main className="app-shell">

@@ -16,7 +16,8 @@ coverage/
 # Env files — NEVER commit real secrets
 frontend/.env.local
 
-# Node / Next.js
+# Node / Vite / Next.js
 frontend/.next/
-
-# OS
+frontend/dist/
+dist/
+node_modules/

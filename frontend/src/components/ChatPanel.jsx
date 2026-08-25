@@ -10,10 +10,61 @@ import {
 import MessageBubble from "./MessageBubble";
 
 const MODES = [
-  { id: "compare", label: "Compare" },
-  { id: "budget_optimizer", label: "Budget" },
-  { id: "gift_mode", label: "Gift" },
-  { id: "quick_answer", label: "Quick answer" },
+  {
+    id: "compare",
+    label: "Compare",
+    icon: "⚖️",
+    desc: "Side-by-side spec comparison, pros/cons, & value breakdown",
+    placeholder: "Enter 2+ products to compare (e.g. iPhone 15 Pro vs Galaxy S24 Ultra)...",
+    suggestions: [
+      "Compare iPhone 15 vs Samsung S24",
+      "Sony WH-1000XM5 vs Bose QC Ultra",
+      "MacBook Air M3 vs Dell XPS 13",
+    ],
+  },
+  {
+    id: "budget_optimizer",
+    label: "Budget Optimizer",
+    icon: "💰",
+    desc: "Maximize price-to-performance within your exact spending limit",
+    placeholder: "Tell me your target price (e.g. Best noise-cancelling headphones under $100)...",
+    suggestions: [
+      "Best wireless earbuds under $50",
+      "Gaming laptops under $800",
+      "4K Smart TVs under $400",
+    ],
+  },
+  {
+    id: "gift_mode",
+    label: "Gift Finder",
+    icon: "🎁",
+    desc: "Curated gift recommendations based on personality, age & budget",
+    placeholder: "Who are you shopping for? (e.g. Birthday gift for a photographer under $75)...",
+    suggestions: [
+      "Gift for tech enthusiast under $75",
+      "Unique gift for coffee lover",
+      "Birthday gift for gamer under $50",
+    ],
+  },
+  {
+    id: "quick_answer",
+    label: "Quick Answer",
+    icon: "⚡",
+    desc: "Fast, no-fluff buying verdict & instant deal analysis",
+    placeholder: "Ask any quick shopping verdict (e.g. Is iPhone 15 worth buying right now?)...",
+    suggestions: [
+      "Is M3 MacBook Air worth buying in 2026?",
+      "OLED vs QLED: Which should I buy?",
+      "Best value iPad for college students",
+    ],
+  },
+];
+
+const DEFAULT_SUGGESTIONS = [
+  "Find top wireless earbuds under $100",
+  "Compare iPhone 15 and Samsung Galaxy S24",
+  "Recommend a mechanical gaming keyboard",
+  "Deals on 4K Smart TVs",
 ];
 
 const URL_PATTERN = /^https?:\/\/\S+$/i;
@@ -26,6 +77,8 @@ export default function ChatPanel({ onError, onClearError }) {
   const [attachedFile, setAttachedFile] = useState(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  const activeModeConfig = MODES.find((m) => m.id === mode);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -56,22 +109,25 @@ export default function ChatPanel({ onError, onClearError }) {
     fileInputRef.current?.click();
   }, [attachedFile, removeAttachment]);
 
-  const handleSubmit = useCallback(
-    async (e) => {
-      e.preventDefault();
-      if (loading) return;
+  const handleSuggestionClick = useCallback((suggestion) => {
+    setInputText(suggestion);
+  }, []);
 
-      const file = attachedFile;
-      const text = inputText.trim();
+  const executeSend = useCallback(
+    async (textToSend, fileToSend) => {
+      const file = fileToSend || attachedFile;
+      const text = (textToSend !== undefined ? textToSend : inputText).trim();
+
       if (!file && !text) return;
 
       onClearError();
       setLoading(true);
 
+      // 1. Image Identification Flow
       if (file) {
         setMessages((prev) => [
           ...prev,
-          { role: "user", text: `Uploaded image: ${file.name}` },
+          { role: "user", text: `📸 Analyzed image: ${file.name}` },
         ]);
         setAttachedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -85,7 +141,7 @@ export default function ChatPanel({ onError, onClearError }) {
             ...prev,
             {
               role: "assistant",
-              text: response.answer || "Here's what I found.",
+              text: response.answer || "Here is what I detected from your photo.",
               response,
               products,
             },
@@ -98,21 +154,22 @@ export default function ChatPanel({ onError, onClearError }) {
         return;
       }
 
+      // 2. Direct URL Fetch Flow
       if (URL_PATTERN.test(text)) {
         setInputText("");
         setMessages((prev) => [
           ...prev,
-          { role: "user", text: `Fetch link: ${text}` },
+          { role: "user", text: `🔗 Fetching product: ${text}` },
         ]);
 
         try {
           const result = await fetchLink(text);
-          const label = result.created ? "Added to catalog" : "Price updated in catalog";
+          const label = result.created ? "Added to catalog" : "Live Price Synced";
           setMessages((prev) => [
             ...prev,
             {
               role: "assistant",
-              text: `${label}: ${result.product.name}`,
+              text: `**${label}**: [${result.product.name}](${text})\n\nFound for **${result.product.currency || "$"}${result.product.price}**. Price history tracking has started for this link!`,
               response: {},
               products: [result.product],
             },
@@ -125,6 +182,7 @@ export default function ChatPanel({ onError, onClearError }) {
         return;
       }
 
+      // 3. AI Shopping Chat Flow
       setInputText("");
       setMessages((prev) => {
         const history = prev.slice(-8).map((m) => ({
@@ -147,7 +205,7 @@ export default function ChatPanel({ onError, onClearError }) {
               ...prev2,
               {
                 role: "assistant",
-                text: response.answer || "I found a few options.",
+                text: response.answer || "Here are the top matches based on your request.",
                 response,
                 products,
               },
@@ -162,33 +220,88 @@ export default function ChatPanel({ onError, onClearError }) {
         return next;
       });
     },
-    [attachedFile, inputText, loading, mode, onClearError, onError]
+    [attachedFile, inputText, mode, onClearError, onError]
   );
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (loading) return;
+    executeSend();
+  };
+
+  const currentSuggestions = activeModeConfig ? activeModeConfig.suggestions : DEFAULT_SUGGESTIONS;
   const hasContent = Boolean(inputText.trim()) || Boolean(attachedFile);
 
   return (
     <section className="chat-panel" aria-live="polite">
-      <div className="mode-buttons">
-        {MODES.map((m) => (
-          <motion.button
-            key={m.id}
-            className={`mode-button ${mode === m.id ? "active" : ""}`}
-            type="button"
-            onClick={() => handleModeToggle(m.id)}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            layout
-          >
-            {m.label}
-          </motion.button>
-        ))}
+      {/* ── TOP 4 FUNCTION MODES ── */}
+      <div className="mode-selector-container">
+        <div className="mode-selector-label">
+          <span className="mode-sparkle">✦</span> AI Shopping Modes
+        </div>
+        <div className="mode-buttons-row">
+          {MODES.map((m) => {
+            const isActive = mode === m.id;
+            return (
+              <motion.button
+                key={m.id}
+                className={`mode-button ${isActive ? "active" : ""}`}
+                type="button"
+                onClick={() => handleModeToggle(m.id)}
+                whileHover={{ scale: 1.03, y: -2 }}
+                whileTap={{ scale: 0.97 }}
+                layout
+              >
+                <span className="mode-icon">{m.icon}</span>
+                <span className="mode-title">{m.label}</span>
+                {isActive && <span className="mode-active-indicator" />}
+              </motion.button>
+            );
+          })}
+        </div>
+
+        {/* Dynamic Mode Helper Pill */}
+        <AnimatePresence>
+          {activeModeConfig && (
+            <motion.div
+              className="active-mode-banner"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <span className="active-mode-tag">{activeModeConfig.icon} {activeModeConfig.label} Active</span>
+              <span className="active-mode-desc">{activeModeConfig.desc}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      <div className="messages">
+      {/* ── MESSAGES CONTAINER ── */}
+      <div className="messages-viewport">
         {messages.length === 0 && !loading ? (
-          <div className="empty-state">
-            Ask a question, paste a product link, or attach a photo.
+          <div className="empty-state-card">
+            <div className="empty-state-icon">🤖</div>
+            <h3>How can ShopSense help you shop today?</h3>
+            <p>
+              Ask for comparisons, find deals by budget, paste an Amazon/Apple link, or attach a photo of any item!
+            </p>
+
+            <div className="suggestion-chips-grid">
+              <span className="suggestions-headline">Try these smart prompts:</span>
+              <div className="chips-list">
+                {currentSuggestions.map((prompt, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className="suggestion-chip"
+                    onClick={() => handleSuggestionClick(prompt)}
+                  >
+                    ✨ {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <>
@@ -198,15 +311,15 @@ export default function ChatPanel({ onError, onClearError }) {
             <AnimatePresence>
               {loading && (
                 <motion.div
-                  className="typing"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+                  className="typing-indicator-card"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                 >
                   <span className="typing-dot" />
                   <span className="typing-dot" />
                   <span className="typing-dot" />
-                  <span className="typing-label">ShopSense is typing</span>
+                  <span className="typing-text">ShopSense AI is analyzing catalog & live prices...</span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -215,29 +328,50 @@ export default function ChatPanel({ onError, onClearError }) {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* ── QUICK SUGGESTION PILLS (When in chat) ── */}
+      {messages.length > 0 && !loading && (
+        <div className="mini-suggestions-bar">
+          <span className="mini-suggestions-title">💡 Quick ideas:</span>
+          {currentSuggestions.slice(0, 3).map((prompt, i) => (
+            <button
+              key={i}
+              type="button"
+              className="mini-chip"
+              onClick={() => handleSuggestionClick(prompt)}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── ATTACHMENT PREVIEW ── */}
       <AnimatePresence>
         {attachedFile && (
           <motion.div
-            className="attachment-preview"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
+            className="attachment-preview-box"
+            initial={{ opacity: 0, scale: 0.9, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 10 }}
           >
-            <span className="attachment-chip">
-              📷 {attachedFile.name}
+            <div className="attachment-chip">
+              <span className="attachment-icon">📸</span>
+              <span className="attachment-name">{attachedFile.name}</span>
               <button
                 type="button"
+                className="attachment-remove-btn"
                 onClick={removeAttachment}
-                aria-label="Remove photo"
+                aria-label="Remove attached photo"
               >
                 ✕
               </button>
-            </span>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <form className="chat-form" onSubmit={handleSubmit}>
+      {/* ── FLOATING COMPOSER ── */}
+      <form className="chat-composer-form" onSubmit={handleSubmit}>
         <input
           ref={fileInputRef}
           type="file"
@@ -246,33 +380,40 @@ export default function ChatPanel({ onError, onClearError }) {
           onChange={handleFileChange}
         />
         <motion.button
-          className={`attach-button ${attachedFile ? "active" : ""}`}
+          className={`composer-attach-btn ${attachedFile ? "active" : ""}`}
           type="button"
-          title="Attach a photo"
+          title="Upload or snap a photo of any product"
           aria-label="Attach a photo"
           onClick={handleAttachClick}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.92 }}
         >
-          📎
+          {attachedFile ? "✓" : "📎"}
         </motion.button>
+
         <input
-          className="chat-input"
+          className="composer-input"
           type="text"
-          placeholder="Ask, paste a product link, or attach a photo…"
+          placeholder={activeModeConfig ? activeModeConfig.placeholder : "Ask a question, paste a link, or attach a photo..."}
           autoComplete="off"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           disabled={Boolean(attachedFile)}
         />
+
         <motion.button
-          className="primary-button send-button"
+          className="composer-send-btn"
           type="submit"
           disabled={loading || !hasContent}
           whileHover={!loading && hasContent ? { scale: 1.05 } : {}}
           whileTap={!loading && hasContent ? { scale: 0.95 } : {}}
         >
-          {loading ? "Sending…" : "Send"}
+          {loading ? (
+            <span className="loading-spinner" />
+          ) : (
+            <span className="send-icon">➤</span>
+          )}
+          <span>{loading ? "Thinking..." : "Send"}</span>
         </motion.button>
       </form>
     </section>

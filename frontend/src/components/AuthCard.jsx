@@ -26,6 +26,11 @@ export default function AuthCard({ onLogin, onError }) {
     }
   }
 
+  function toggleMode() {
+    setIsRegister((prev) => !prev);
+    onError(null);
+  }
+
   return (
     <motion.section
       className="auth-card"
@@ -80,14 +85,7 @@ export default function AuthCard({ onLogin, onError }) {
           {loading ? "Please wait…" : isRegister ? "Register" : "Log in"}
         </motion.button>
       </form>
-      <button
-        className="link-button"
-        type="button"
-        onClick={() => {
-          setIsRegister((prev) => !prev);
-          onError(null);
-        }}
-      >
+      <button className="link-button" type="button" onClick={toggleMode}>
         {isRegister
           ? "Already have an account? Log in"
           : "Need an account? Register"}
