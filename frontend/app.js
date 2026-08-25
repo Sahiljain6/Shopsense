@@ -12,7 +12,6 @@ const state = {
   authed: Boolean(localStorage.getItem(TOKEN_KEY)),
   isRegister: false,
   authLoading: false,
-  chatLoading: false,
   mode: null,
   messages: [],
 };
@@ -34,16 +33,13 @@ const elements = {
   chatForm: document.getElementById("chat-form"),
   chatInput: document.getElementById("chat-input"),
   chatSubmit: document.getElementById("chat-submit"),
-  linkForm: document.getElementById("link-form"),
-  linkInput: document.getElementById("link-input"),
-  linkSubmit: document.getElementById("link-submit"),
-  imageForm: document.getElementById("image-form"),
+  attachButton: document.getElementById("attach-button"),
   imageInput: document.getElementById("image-input"),
-  imageSubmit: document.getElementById("image-submit"),
+  attachmentPreview: document.getElementById("attachment-preview"),
 };
 
-const linkState = { loading: false };
-const imageState = { loading: false };
+const composerState = { loading: false, attachedFile: null };
+const URL_PATTERN = /^https?:\/\/\S+$/i;
 
 class ApiError extends Error {
   constructor(status, message) {
@@ -147,8 +143,8 @@ function renderProductCard(product, response) {
 }
 
 function renderMessages() {
-  if (!state.messages.length && !state.chatLoading) {
-    elements.messages.innerHTML = '<div class="empty-state">Try “recommend a budget phone under 15000”.</div>';
+  if (!state.messages.length && !composerState.loading) {
+    elements.messages.innerHTML = '<div class="empty-state">Ask a question, paste a product link, or attach a photo.</div>';
     return;
   }
   elements.messages.innerHTML = state.messages.map((message) => {
@@ -156,7 +152,7 @@ function renderMessages() {
     return `<div class="message-group"><div class="message-bubble ${message.role === "user" ? "user" : "assistant"}"><p>${escapeHtml(message.text || "Couldn’t display this message.")}</p></div>
       ${message.response?.clarification ? `<div class="alert alert-warning">${escapeHtml(message.response.clarification)}</div>` : ""}
       ${products.length ? `<div class="product-grid">${products.map((product) => renderProductCard(product, message.response)).join("")}</div>` : ""}</div>`;
-  }).join("") + (state.chatLoading ? '<div class="typing">ShopSense is typing…</div>' : "");
+  }).join("") + (composerState.loading ? '<div class="typing">ShopSense is typing…</div>' : "");
   elements.messages.scrollTop = elements.messages.scrollHeight;
 }
 
@@ -170,12 +166,20 @@ function render() {
   elements.authSubmit.disabled = state.authLoading;
   elements.toggleAuth.textContent = state.isRegister ? "Already have an account? Log in" : "Need an account? Register";
   elements.modeButtons.innerHTML = MODES.map((item) => `<button class="mode-button ${state.mode === item.id ? "active" : ""}" type="button" data-mode="${item.id}">${item.label}</button>`).join("");
-  elements.chatSubmit.textContent = state.chatLoading ? "Sending…" : "Send";
-  elements.chatSubmit.disabled = state.chatLoading || !elements.chatInput.value.trim();
-  elements.linkSubmit.textContent = linkState.loading ? "Fetching…" : "Fetch";
-  elements.linkSubmit.disabled = linkState.loading || !elements.linkInput.value.trim();
-  elements.imageSubmit.textContent = imageState.loading ? "Identifying…" : "Identify";
-  elements.imageSubmit.disabled = imageState.loading || !elements.imageInput.files.length;
+  const hasContent = Boolean(elements.chatInput.value.trim()) || Boolean(composerState.attachedFile);
+  elements.chatSubmit.textContent = composerState.loading ? "Sending…" : "Send";
+  elements.chatSubmit.disabled = composerState.loading || !hasContent;
+  elements.chatInput.disabled = Boolean(composerState.attachedFile);
+  elements.attachButton.classList.toggle("active", Boolean(composerState.attachedFile));
+
+  if (composerState.attachedFile) {
+    elements.attachmentPreview.classList.remove("hidden");
+    elements.attachmentPreview.innerHTML = `<span class="attachment-chip">📷 ${escapeHtml(composerState.attachedFile.name)} <button type="button" id="remove-attachment" aria-label="Remove photo">✕</button></span>`;
+  } else {
+    elements.attachmentPreview.classList.add("hidden");
+    elements.attachmentPreview.innerHTML = "";
+  }
+
   renderMessages();
 }
 
@@ -198,16 +202,67 @@ async function handleAuth(event) {
   }
 }
 
-async function handleChat(event) {
+async function handleComposerSubmit(event) {
   event.preventDefault();
+  if (composerState.loading) return;
+
+  const file = composerState.attachedFile;
   const text = elements.chatInput.value.trim();
-  if (!text || state.chatLoading) return;
-  elements.chatInput.value = "";
+
+  if (!file && !text) return;
+
   setError(null);
-  state.chatLoading = true;
+  composerState.loading = true;
+
+  if (file) {
+    state.messages.push({ role: "user", text: `Uploaded image: ${file.name}` });
+    composerState.attachedFile = null;
+    elements.imageInput.value = "";
+    render();
+
+    try {
+      const response = await identifyImage(file);
+      const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
+      const catalog = ids.length ? await getProducts("", 20) : [];
+      const products = ids.length ? catalog.filter((product) => ids.includes(product.id)) : [];
+      state.messages.push({ role: "assistant", text: response.answer || "Here's what I found.", response, products });
+    } catch (error) {
+      setError(friendlyError(error));
+    } finally {
+      composerState.loading = false;
+      render();
+    }
+    return;
+  }
+
+  if (URL_PATTERN.test(text)) {
+    elements.chatInput.value = "";
+    state.messages.push({ role: "user", text: `Fetch link: ${text}` });
+    render();
+
+    try {
+      const result = await fetchLink(text);
+      const label = result.created ? "Added to catalog" : "Price updated in catalog";
+      state.messages.push({
+        role: "assistant",
+        text: `${label}: ${result.product.name}`,
+        response: {},
+        products: [result.product],
+      });
+    } catch (error) {
+      setError(friendlyError(error));
+    } finally {
+      composerState.loading = false;
+      render();
+    }
+    return;
+  }
+
+  elements.chatInput.value = "";
   const history = state.messages.slice(-8).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
   state.messages.push({ role: "user", text });
   render();
+
   try {
     const response = await sendChat(text, state.mode, history);
     const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
@@ -218,56 +273,7 @@ async function handleChat(event) {
   } catch (error) {
     setError(friendlyError(error));
   } finally {
-    state.chatLoading = false;
-    render();
-  }
-}
-
-async function handleFetchLink(event) {
-  event.preventDefault();
-  const url = elements.linkInput.value.trim();
-  if (!url || linkState.loading) return;
-  elements.linkInput.value = "";
-  setError(null);
-  linkState.loading = true;
-  state.messages.push({ role: "user", text: `Fetch link: ${url}` });
-  render();
-  try {
-    const result = await fetchLink(url);
-    const label = result.created ? "Added to catalog" : "Price updated in catalog";
-    state.messages.push({
-      role: "assistant",
-      text: `${label}: ${result.product.name}`,
-      response: {},
-      products: [result.product],
-    });
-  } catch (error) {
-    setError(friendlyError(error));
-  } finally {
-    linkState.loading = false;
-    render();
-  }
-}
-
-async function handleImageUpload(event) {
-  event.preventDefault();
-  const file = elements.imageInput.files[0];
-  if (!file || imageState.loading) return;
-  setError(null);
-  imageState.loading = true;
-  state.messages.push({ role: "user", text: `Uploaded image: ${file.name}` });
-  render();
-  try {
-    const response = await identifyImage(file);
-    const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
-    const catalog = ids.length ? await getProducts("", 20) : [];
-    const products = ids.length ? catalog.filter((product) => ids.includes(product.id)) : [];
-    state.messages.push({ role: "assistant", text: response.answer || "Here's what I found.", response, products });
-  } catch (error) {
-    setError(friendlyError(error));
-  } finally {
-    imageState.loading = false;
-    elements.imageForm.reset();
+    composerState.loading = false;
     render();
   }
 }
@@ -309,12 +315,28 @@ async function handlePriceHistoryClick(event) {
 }
 
 elements.authForm.addEventListener("submit", handleAuth);
-elements.chatForm.addEventListener("submit", handleChat);
+elements.chatForm.addEventListener("submit", handleComposerSubmit);
 elements.chatInput.addEventListener("input", render);
-elements.linkForm.addEventListener("submit", handleFetchLink);
-elements.linkInput.addEventListener("input", render);
-elements.imageForm.addEventListener("submit", handleImageUpload);
-elements.imageInput.addEventListener("change", render);
+elements.attachButton.addEventListener("click", () => {
+  if (composerState.attachedFile) {
+    composerState.attachedFile = null;
+    elements.imageInput.value = "";
+    render();
+    return;
+  }
+  elements.imageInput.click();
+});
+elements.imageInput.addEventListener("change", () => {
+  composerState.attachedFile = elements.imageInput.files[0] || null;
+  render();
+});
+elements.attachmentPreview.addEventListener("click", (event) => {
+  if (event.target.closest("#remove-attachment")) {
+    composerState.attachedFile = null;
+    elements.imageInput.value = "";
+    render();
+  }
+});
 elements.messages.addEventListener("click", handlePriceHistoryClick);
 elements.toggleAuth.addEventListener("click", () => { state.isRegister = !state.isRegister; setError(null); render(); });
 elements.logoutButton.addEventListener("click", () => { localStorage.removeItem(TOKEN_KEY); state.authed = false; state.messages = []; setError(null); render(); });
