@@ -17,3 +17,4 @@ psycopg2-binary
 pydantic[email]
 ollama
 beautifulsoup4==4.12.3
+duckduckgo-search
