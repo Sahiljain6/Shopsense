@@ -75,6 +75,7 @@ def normalize_query(message: str) -> str:
         "mobiles": "phone",
         "mobile": "phone",
         "cell phone": "phone",
+        "cellphone": "phone",
         "notebooks": "laptop",
         "notebook": "laptop",
         "earphones": "headphones",
@@ -468,18 +469,40 @@ Keep the response concise and useful.
                 return ChatResponse(answer="\n".join(lines))
 
             # Fallback 2: Catalog search fallback
-            keywords = ["phone", "laptop", "headphones", "watch", "buy", "deal", "cheap"]
-            if any(k in message.lower() for k in keywords):
-                fallback_products = self.catalog.search(" ".join([k for k in keywords if k in message.lower()]), limit=3)
+            keywords = ["phone", "iphone", "samsung", "apple", "laptop", "macbook", "headphones", "earbuds", "watch", "buy", "deal", "cheap", "compare"]
+            lowered = message.lower()
+            matched_keywords = [k for k in keywords if k in lowered]
+            if matched_keywords:
+                search_query = " ".join(matched_keywords)
+                fallback_products = self.catalog.search(search_query, limit=4)
                 if not fallback_products:
                     fallback_products = self.catalog.search("", limit=3)
                 if fallback_products:
                     return self._structured_response(fallback_products)
 
+            # Fallback 3: Comparison breakdown for iPhone vs Samsung if database has no records
+            if "iphone" in lowered and "samsung" in lowered:
+                return ChatResponse(
+                    answer=(
+                        "### 📱 iPhone vs. Samsung Galaxy: Key Comparison\n\n"
+                        "• **iPhone (iOS & Apple Ecosystem)**:\n"
+                        "  - ✦ **Strengths**: Best-in-class video recording, 5-7 years software updates, Apple Silicon performance & seamless Mac/iPad ecosystem.\n"
+                        "  - ✦ **Recommended Models**: iPhone 15 Pro, iPhone 15, iPhone 13 (Best budget entry).\n\n"
+                        "• **Samsung Galaxy (Android & Customization)**:\n"
+                        "  - ✦ **Strengths**: 100x zoom camera & S-Pen stylus (Ultra models), 120Hz Dynamic AMOLED displays, superior multitasking & Galaxy AI features.\n"
+                        "  - ✦ **Recommended Models**: Galaxy S24 Ultra, Galaxy S24, Galaxy A55 5G (Budget champion).\n\n"
+                        "💡 **Verdict**: Choose **iPhone** for long-term resale value & ecosystem continuity, or **Samsung** for screen quality, multitasking, and camera zoom flexibility."
+                    )
+                )
+
+            # Fallback 4: General catalog recommendation
+            all_products = self.catalog.search("", limit=3)
+            if all_products:
+                return self._structured_response(all_products)
+
             return ChatResponse(
                 answer=(
-                    "I couldn't locate specific live deals for that query right now. "
-                    "Try typing a query like 'phone under 15000' or paste a product link directly!"
+                    "I searched for top matches. To find the exact deal, try asking for a specific model or budget, e.g. **'Best phone under 20000'** or **'Compare iPhone 15 vs Galaxy S24'**!"
                 )
             )
 

@@ -26,13 +26,16 @@ class CatalogService:
         text = q.lower()
 
         aliases = {
-            "mobile": ["phone", "mobile", "smartphone"],
-            "phone": ["phone", "mobile", "smartphone"],
-            "laptop": ["laptop", "notebook"],
-            "headphones": ["headphone", "headphones", "earbuds", "earphones"],
-            "watch": ["watch", "smartwatch"],
-            "speaker": ["speaker", "speakers"],
-            "tablet": ["tablet", "tablets"]
+            "mobile": ["phone", "mobile", "smartphone", "iphone", "samsung"],
+            "phone": ["phone", "mobile", "smartphone", "iphone", "samsung", "galaxy"],
+            "iphone": ["iphone", "apple", "phone", "smartphone"],
+            "samsung": ["samsung", "galaxy", "phone", "smartphone"],
+            "apple": ["apple", "iphone", "macbook", "ipad", "airpods"],
+            "laptop": ["laptop", "notebook", "macbook"],
+            "headphones": ["headphone", "headphones", "earbuds", "earphones", "airpods"],
+            "watch": ["watch", "smartwatch", "apple watch", "galaxy watch"],
+            "speaker": ["speaker", "speakers", "soundbar"],
+            "tablet": ["tablet", "tablets", "ipad"]
         }
 
         words = set(text.split())
