@@ -37,18 +37,13 @@
         <section id="chat-panel" class="chat-panel hidden" aria-live="polite">
           <div id="mode-buttons" class="mode-buttons"></div>
           <div id="messages" class="messages">
-            <div class="empty-state">Try “recommend a budget phone under 15000”.</div>
+            <div class="empty-state">Ask a question, paste a product link, or attach a photo.</div>
           </div>
-          <form id="link-form" class="chat-form">
-            <input id="link-input" class="chat-input" type="url" placeholder="Paste a product link (Amazon, Flipkart...)" autocomplete="off" />
-            <button id="link-submit" class="primary-button send-button" type="submit" disabled>Fetch</button>
-          </form>
-          <form id="image-form" class="chat-form">
-            <input id="image-input" class="chat-input" type="file" accept="image/*" />
-            <button id="image-submit" class="primary-button send-button" type="submit" disabled>Identify</button>
-          </form>
+          <div id="attachment-preview" class="attachment-preview hidden"></div>
           <form id="chat-form" class="chat-form">
-            <input id="chat-input" class="chat-input" type="text" placeholder="recommend a budget phone under 15000" autocomplete="off" />
+            <input id="image-input" type="file" accept="image/*" class="hidden" />
+            <button id="attach-button" class="attach-button" type="button" title="Attach a photo" aria-label="Attach a photo">📎</button>
+            <input id="chat-input" class="chat-input" type="text" placeholder="Ask, paste a product link, or attach a photo…" autocomplete="off" />
             <button id="chat-submit" class="primary-button send-button" type="submit" disabled>Send</button>
           </form>
         </section>
