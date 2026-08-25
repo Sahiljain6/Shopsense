@@ -40,6 +40,58 @@ def select_modifiers(message: str, requested_mode: str | None = None) -> list[st
     return selected
 
 
+def check_shopping_guardrail(message: str) -> str | None:
+    """Check if the user request is strictly out-of-scope (e.g. coding, programming, non-shopping essays).
+    Returns a polite refusal string if out-of-scope, or None if it's a shopping query.
+    """
+    lowered = message.lower().strip()
+
+    # Exclude common legitimate e-commerce code terms first
+    is_shopping_code_term = any(
+        term in lowered
+        for term in [
+            "coupon code", "promo code", "discount code", "voucher code",
+            "postal code", "pincode", "zip code", "barcode", "qr code",
+            "product code", "sku code", "gift card code", "referral code"
+        ]
+    )
+
+    # 1. Coding / Programming / Software Development requests
+    coding_patterns = [
+        r"\b(write|generate|create|build|debug|fix|explain|refactor)\b.*\b(code|python|javascript|typescript|c\+\+|java|html|css|sql|script|function|algorithm|regex|class|component|api|backend|frontend)\b",
+        r"\b(python|javascript|typescript|c\+\+|java|react|django|fastapi|node\.?js|php|rust|golang)\s+(code|script|program|function|snippet|app)\b",
+        r"^(def |function |const |let |var |import |class |SELECT |INSERT |UPDATE |DELETE |public class )",
+        r"\b(write a program|write a script|write an algorithm|debug this|fix this code|solve this bug|write unit test)\b",
+    ]
+
+    if not is_shopping_code_term:
+        for pattern in coding_patterns:
+            if re.search(pattern, lowered):
+                return (
+                    "I am **ShopSense**, an AI shopping copilot! 🛍️\n\n"
+                    "I am specialized strictly in helping you discover products, compare prices, analyze specifications, and find deals. "
+                    "I cannot write code, debug software, or assist with programming tasks.\n\n"
+                    "Let me know if you need help finding, comparing, or budgeting for any tech products, gadgets, or shopping items!"
+                )
+
+    # 2. General Non-Shopping Tasks (Essays, Stories, Poetry, Homework)
+    non_shopping_patterns = [
+        r"\b(write|compose|generate)\b.*\b(essay|poem|poetry|song|lyrics|story|novel|speech|letter to my)\b",
+        r"\b(solve this math|solve equation|calculate derivative|integral of|who won the 1\d{3} election)\b",
+    ]
+
+    for pattern in non_shopping_patterns:
+        if re.search(pattern, lowered):
+            return (
+                "I am **ShopSense**, a dedicated AI shopping assistant! 🛍️\n\n"
+                "I specialize solely in e-commerce, product recommendations, and price tracking. "
+                "I cannot help with general essays, creative writing, or non-shopping homework.\n\n"
+                "How can I help you find or compare products today?"
+            )
+
+    return None
+
+
 def needs_clarification(message: str) -> str | None:
     return None
 
@@ -268,7 +320,12 @@ class AIOrchestrator:
         history: list[dict[str, str]] | None = None
     ) -> ChatResponse:
 
-        # Auto-detect product URL pasted in chat message (e.g. "Fetch link: https://amzn.in/d/0au0AjZK" or raw URL)
+        # 1. Strict Scope & Guardrail check (Prevent coding, hacking, homework, and non-shopping usage)
+        guardrail_refusal = check_shopping_guardrail(message)
+        if guardrail_refusal:
+            return ChatResponse(answer=guardrail_refusal)
+
+        # 2. Auto-detect product URL pasted in chat message (e.g. "Fetch link: https://amzn.in/d/0au0AjZK" or raw URL)
         url_match = re.search(r'https?://[^\s]+', message)
         if url_match:
             target_url = url_match.group(0)
@@ -409,11 +466,12 @@ Keep the response concise and useful.
 
         answer = self._chat(
             system=(
-                "You are ShopSense, a helpful shopping "
-                "assistant. Recommend only real products "
-                "provided in the catalog context. Use the "
-                "conversation history to understand context "
-                "like budget or brand mentioned earlier."
+                "You are ShopSense, an expert AI shopping copilot.\n"
+                "STRICT CONSTRAINT: You are EXCLUSIVELY a shopping and e-commerce assistant. "
+                "You ONLY assist with product discovery, price comparisons, deal finding, budgeting, and buying decisions. "
+                "You MUST REFUSE any requests to write code, debug software, solve non-shopping math/homework, write essays/stories, or perform non-shopping tasks. "
+                "If the user asks for coding or non-shopping tasks, politely refuse and redirect them to shopping products.\n"
+                "Recommend only real products provided in the catalog context. Use the conversation history to understand context like budget or brand."
             ),
             user=prompt,
             history=history
@@ -478,8 +536,10 @@ Keep the response concise and useful.
 
         answer = self._chat(
             system=(
-                "You are ShopSense, an expert 100% free AI shopping copilot. "
-                "Help the user find the best, most trustworthy products at the cheapest prices. "
+                "You are ShopSense, an expert AI shopping copilot.\n"
+                "STRICT CONSTRAINT: You ONLY answer shopping, product discovery, e-commerce, pricing, and buying advice questions. "
+                "You MUST NEVER write programming code (Python, JS, HTML, etc.), debug code, solve general math/science homework, or write creative essays. "
+                "If the user asks for code or off-topic non-shopping tasks, politely decline and ask what product they'd like to shop for.\n"
                 "If live web deal links are provided in the prompt, recommend them with their price and source link."
             ),
             user=prompt,
