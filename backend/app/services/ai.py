@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from sqlalchemy.orm import Session
 from ollama import Client
@@ -99,19 +100,22 @@ class AIOrchestrator:
         self.provider: str | None = None
         self.model = None
 
-        if settings.groq_api_key:
+        groq_key = settings.groq_api_key or os.getenv("GROQ_API_KEY")
+        ollama_key = settings.ollama_api_key or os.getenv("OLLAMA_API_KEY")
+
+        if groq_key:
             self.client = OpenAI(
                 base_url="https://api.groq.com/openai/v1",
-                api_key=settings.groq_api_key
+                api_key=groq_key
             )
             self.provider = "groq"
             self.model = settings.groq_model
 
-        elif settings.ollama_api_key:
+        elif ollama_key:
             self.client = Client(
                 host="https://ollama.com",
                 headers={
-                    "Authorization": f"Bearer {settings.ollama_api_key}"
+                    "Authorization": f"Bearer {ollama_key}"
                 }
             )
             self.provider = "ollama"
@@ -134,21 +138,35 @@ class AIOrchestrator:
         messages.extend(history or [])
         messages.append({"role": "user", "content": user})
 
-        try:
-            if self.provider == "groq":
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages
-                )
-                return response.choices[0].message.content
+        if self.provider == "groq":
+            candidate_models = [self.model] if self.model else []
+            for fallback in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768"]:
+                if fallback not in candidate_models:
+                    candidate_models.append(fallback)
 
+            for model_name in candidate_models:
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model_name,
+                        messages=messages
+                    )
+                    return response.choices[0].message.content
+                except Exception as error:
+                    err_msg = str(error).lower()
+                    if "model_not_found" in err_msg or "404" in err_msg:
+                        print(f"Groq model '{model_name}' returned 404 model_not_found. Trying fallback model...")
+                        continue
+                    print(f"{self.provider} API error with model '{model_name}': {type(error).__name__}: {error}")
+                    return None
+            return None
+
+        try:
             response = self.client.chat(
                 model=self.model,
                 messages=messages,
                 stream=False
             )
             return response.message.content
-
         except Exception as error:
             print(f"{self.provider} API error: {type(error).__name__}: {error}")
             return None
@@ -348,11 +366,29 @@ Keep the response concise and useful.
         )
 
         if answer is None:
+            # Fallback 1: Try finding top catalog products matching keywords
+            keywords = ["phone", "laptop", "headphones", "watch", "buy", "deal", "cheap"]
+            if any(k in message.lower() for k in keywords):
+                fallback_products = self.catalog.search(" ".join([k for k in keywords if k in message.lower()]), limit=3)
+                if not fallback_products:
+                    fallback_products = self.catalog.search("", limit=3)
+                if fallback_products:
+                    return self._structured_response(fallback_products)
+
+            # Fallback 2: Clear notice when GROQ_API_KEY is not responding or unconfigured
+            settings = get_settings()
+            if not settings.groq_api_key and not settings.ollama_api_key:
+                return ChatResponse(
+                    answer=(
+                        "AI language service is not configured (GROQ_API_KEY missing on server). "
+                        "Please set GROQ_API_KEY in your server environment variables or paste a product link directly!"
+                    )
+                )
+
             return ChatResponse(
                 answer=(
-                    "I can help you with shopping recommendations, "
-                    "product comparisons, budgets, gifts, and general "
-                    "shopping advice."
+                    "I am currently unable to reach the AI model service. "
+                    "You can paste a product URL to scrape details, or search for products in the catalog!"
                 )
             )
 
