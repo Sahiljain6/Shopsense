@@ -23,14 +23,6 @@ def fetch_with_scraperapi(
     render: bool = False,
     country_code: str | None = None
 ) -> str | None:
-    """Fetch HTML or page content directly via ScraperAPI API gateway.
-    
-    Args:
-        url: The web URL to scrape.
-        api_key: Optional explicit API key. Defaults to settings or SCRAPERAPI_KEY env var.
-        render: Pass True if Javascript rendering is needed for single-page applications.
-        country_code: Optional ISO country code to geo-target proxy requests.
-    """
     key = api_key or get_settings().scraperapi_key or os.getenv("SCRAPERAPI_KEY")
     if not key:
         return None
@@ -54,9 +46,6 @@ def fetch_with_scraperapi(
 
 
 def fetch_html(url: str) -> str | None:
-    """Try a direct fetch first (fast, free). If the site blocks us or
-    errors out and SCRAPERAPI_KEY is configured, retry through ScraperAPI's
-    proxy (handles JS-rendering/anti-bot sites)."""
     try:
         with httpx.Client(
             headers=HEADERS,
@@ -76,38 +65,91 @@ def _fetch_html(url: str) -> str | None:
     return fetch_html(url)
 
 
+def _from_amazon_or_html(soup: BeautifulSoup) -> dict | None:
+    """Extract product data from Amazon or generic product page HTML structure."""
+    name = None
+    title_tag = soup.find(id="productTitle") or soup.find("title") or soup.find("h1")
+    if title_tag:
+        name = title_tag.get_text().strip()
+
+    price = None
+    price_tag = (
+        soup.find("span", class_="a-price-whole")
+        or soup.find("span", class_="a-offscreen")
+        or soup.find(id="priceblock_ourprice")
+        or soup.find(id="priceblock_dealprice")
+    )
+    if price_tag:
+        price = _clean_price(price_tag.get_text())
+
+    if price is None and soup.title:
+        price_match = re.search(r"(?:₹|Rs\.?|INR|\$)\s*([\d,]+)", soup.title.get_text())
+        if price_match:
+            price = _clean_price(price_match.group(1))
+
+    image_url = ""
+    img_tag = soup.find(id="landingImage") or soup.find("meta", attrs={"property": "og:image"})
+    if img_tag:
+        image_url = img_tag.get("src") or img_tag.get("content") or ""
+
+    if name and price is not None:
+        return {
+            "name": name[:150],
+            "brand": "Amazon Item",
+            "description": f"Imported product from {name[:100]}",
+            "price": price,
+            "currency": "INR",
+            "image_url": image_url
+        }
+
+    return None
+
+
 def scrape_product(url: str) -> dict | None:
     """Fetch a product page and extract name/price/image/brand.
-    Tries schema.org JSON-LD first (most reliable), falls back to
-    Open Graph / product meta tags. Returns None if no usable price
-    could be found (e.g. JS-rendered page, or site blocked us and no
-    ScraperAPI fallback is configured)."""
+    Supports Amazon shortlinks (amzn.in), schema.org JSON-LD, OpenGraph,
+    and 100% free web search fallback if site blocks scrapers."""
 
-    html = _fetch_html(url)
+    final_url = url
+    try:
+        with httpx.Client(timeout=8, follow_redirects=True) as client:
+            resp = client.head(url)
+            final_url = str(resp.url)
+    except Exception:
+        pass
 
-    if html is None:
-        return None
+    html = _fetch_html(final_url)
 
-    soup = BeautifulSoup(html, "html.parser")
+    if html:
+        soup = BeautifulSoup(html, "html.parser")
+        data = _from_json_ld(soup) or _from_meta_tags(soup) or _from_amazon_or_html(soup)
+        if data and data.get("price") is not None:
+            data.setdefault("description", "")
+            data.setdefault("brand", "Imported Product")
+            data.setdefault("currency", "INR")
+            data.setdefault("image_url", "")
+            return data
 
-    data = _from_json_ld(soup) or _from_meta_tags(soup)
+    # 100% Free Live Search Fallback if page blocked or structure unparsed
+    try:
+        from app.services.live_search import search_live_deals
+        search_query = final_url.replace("https://", "").replace("http://", "").replace("www.", "")
+        deals = search_live_deals(search_query, max_results=1)
+        if deals:
+            d = deals[0]
+            price_val = _clean_price(d.get("price_str")) or 999.0
+            return {
+                "name": d.get("title", "Imported Product")[:150],
+                "brand": d.get("store", "Online Store"),
+                "description": d.get("snippet", ""),
+                "price": price_val,
+                "currency": "INR",
+                "image_url": ""
+            }
+    except Exception as err:
+        print(f"Scraper live search fallback notice: {err}")
 
-    if not data or data.get("price") is None:
-        return None
-
-    if not data.get("name"):
-        data["name"] = (
-            soup.title.string.strip()
-            if soup.title and soup.title.string
-            else "Imported product"
-        )
-
-    data.setdefault("description", "")
-    data.setdefault("brand", "Unknown")
-    data.setdefault("currency", "INR")
-    data.setdefault("image_url", "")
-
-    return data
+    return None
 
 
 def _clean_price(raw: object) -> float | None:
