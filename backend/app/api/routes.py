@@ -8,7 +8,10 @@ from app.db.session import get_db
 from app.models.entities import ChatHistory, Order, Product, Review, User, Wishlist
 from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, PriceHistoryResponse, ProductCreate, ProductRead, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
 from app.services.ai import AIOrchestrator
+from app.services.barcode_lookup import lookup_barcode
 from app.services.catalog import CatalogService
+from app.services.currency import convert_price
+from app.services.deal_hunter import fetch_gaming_deals
 from app.services.scraper import scrape_product
 from app.services.vision import identify_image
 
@@ -220,4 +223,27 @@ def delete_product(product_id: int, db: Session = Depends(get_db), _: User = Dep
         raise HTTPException(status_code=404, detail="Product not found")
     db.delete(product); db.commit()
     return {"ok": True}
-    
+
+
+@router.get("/currency/convert")
+def convert_currency(amount: float, from_curr: str = "USD", to_curr: str = "INR") -> dict[str, object]:
+    converted = convert_price(amount, from_curr, to_curr)
+    return {
+        "amount": amount,
+        "from_currency": from_curr.upper(),
+        "to_currency": to_curr.upper(),
+        "converted_amount": converted
+    }
+
+
+@router.get("/deals")
+def get_deals(q: str = "", limit: int = 6) -> list[dict[str, object]]:
+    return fetch_gaming_deals(q, limit)
+
+
+@router.get("/barcode/{code}")
+def get_barcode_product(code: str) -> dict[str, object]:
+    result = lookup_barcode(code)
+    if not result:
+        raise HTTPException(status_code=404, detail="Barcode not found in Open Food Facts database.")
+    return result
