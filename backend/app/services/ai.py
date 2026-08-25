@@ -240,6 +240,19 @@ class AIOrchestrator:
         history: list[dict[str, str]] | None = None
     ) -> ChatResponse:
 
+        # Auto-detect product URL pasted in chat message (e.g. "Fetch link: https://amzn.in/d/0au0AjZK" or raw URL)
+        url_match = re.search(r'https?://[^\s]+', message)
+        if url_match:
+            target_url = url_match.group(0)
+            try:
+                from app.services.scraper import scrape_product
+                scraped = scrape_product(target_url)
+                if scraped:
+                    product, _ = self.catalog.upsert_from_scrape(scraped, target_url)
+                    return self._generate_ai_response(message, [product], history)
+            except Exception as err:
+                print(f"Chat URL auto-scrape notice: {err}")
+
         normalized = normalize_query(message)
 
         products = self.catalog.search(normalized, limit=12)
