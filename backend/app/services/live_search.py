@@ -1,5 +1,12 @@
 import re
-from duckduckgo_search import DDGS
+
+try:
+    from duckduckgo_search import DDGS
+    HAS_DDG = True
+except ImportError:
+    DDGS = None
+    HAS_DDG = False
+
 from app.services.trust_engine import evaluate_store_trust, filter_and_rank_trustworthy_deals
 
 
@@ -9,6 +16,9 @@ def search_live_deals(query: str, max_results: int = 5) -> list[dict[str, str | 
     """
     search_term = f"{query} price buy online deal"
     raw_deals: list[dict[str, str | None]] = []
+
+    if not HAS_DDG or DDGS is None:
+        return []
 
     try:
         with DDGS() as ddgs:
