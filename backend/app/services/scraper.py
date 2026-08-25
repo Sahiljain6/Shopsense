@@ -1,4 +1,5 @@
 import json
+import os
 import re
 
 import httpx
@@ -16,11 +17,46 @@ HEADERS = {
 }
 
 
-def _fetch_html(url: str) -> str | None:
+def fetch_with_scraperapi(
+    url: str,
+    api_key: str | None = None,
+    render: bool = False,
+    country_code: str | None = None
+) -> str | None:
+    """Fetch HTML or page content directly via ScraperAPI API gateway.
+    
+    Args:
+        url: The web URL to scrape.
+        api_key: Optional explicit API key. Defaults to settings or SCRAPERAPI_KEY env var.
+        render: Pass True if Javascript rendering is needed for single-page applications.
+        country_code: Optional ISO country code to geo-target proxy requests.
+    """
+    key = api_key or get_settings().scraperapi_key or os.getenv("SCRAPERAPI_KEY")
+    if not key:
+        return None
+
+    params = {
+        "api_key": key,
+        "url": url,
+    }
+    if render:
+        params["render"] = "true"
+    if country_code:
+        params["country_code"] = country_code
+
+    try:
+        with httpx.Client(timeout=30) as client:
+            response = client.get("https://api.scraperapi.com/", params=params)
+            response.raise_for_status()
+            return response.text
+    except httpx.HTTPError:
+        return None
+
+
+def fetch_html(url: str) -> str | None:
     """Try a direct fetch first (fast, free). If the site blocks us or
     errors out and SCRAPERAPI_KEY is configured, retry through ScraperAPI's
-    proxy (handles JS-rendering/anti-bot sites for a small credit cost)."""
-
+    proxy (handles JS-rendering/anti-bot sites)."""
     try:
         with httpx.Client(
             headers=HEADERS,
@@ -33,21 +69,11 @@ def _fetch_html(url: str) -> str | None:
     except httpx.HTTPError:
         pass
 
-    settings = get_settings()
+    return fetch_with_scraperapi(url)
 
-    if not settings.scraperapi_key:
-        return None
 
-    try:
-        with httpx.Client(timeout=30) as client:
-            response = client.get(
-                "https://api.scraperapi.com/",
-                params={"api_key": settings.scraperapi_key, "url": url}
-            )
-            response.raise_for_status()
-            return response.text
-    except httpx.HTTPError:
-        return None
+def _fetch_html(url: str) -> str | None:
+    return fetch_html(url)
 
 
 def scrape_product(url: str) -> dict | None:
