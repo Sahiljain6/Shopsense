@@ -90,6 +90,31 @@ def normalize_query(message: str) -> str:
     return text
 
 
+def get_active_groq_models(api_key: str) -> list[str]:
+    """Dynamically query Groq API for live active model IDs on this account to prevent model_decommissioned errors."""
+    clean_key = api_key.strip().strip("'").strip('"')
+    url = "https://api.groq.com/openai/v1/models"
+    headers = {"Authorization": f"Bearer {clean_key}"}
+
+    try:
+        import httpx
+        with httpx.Client(timeout=5) as client:
+            resp = client.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                models_data = data.get("data", [])
+                active_ids = [
+                    m.get("id") for m in models_data
+                    if m.get("id") and m.get("active", True) is not False
+                ]
+                if active_ids:
+                    return active_ids
+    except Exception as err:
+        print(f"Notice fetching Groq model list dynamically: {err}")
+
+    return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]
+
+
 class AIOrchestrator:
 
     def __init__(self, db: Session) -> None:
@@ -101,6 +126,7 @@ class AIOrchestrator:
         self.client = None
         self.provider: str | None = None
         self.model = None
+        self.active_models: list[str] = []
 
         groq_key = settings.groq_api_key or os.getenv("GROQ_API_KEY")
         ollama_key = settings.ollama_api_key or os.getenv("OLLAMA_API_KEY")
@@ -112,7 +138,8 @@ class AIOrchestrator:
                 api_key=clean_key
             )
             self.provider = "groq"
-            self.model = (settings.groq_model or "llama-3.3-70b-versatile").strip()
+            self.active_models = get_active_groq_models(clean_key)
+            self.model = self.active_models[0] if self.active_models else "llama-3.3-70b-versatile"
 
         elif ollama_key:
             clean_key = ollama_key.strip().strip("'").strip('"')
@@ -149,10 +176,7 @@ class AIOrchestrator:
         clean_messages.append({"role": "user", "content": user})
 
         if self.provider == "groq":
-            candidate_models = [self.model] if self.model else []
-            for fallback in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768"]:
-                if fallback not in candidate_models:
-                    candidate_models.append(fallback)
+            candidate_models = self.active_models or ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 
             for model_name in candidate_models:
                 try:
@@ -163,11 +187,8 @@ class AIOrchestrator:
                     if response and response.choices:
                         return response.choices[0].message.content
                 except Exception as error:
-                    err_msg = str(error).lower()
                     print(f"Groq API error with model '{model_name}': {type(error).__name__}: {error}")
-                    if any(code in err_msg for code in ["404", "400", "model_not_found", "invalid"]):
-                        continue
-                    return None
+                    continue
             return None
 
         try:
