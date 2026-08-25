@@ -91,7 +91,6 @@ def normalize_query(message: str) -> str:
 
 
 def get_active_groq_models(api_key: str) -> list[str]:
-    """Dynamically query Groq API for live active model IDs on this account to prevent model_decommissioned errors."""
     clean_key = api_key.strip().strip("'").strip('"')
     url = "https://api.groq.com/openai/v1/models"
     headers = {"Authorization": f"Bearer {clean_key}"}
@@ -112,7 +111,7 @@ def get_active_groq_models(api_key: str) -> list[str]:
     except Exception as err:
         print(f"Notice fetching Groq model list dynamically: {err}")
 
-    return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]
+    return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
 
 
 class AIOrchestrator:
@@ -128,10 +127,16 @@ class AIOrchestrator:
         self.model = None
         self.active_models: list[str] = []
 
+        gemini_key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
         groq_key = settings.groq_api_key or os.getenv("GROQ_API_KEY")
         ollama_key = settings.ollama_api_key or os.getenv("OLLAMA_API_KEY")
 
-        if groq_key:
+        self.gemini_api_key = None
+        if gemini_key:
+            self.provider = "gemini"
+            self.gemini_api_key = gemini_key.strip().strip("'").strip('"')
+
+        elif groq_key:
             clean_key = groq_key.strip().strip("'").strip('"')
             self.client = OpenAI(
                 base_url="https://api.groq.com/openai/v1",
@@ -158,11 +163,34 @@ class AIOrchestrator:
         user: str,
         history: list[dict[str, str]] | None = None
     ) -> str | None:
-        """Call whichever provider is configured (Groq preferred, Ollama fallback).
-        `history` is prior turns as [{"role": "user"|"assistant", "content": ...}, ...],
-        oldest first. Returns None on failure or if no provider is configured."""
+        """Call whichever provider is configured (Gemini 1.5 Flash preferred, Groq/Ollama fallback)."""
 
-        if not self.client:
+        if self.provider == "gemini" and self.gemini_api_key:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_api_key}"
+            payload = {
+                "system_instruction": {
+                    "parts": [{"text": system}]
+                },
+                "contents": [
+                    {"parts": [{"text": user}]}
+                ]
+            }
+            try:
+                import httpx
+                with httpx.Client(timeout=15) as client:
+                    resp = client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts:
+                                return parts[0].get("text")
+                    print(f"Gemini API Notice ({resp.status_code}): {resp.text}")
+            except Exception as err:
+                print(f"Gemini API error: {err}")
+
+        if not self.client and self.provider != "gemini":
             return None
 
         clean_messages = [{"role": "system", "content": system}]
@@ -175,7 +203,7 @@ class AIOrchestrator:
                     })
         clean_messages.append({"role": "user", "content": user})
 
-        if self.provider == "groq":
+        if self.provider == "groq" and self.client:
             candidate_models = self.active_models or ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 
             for model_name in candidate_models:
@@ -191,16 +219,19 @@ class AIOrchestrator:
                     continue
             return None
 
-        try:
-            response = self.client.chat(
-                model=self.model,
-                messages=clean_messages,
-                stream=False
-            )
-            return response.message.content
-        except Exception as error:
-            print(f"{self.provider} API error: {type(error).__name__}: {error}")
-            return None
+        if self.client:
+            try:
+                response = self.client.chat(
+                    model=self.model,
+                    messages=clean_messages,
+                    stream=False
+                )
+                return response.message.content
+            except Exception as error:
+                print(f"{self.provider} API error: {type(error).__name__}: {error}")
+                return None
+
+        return None
 
     def answer(
         self,
