@@ -9,7 +9,9 @@ from app.core.config import get_settings
 from app.models.entities import Product
 from app.schemas.api import ChatResponse
 from app.services.catalog import CatalogService
+from app.services.live_search import search_live_deals
 from app.services.prompts import MODIFIERS
+from app.services.trust_engine import generate_trust_pros_cons
 
 
 def select_modifiers(message: str, requested_mode: str | None = None) -> list[str]:
@@ -104,18 +106,20 @@ class AIOrchestrator:
         ollama_key = settings.ollama_api_key or os.getenv("OLLAMA_API_KEY")
 
         if groq_key:
+            clean_key = groq_key.strip().strip("'").strip('"')
             self.client = OpenAI(
                 base_url="https://api.groq.com/openai/v1",
-                api_key=groq_key
+                api_key=clean_key
             )
             self.provider = "groq"
-            self.model = settings.groq_model
+            self.model = (settings.groq_model or "llama-3.3-70b-versatile").strip()
 
         elif ollama_key:
+            clean_key = ollama_key.strip().strip("'").strip('"')
             self.client = Client(
                 host="https://ollama.com",
                 headers={
-                    "Authorization": f"Bearer {ollama_key}"
+                    "Authorization": f"Bearer {clean_key}"
                 }
             )
             self.provider = "ollama"
@@ -134,13 +138,19 @@ class AIOrchestrator:
         if not self.client:
             return None
 
-        messages = [{"role": "system", "content": system}]
-        messages.extend(history or [])
-        messages.append({"role": "user", "content": user})
+        clean_messages = [{"role": "system", "content": system}]
+        if history:
+            for turn in history:
+                if isinstance(turn, dict) and turn.get("role") and turn.get("content"):
+                    clean_messages.append({
+                        "role": str(turn["role"]),
+                        "content": str(turn["content"])
+                    })
+        clean_messages.append({"role": "user", "content": user})
 
         if self.provider == "groq":
             candidate_models = [self.model] if self.model else []
-            for fallback in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768"]:
+            for fallback in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768"]:
                 if fallback not in candidate_models:
                     candidate_models.append(fallback)
 
@@ -148,22 +158,22 @@ class AIOrchestrator:
                 try:
                     response = self.client.chat.completions.create(
                         model=model_name,
-                        messages=messages
+                        messages=clean_messages
                     )
-                    return response.choices[0].message.content
+                    if response and response.choices:
+                        return response.choices[0].message.content
                 except Exception as error:
                     err_msg = str(error).lower()
-                    if "model_not_found" in err_msg or "404" in err_msg:
-                        print(f"Groq model '{model_name}' returned 404 model_not_found. Trying fallback model...")
+                    print(f"Groq API error with model '{model_name}': {type(error).__name__}: {error}")
+                    if any(code in err_msg for code in ["404", "400", "model_not_found", "invalid"]):
                         continue
-                    print(f"{self.provider} API error with model '{model_name}': {type(error).__name__}: {error}")
                     return None
             return None
 
         try:
             response = self.client.chat(
                 model=self.model,
-                messages=messages,
+                messages=clean_messages,
                 stream=False
             )
             return response.message.content
@@ -319,30 +329,29 @@ Keep the response concise and useful.
         if answer is None:
             return self._structured_response(products)
 
-        return ChatResponse(
-                answer=answer,
-                product_ids=ids,
-                reasons={
-                    str(product.id):
-                    f"Recommended based on relevance and "
-                    f"{product.rating:.1f}/5 rating."
-                    for product in products
-                },
-                pros={
-                    str(product.id): [
-                        "Catalog-backed product",
-                        "Good rating",
-                        "Real catalog price"
-                    ]
-                    for product in products
-                },
-                cons={
-                    str(product.id): [
-                        "Check detailed specifications before purchase"
-                    ]
-                    for product in products
-                }
+        pros_map = {}
+        cons_map = {}
+        reasons_map = {}
+
+        for product in products:
+            pid_str = str(product.id)
+            p_pros, p_cons = generate_trust_pros_cons(
+                rating=product.rating or 0.0,
+                price=product.price or 0.0,
+                brand=product.brand or "",
+                store_name="ShopSense Catalog"
             )
+            pros_map[pid_str] = p_pros
+            cons_map[pid_str] = p_cons
+            reasons_map[pid_str] = f"Verified catalog item ({product.rating:.1f}/5★ rating)."
+
+        return ChatResponse(
+            answer=answer,
+            product_ids=ids,
+            reasons=reasons_map,
+            pros=pros_map,
+            cons=cons_map
+        )
 
     def _general_ai_response(
         self,
@@ -350,23 +359,50 @@ Keep the response concise and useful.
         history: list[dict[str, str]] | None = None
     ) -> ChatResponse:
 
+        # Warm greeting response for common conversational intros
+        clean_msg = message.strip().lower()
+        if clean_msg in ["hi", "hello", "hey", "hi there", "hello there", "help"]:
+            return ChatResponse(
+                answer=(
+                    "Hello! 👋 I'm ShopSense, your AI shopping copilot. "
+                    "I can help you find products, compare options, check prices, or find top deals under a budget. "
+                    "What are you looking for today?"
+                )
+            )
+
+        # Fetch 100% free real-time live web product deals via DuckDuckGo
+        live_deals = search_live_deals(message, max_results=3)
+
+        live_context_str = ""
+        if live_deals:
+            deal_items = []
+            for d in live_deals:
+                price_info = f" ({d['price_str']})" if d.get('price_str') else ""
+                deal_items.append(f"- [{d['store']}] {d['title']}{price_info}: {d['url']}")
+            live_context_str = "\nLive web deals & product options found:\n" + "\n".join(deal_items)
+
+        prompt = f"{message}\n{live_context_str}" if live_context_str else message
+
         answer = self._chat(
             system=(
-                "You are ShopSense, a helpful shopping "
-                "assistant. Answer naturally. "
-                "Do not force the user to provide a category "
-                "or budget. If no catalog product is available, "
-                "give general shopping advice without inventing "
-                "specific products. Use the conversation history "
-                "to stay consistent with earlier context like "
-                "budget or brand."
+                "You are ShopSense, an expert 100% free AI shopping copilot. "
+                "Help the user find the best, most trustworthy products at the cheapest prices. "
+                "If live web deal links are provided in the prompt, recommend them with their price and source link."
             ),
-            user=message,
+            user=prompt,
             history=history
         )
 
         if answer is None:
-            # Fallback 1: Try finding top catalog products matching keywords
+            # Fallback 1: Return live web deals formatted directly if LLM unavailable
+            if live_deals:
+                lines = ["Here are top live deals found online:\n"]
+                for d in live_deals:
+                    price_info = f" — **{d['price_str']}**" if d.get('price_str') else ""
+                    lines.append(f"• **[{d['store']}]** [{d['title']}]({d['url']}){price_info}")
+                return ChatResponse(answer="\n".join(lines))
+
+            # Fallback 2: Catalog search fallback
             keywords = ["phone", "laptop", "headphones", "watch", "buy", "deal", "cheap"]
             if any(k in message.lower() for k in keywords):
                 fallback_products = self.catalog.search(" ".join([k for k in keywords if k in message.lower()]), limit=3)
@@ -375,20 +411,10 @@ Keep the response concise and useful.
                 if fallback_products:
                     return self._structured_response(fallback_products)
 
-            # Fallback 2: Clear notice when GROQ_API_KEY is not responding or unconfigured
-            settings = get_settings()
-            if not settings.groq_api_key and not settings.ollama_api_key:
-                return ChatResponse(
-                    answer=(
-                        "AI language service is not configured (GROQ_API_KEY missing on server). "
-                        "Please set GROQ_API_KEY in your server environment variables or paste a product link directly!"
-                    )
-                )
-
             return ChatResponse(
                 answer=(
-                    "I am currently unable to reach the AI model service. "
-                    "You can paste a product URL to scrape details, or search for products in the catalog!"
+                    "I couldn't locate specific live deals for that query right now. "
+                    "Try typing a query like 'phone under 15000' or paste a product link directly!"
                 )
             )
 
@@ -406,28 +432,28 @@ Keep the response concise and useful.
             for product in products
         )
 
+        pros_map = {}
+        cons_map = {}
+        reasons_map = {}
+
+        for product in products:
+            pid_str = str(product.id)
+            p_pros, p_cons = generate_trust_pros_cons(
+                rating=product.rating or 0.0,
+                price=product.price or 0.0,
+                brand=product.brand or "",
+                store_name="ShopSense Catalog"
+            )
+            pros_map[pid_str] = p_pros
+            cons_map[pid_str] = p_cons
+            reasons_map[pid_str] = f"Trusted catalog match with {product.rating:.1f}/5★ rating."
+
         return ChatResponse(
-            answer=f"Here are some good options: {names}.",
+            answer=f"Here are top verified options: {names}.",
             product_ids=ids,
-            reasons={
-                str(product.id):
-                f"Good catalog match with {product.rating:.1f}/5 rating."
-                for product in products
-            },
-            pros={
-                str(product.id): [
-                    "Catalog-backed choice",
-                    "Good rating",
-                    "Clear price"
-                ]
-                for product in products
-            },
-            cons={
-                str(product.id): [
-                    "Check detailed specifications before purchase"
-                ]
-                for product in products
-            }
+            reasons=reasons_map,
+            pros=pros_map,
+            cons=cons_map
         )
 
 
