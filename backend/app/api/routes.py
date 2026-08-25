@@ -90,19 +90,12 @@ def price_history(product_id: int, db: Session = Depends(get_db)) -> PriceHistor
 @router.post("/identify-image", response_model=ChatResponse)
 async def identify_image_route(file: UploadFile = File(...), db: Session = Depends(get_db)) -> ChatResponse:
     settings = get_settings()
-
-    if not settings.google_vision_api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Image search isn't configured yet — GOOGLE_VISION_API_KEY is missing on the server."
-        )
-
     image_bytes = await file.read()
 
     try:
         labels = identify_image(image_bytes, settings.google_vision_api_key)
     except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="Couldn't analyze that image right now. Try again shortly.")
+        labels = identify_image(image_bytes, None)
 
     if not labels:
         return ChatResponse(answer="I couldn't identify anything specific in that image. Try a clearer or closer photo.")
