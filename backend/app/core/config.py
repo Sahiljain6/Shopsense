@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    gemini_api_key: str = ""
+
     ollama_api_key: str = ""
     ollama_model: str = "llama3.1:8b"
 
