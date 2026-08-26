@@ -152,9 +152,6 @@ def normalize_query(message: str) -> str:
         text = text.replace(old, new)
 
     return text
-        text = text.replace(old, new)
-
-    return text
 
 
 def get_active_groq_models(api_key: str) -> list[str]:
