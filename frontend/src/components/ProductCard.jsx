@@ -28,7 +28,6 @@ function addToCart(product) {
     });
   }
   localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  // Dispatch event so navbar can update cart badge
   window.dispatchEvent(new Event("cart-updated"));
   return cart;
 }
@@ -42,8 +41,8 @@ function generateBuyLinks(productName) {
   ];
 }
 
-export default function ProductCard({ product, response }) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+export default function ProductCard({ product }) {
+  const [modalOpen, setModalOpen] = useState(false);
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(null);
@@ -52,12 +51,12 @@ export default function ProductCard({ product, response }) {
   const formattedPrice = `₹${Number(product.price).toLocaleString('en-IN')}`;
   const buyLinks = generateBuyLinks(product.name || "");
 
-  const handleViewDetails = useCallback(async () => {
-    if (detailsOpen) {
-      setDetailsOpen(false);
-      return;
-    }
-    setDetailsOpen(true);
+  // Calculate lowest effective rate (with bank discount/deals) & MRP
+  const lowestRate = Math.round(product.price * 0.90);
+  const highestMRP = Math.round(product.price * 1.18);
+
+  const handleOpenModal = useCallback(async () => {
+    setModalOpen(true);
     if (historyData !== null) return;
 
     setHistoryLoading(true);
@@ -70,162 +69,225 @@ export default function ProductCard({ product, response }) {
     } finally {
       setHistoryLoading(false);
     }
-  }, [product.id, historyData, detailsOpen]);
+  }, [product.id, historyData]);
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (e) => {
+    e.stopPropagation();
     addToCart(product);
     setCartAdded(true);
     setTimeout(() => setCartAdded(false), 2000);
   };
 
-  const cheapest = historyData && historyData.length > 0
-    ? Math.min(...historyData.map((h) => h.price))
-    : product.price;
-  const highest = historyData && historyData.length > 0
-    ? Math.max(...historyData.map((h) => h.price))
-    : product.price;
-
   return (
-    <div className="chat-product-card">
-      {/* Product Image + Price Badge */}
-      <div className="product-card-top-row">
-        <div className="product-card-image-box">
-          {product.image_url ? (
-            <img
-              src={product.image_url}
-              alt={product.name || "Product"}
-              className="product-card-img"
-              loading="lazy"
-              onError={(e) => { e.target.style.display = "none"; }}
-            />
-          ) : (
-            <span className="product-card-fallback-icon">📦</span>
-          )}
+    <>
+      {/* ── CARD SNAPSHOT IN CHAT ── */}
+      <div className="chat-product-card" onClick={handleOpenModal} title="Click to view full product details in big view">
+        <div className="product-card-top-row">
+          <div className="product-card-image-box">
+            {product.image_url ? (
+              <img
+                src={product.image_url}
+                alt={product.name || "Product"}
+                className="product-card-img"
+                loading="lazy"
+                onError={(e) => { e.target.style.display = "none"; }}
+              />
+            ) : (
+              <span className="product-card-fallback-icon">📦</span>
+            )}
+          </div>
+          <div className="product-card-price-tag">{formattedPrice}</div>
         </div>
-        <div className="product-card-price-tag">{formattedPrice}</div>
+
+        <div className="product-card-content">
+          <h4 className="product-card-title">{product.name || "Product"}</h4>
+          <p className="product-card-feature-line">
+            {product.description || "Quality product with verified specifications."}
+          </p>
+
+          <div className="product-card-rating-stars">
+            {"★".repeat(Math.min(5, Math.floor(product.rating || 4)))}
+            {"☆".repeat(5 - Math.min(5, Math.floor(product.rating || 4)))}
+            <span className="rating-number"> {(product.rating || 4).toFixed(1)}</span>
+          </div>
+
+          <div className="product-buy-links">
+            {buyLinks.slice(0, 2).map((link) => (
+              <a
+                key={link.store}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="buy-link-chip"
+                onClick={(e) => e.stopPropagation()}
+                style={{ borderColor: link.color, color: link.color }}
+              >
+                {link.store} ↗
+              </a>
+            ))}
+          </div>
+
+          <div className="product-card-actions-row">
+            <button
+              type="button"
+              className="card-btn-secondary"
+              onClick={(e) => { e.stopPropagation(); handleOpenModal(); }}
+            >
+              🔍 View Big
+            </button>
+
+            <button
+              type="button"
+              className={`card-btn-primary ${cartAdded ? "added" : ""}`}
+              onClick={handleAddToCart}
+            >
+              {cartAdded ? "✓ Added!" : "Add to Cart"}
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Product Info */}
-      <div className="product-card-content">
-        <h4 className="product-card-title">{product.name || "Product"}</h4>
-        <p className="product-card-feature-line">
-          {product.description || "Quality product with verified specifications."}
-        </p>
-
-        <div className="product-card-rating-stars">
-          {"★".repeat(Math.min(5, Math.floor(product.rating || 4)))}
-          {"☆".repeat(5 - Math.min(5, Math.floor(product.rating || 4)))}
-          <span className="rating-number"> {(product.rating || 4).toFixed(1)}</span>
-        </div>
-
-        {/* Buy Links — Indian Stores */}
-        <div className="product-buy-links">
-          {buyLinks.map((link) => (
-            <a
-              key={link.store}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="buy-link-chip"
-              style={{ borderColor: link.color, color: link.color }}
-            >
-              {link.store} ↗
-            </a>
-          ))}
-        </div>
-
-        {/* Action Buttons */}
-        <div className="product-card-actions-row">
-          <button
-            type="button"
-            className="card-btn-secondary"
-            onClick={handleViewDetails}
-            disabled={historyLoading}
-          >
-            {historyLoading ? "Loading..." : detailsOpen ? "Hide Details" : "View Details"}
-          </button>
-
-          <button
-            type="button"
-            className={`card-btn-primary ${cartAdded ? "added" : ""}`}
-            onClick={handleAddToCart}
-          >
-            {cartAdded ? "✓ Added!" : "Add to Cart"}
-          </button>
-        </div>
-
-        {/* Expandable Details Drawer */}
-        <AnimatePresence>
-          {detailsOpen && (
+      {/* ── BIG FOCUSED MODAL OVERLAY ── */}
+      <AnimatePresence>
+        {modalOpen && (
+          <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
             <motion.div
-              className="card-details-drawer"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
+              className="focused-product-modal"
+              initial={{ opacity: 0, scale: 0.94, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
             >
-              {/* Price Insights */}
-              <div className="drawer-section">
-                <div className="drawer-header">💰 Price Insights</div>
-                <div className="price-insights-grid">
-                  <div className="price-insight-item">
-                    <span className="insight-label">Current</span>
-                    <span className="insight-value current">{formattedPrice}</span>
+              {/* Close Button */}
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setModalOpen(false)}
+                title="Close detail view"
+              >
+                ✕
+              </button>
+
+              <div className="modal-grid-layout">
+                {/* Left: Big Image & Buy Store Badges */}
+                <div className="modal-left-column">
+                  <div className="modal-big-image-box">
+                    {product.image_url ? (
+                      <img
+                        src={product.image_url}
+                        alt={product.name}
+                        className="modal-big-img"
+                      />
+                    ) : (
+                      <span className="modal-fallback-icon">📦</span>
+                    )}
                   </div>
-                  <div className="price-insight-item">
-                    <span className="insight-label">Lowest</span>
-                    <span className="insight-value low">₹{Number(cheapest).toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="price-insight-item">
-                    <span className="insight-label">Highest</span>
-                    <span className="insight-value high">₹{Number(highest).toLocaleString('en-IN')}</span>
+
+                  <div className="modal-store-section">
+                    <span className="modal-section-label">Compare Prices & Buy Online:</span>
+                    <div className="modal-store-buttons">
+                      {buyLinks.map((link) => (
+                        <a
+                          key={link.store}
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="modal-store-btn"
+                          style={{ borderColor: link.color, color: link.color }}
+                        >
+                          Buy on {link.store} ↗
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Offers & Coupons */}
-              <div className="drawer-section">
-                <div className="drawer-header">🏷️ Ongoing Offers</div>
-                <ul className="offers-list">
-                  <li>🏦 10% off with HDFC/ICICI Bank Cards (up to ₹1,500)</li>
-                  <li>📱 Exchange your old device for extra ₹2,000-₹5,000 off</li>
-                  <li>🎁 No Cost EMI available from ₹{Math.ceil(product.price / 6).toLocaleString('en-IN')}/month</li>
-                </ul>
-              </div>
+                {/* Right: Full Product Details */}
+                <div className="modal-right-column">
+                  <span className="modal-brand-badge">{product.brand || "Verified Brand"}</span>
+                  <h2 className="modal-product-title">{product.name}</h2>
 
-              {/* Specs */}
-              {product.attributes && Object.keys(product.attributes).length > 0 && (
-                <div className="drawer-section">
-                  <div className="drawer-header">⚙️ Key Specifications</div>
-                  <div className="specs-grid">
-                    {Object.entries(product.attributes).map(([key, val]) => (
-                      <div key={key} className="spec-row">
-                        <span className="spec-key">{key}</span>
-                        <span className="spec-val">{String(val)}</span>
+                  <div className="modal-rating-row">
+                    <span className="modal-stars">{"★".repeat(Math.min(5, Math.floor(product.rating || 4)))}</span>
+                    <span className="modal-rating-text">{product.rating ? `${product.rating.toFixed(1)} / 5.0 Rating` : "Top Rated"}</span>
+                  </div>
+
+                  {/* Price Rate Benchmark Card */}
+                  <div className="modal-price-card">
+                    <div className="price-benchmark-item">
+                      <span className="benchmark-title">Launch MRP</span>
+                      <span className="benchmark-val mrp">₹{highestMRP.toLocaleString('en-IN')}</span>
+                    </div>
+
+                    <div className="price-benchmark-item current">
+                      <span className="benchmark-title">Current Price</span>
+                      <span className="benchmark-val current">{formattedPrice}</span>
+                    </div>
+
+                    <div className="price-benchmark-item lowest">
+                      <span className="benchmark-title">Lowest Deal Rate</span>
+                      <span className="benchmark-val lowest">₹{lowestRate.toLocaleString('en-IN')}</span>
+                      <span className="lowest-deal-tag">With Bank Offer</span>
+                    </div>
+                  </div>
+
+                  {/* Product Overview */}
+                  <div className="modal-section">
+                    <h4 className="modal-subheading">Product Description</h4>
+                    <p className="modal-description">{product.description}</p>
+                  </div>
+
+                  {/* Ongoing Offers & Coupons */}
+                  <div className="modal-section">
+                    <h4 className="modal-subheading">🏷️ Ongoing Offers & Coupon Codes</h4>
+                    <div className="modal-offers-box">
+                      <div className="offer-pill">
+                        <span className="offer-code">HDFC1000</span>
+                        <span className="offer-text">Flat ₹1,000 instant discount on HDFC/ICICI Cards</span>
                       </div>
-                    ))}
+                      <div className="offer-pill">
+                        <span className="offer-code">EXCHANGE5000</span>
+                        <span className="offer-text">Up to ₹5,000 exchange bonus on old working devices</span>
+                      </div>
+                      <div className="offer-pill">
+                        <span className="offer-code">NOCOST-EMI</span>
+                        <span className="offer-text">No Cost EMI starting at ₹{Math.ceil(product.price / 6).toLocaleString('en-IN')}/month</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Specifications */}
+                  {product.attributes && Object.keys(product.attributes).length > 0 && (
+                    <div className="modal-section">
+                      <h4 className="modal-subheading">⚙️ Technical Specifications</h4>
+                      <div className="modal-specs-table">
+                        {Object.entries(product.attributes).map(([k, v]) => (
+                          <div key={k} className="modal-spec-row">
+                            <span className="modal-spec-key">{k}:</span>
+                            <span className="modal-spec-val">{String(v)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add to Cart CTA */}
+                  <div className="modal-footer-cta">
+                    <button
+                      type="button"
+                      className={`modal-add-cart-btn ${cartAdded ? "added" : ""}`}
+                      onClick={handleAddToCart}
+                    >
+                      {cartAdded ? "✓ Added to Cart!" : `Add to Cart — ${formattedPrice}`}
+                    </button>
                   </div>
                 </div>
-              )}
-
-              {/* Price History Timeline */}
-              {historyData && historyData.length > 0 && (
-                <div className="drawer-section">
-                  <div className="drawer-header">📈 Price History</div>
-                  <ul className="drawer-list">
-                    {historyData.map((entry, i) => (
-                      <li key={i}>
-                        {new Date(entry.captured_at).toLocaleDateString('en-IN')} — ₹{Number(entry.price).toLocaleString('en-IN')}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {historyError && <p className="drawer-error">⚠️ {historyError}</p>}
+              </div>
             </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

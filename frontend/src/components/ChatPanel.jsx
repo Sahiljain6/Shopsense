@@ -136,13 +136,14 @@ export default function ChatPanel({ onError, onClearError }) {
           try {
             const response = await sendChat(text, null, history);
             const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
-            const catalog = ids.length ? await getProducts(text, 12) : [];
-            const fallback = ids.length && !catalog.some((p) => ids.includes(p.id))
-              ? await getProducts("", 12) : catalog;
-            const products = ids.length ? fallback.filter((p) => ids.includes(p.id)) : [];
+            let products = [];
+            if (ids.length > 0) {
+              const catalog = await getProducts("", 50);
+              products = catalog.filter((p) => ids.includes(p.id));
+            }
             setMessages((prev2) => [...prev2, {
               role: "assistant",
-              text: response.answer || "Here are my recommendations:",
+              text: response.answer || "Here is what I found:",
               response, products,
             }]);
           } catch (err) { onError(friendlyError(err)); }

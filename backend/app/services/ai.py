@@ -437,29 +437,49 @@ class AIOrchestrator:
                     if enriched_message != message:
                         break
 
-        normalized = normalize_query(enriched_message)
+        lowered_msg = message.lower()
 
-        products = self.catalog.search(normalized, limit=12)
+        # Rule 1: Handle comparison queries explicitly (e.g. "Compare iPhone 15 vs OnePlus 12")
+        if "vs" in lowered_msg or "compare" in lowered_msg:
+            parts = re.split(r'\b(?:vs\.?|versus|and|compare)\b', lowered_msg, flags=re.IGNORECASE)
+            comparison_products = []
+            for part in parts:
+                clean_part = part.strip()
+                if clean_part and len(clean_part) > 2 and clean_part not in ["iphone", "phone", "specs", "best"]:
+                    matches = self.catalog.search(clean_part, limit=1)
+                    for m in matches:
+                        if m.id not in [p.id for p in comparison_products]:
+                            comparison_products.append(m)
+            if len(comparison_products) >= 2:
+                return self._generate_ai_response(message, comparison_products[:3], history)
 
-        budget = extract_budget(message)
+        # Rule 2: Explicit recommendation / search intent check
+        card_intent_keywords = [
+            "recommend", "suggest", "show me", "find me", "search", "under", "below",
+            "budget", "options", "best phone", "best laptop", "best earbuds", "best keyboard",
+            "best watch", "best tv", "deals", "buy", "pick"
+        ]
 
-        if budget is not None:
-            products = [
-                product
-                for product in products
-                if product.price <= budget
-            ]
+        wants_cards = any(kw in lowered_msg for kw in card_intent_keywords) or extract_budget(message) is not None
 
-        products = self._rank_products(products)
+        if wants_cards:
+            normalized = normalize_query(enriched_message)
+            products = self.catalog.search(normalized, limit=12)
+            budget = extract_budget(message)
 
-        if products:
-            products = products[:(
-                1 if "quick_answer" in select_modifiers(message, mode)
-                else 3
-            )]
+            if budget is not None:
+                products = [p for p in products if p.price <= budget]
 
-            return self._generate_ai_response(message, products, history)
+            products = self._rank_products(products)
 
+            if products:
+                products = products[:(
+                    1 if "quick_answer" in select_modifiers(message, mode)
+                    else 3
+                )]
+                return self._generate_ai_response(message, products, history)
+
+        # Rule 3: Conversational / Advice Queries -> Text only, no product cards attached
         return self._general_ai_response(message, history)
 
     def answer_via_agents(
