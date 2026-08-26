@@ -618,18 +618,29 @@ RESPONSE RULES:
         history: list[dict[str, str]] | None = None
     ) -> ChatResponse:
 
-        # Warm greeting response for common conversational intros
+        # Conversational / Small Talk Intercepts (No web search, no random links)
         clean_msg = message.strip().lower()
-        if clean_msg in ["hi", "hello", "hey", "hi there", "hello there", "help"]:
-            return ChatResponse(
-                answer=(
-                    "Hello! 👋 I'm ShopSense, your AI shopping copilot. "
-                    "I can help you find products, compare options, check prices, or find top deals under a budget. "
-                    "What are you looking for today?"
-                )
-            )
 
-        # Fetch 100% free real-time live web product deals via DuckDuckGo
+        conversational_map = {
+            "how are you": "I'm doing great! 🛍️ Ready to help you discover products, compare specs, or find the best deals in India. What are you looking for today?",
+            "how are you doing": "I'm doing awesome! 🛍️ Ready to help you shop smart and save money. What product or budget are you considering today?",
+            "who are you": "I'm **ShopSense**, your AI shopping copilot! 🛍️ I help you discover products, compare models side-by-side, analyze live deals across Amazon India, Flipkart & Croma, and track prices in ₹.",
+            "what can you do": "I can help you:\n• 🔍 Search & recommend products by category or budget\n• ⚖️ Benchmark specs side-by-side\n• 💰 Track prices & live deals across Amazon India, Flipkart & Croma\n• 🏷️ Check ongoing bank offers & coupon codes",
+            "thank you": "You're very welcome! 😊 Let me know if you need any more product recommendations or price comparisons!",
+            "thanks": "Happy to help! 😊 Feel free to ask if you want to compare other models or check deals!",
+        }
+
+        for phrase, reply in conversational_map.items():
+            if phrase in clean_msg:
+                return ChatResponse(answer=reply)
+
+        # Generic Smartphone Comparison Request (e.g. "compare two best smartphone")
+        if any(p in clean_msg for p in ["compare two best smartphone", "compare smartphone", "compare phone", "compare two best phone"]):
+            top_phones = self.catalog.search("phone", limit=2)
+            if top_phones:
+                return self._generate_ai_response(message, top_phones, history)
+
+        # Fetch 100% free real-time live web product deals via DuckDuckGo (strict e-commerce only)
         live_deals = search_live_deals(message, max_results=3)
 
         live_context_str = ""
