@@ -99,6 +99,11 @@ def needs_clarification(message: str) -> str | None:
 def extract_budget(message: str) -> float | None:
     text = message.lower().replace(",", "")
 
+    # USD to INR conversion ($100 -> ₹8,300)
+    usd = re.search(r"\$\s*(\d+(?:\.\d+)?)", text)
+    if usd:
+        return float(usd.group(1)) * 83.0
+
     lakh = re.search(r"(\d+(?:\.\d+)?)\s*lakhs?", text)
     if lakh:
         return float(lakh.group(1)) * 100000
@@ -108,7 +113,7 @@ def extract_budget(message: str) -> float | None:
         return float(thousand.group(1)) * 1000
 
     amount = re.search(
-        r"(?:under|below|upto|up to|within|budget|around)?\s*[₹rs\.]*\s*(\d{4,7})",
+        r"(?:under|below|upto|up to|within|budget|around|less than)?\s*[₹rs\.]*\s*(\d{3,7})",
         text
     )
 
@@ -130,14 +135,23 @@ def normalize_query(message: str) -> str:
         "cellphone": "phone",
         "notebooks": "laptop",
         "notebook": "laptop",
-        "earphones": "headphones",
-        "earbuds": "headphones",
+        "mechanical keyboards": "keyboard",
+        "gaming keyboard": "keyboard",
+        "gaming keyboards": "keyboard",
+        "keyboards": "keyboard",
+        "wireless earbuds": "earbuds",
+        "earphones": "earbuds",
+        "earbud": "earbuds",
+        "tws": "earbuds",
         "headsets": "headphones",
         "smartwatch": "watch",
         "smart watches": "watch",
     }
 
     for old, new in replacements.items():
+        text = text.replace(old, new)
+
+    return text
         text = text.replace(old, new)
 
     return text
@@ -547,49 +561,60 @@ Keep the response concise and useful.
         )
 
         if answer is None:
-            # Fallback 1: Return live web deals formatted directly if LLM unavailable
+            # Fallback 1: Return live Indian e-commerce deals formatted directly
             if live_deals:
-                lines = ["Here are top live deals found online:\n"]
+                lines = ["### 🇮🇳 Top Live Deals Found in India:\n"]
                 for d in live_deals:
                     price_info = f" — **{d['price_str']}**" if d.get('price_str') else ""
                     lines.append(f"• **[{d['store']}]** [{d['title']}]({d['url']}){price_info}")
                 return ChatResponse(answer="\n".join(lines))
 
-            # Fallback 2: Catalog search fallback
-            keywords = ["phone", "iphone", "samsung", "apple", "laptop", "macbook", "headphones", "earbuds", "watch", "buy", "deal", "cheap", "compare"]
+            # Fallback 2: Intelligent Catalog Search Matching
+            keywords = ["keyboard", "earbuds", "phone", "iphone", "samsung", "apple", "laptop", "macbook", "audio", "watch", "deal", "gaming", "tws"]
             lowered = message.lower()
             matched_keywords = [k for k in keywords if k in lowered]
             if matched_keywords:
                 search_query = " ".join(matched_keywords)
                 fallback_products = self.catalog.search(search_query, limit=4)
-                if not fallback_products:
-                    fallback_products = self.catalog.search("", limit=3)
                 if fallback_products:
                     return self._structured_response(fallback_products)
 
-            # Fallback 3: Comparison breakdown for iPhone vs Samsung if database has no records
-            if "iphone" in lowered and "samsung" in lowered:
+            # Fallback 3: Category-specific expert breakdown
+            if any(w in lowered for w in ["earbud", "earbuds", "tws", "headphone", "earphone", "audio"]):
+                earbuds = self.catalog.search("earbuds", limit=4)
+                if earbuds:
+                    return self._structured_response(earbuds)
                 return ChatResponse(
                     answer=(
-                        "### 📱 iPhone vs. Samsung Galaxy: Key Comparison\n\n"
-                        "• **iPhone (iOS & Apple Ecosystem)**:\n"
-                        "  - ✦ **Strengths**: Best-in-class video recording, 5-7 years software updates, Apple Silicon performance & seamless Mac/iPad ecosystem.\n"
-                        "  - ✦ **Recommended Models**: iPhone 15 Pro, iPhone 15, iPhone 13 (Best budget entry).\n\n"
-                        "• **Samsung Galaxy (Android & Customization)**:\n"
-                        "  - ✦ **Strengths**: 100x zoom camera & S-Pen stylus (Ultra models), 120Hz Dynamic AMOLED displays, superior multitasking & Galaxy AI features.\n"
-                        "  - ✦ **Recommended Models**: Galaxy S24 Ultra, Galaxy S24, Galaxy A55 5G (Budget champion).\n\n"
-                        "💡 **Verdict**: Choose **iPhone** for long-term resale value & ecosystem continuity, or **Samsung** for screen quality, multitasking, and camera zoom flexibility."
+                        "### 🎧 Top Wireless Earbuds in India (Best Value to Flagship)\n\n"
+                        "• **Budget King (Under ₹2,000)**: **boAt Airdopes 141 ANC** (₹1,499) — 32dB ANC, 42H battery, low latency beast.\n"
+                        "• **Mid-Range Champion (Under ₹5,000)**: **Realme Buds Air 6 Pro** (₹4,999) — 50dB ANC, Hi-Res LDAC audio, dual drivers.\n"
+                        "• **Flagship Excellence (Under ₹10,000)**: **OnePlus Buds Pro 2** (₹8,999) — Dynaudio tuning, Spatial Audio, 48dB ANC.\n"
+                        "• **Ultimate Audiophile Pick**: **Sony WF-1000XM5** (₹24,990) — Industry-leading noise cancellation & LDAC Hi-Res sound."
+                    )
+                )
+
+            if any(w in lowered for w in ["keyboard", "keyboards", "mechanical keyboard", "gaming keyboard"]):
+                keyboards = self.catalog.search("keyboard", limit=4)
+                if keyboards:
+                    return self._structured_response(keyboards)
+                return ChatResponse(
+                    answer=(
+                        "### ⌨️ Top Mechanical Keyboards in India (Budget to Premium)\n\n"
+                        "• **Best Budget TKL (Under ₹2,500)**: **Cosmic Byte CB-GK-16 Firefly** (₹2,199) — Outemu Blue tactile clicky switches, per-key RGB.\n"
+                        "• **Best Durable Gaming (Under ₹3,500)**: **Redragon K552 Kumara RGB** (₹2,790) — Metal base, red linear switches, splash-proof.\n"
+                        "• **Best Wireless & Typing (Under ₹8,000)**: **Keychron K2 V2 Wireless** (₹7,999) — Hot-swappable Gateron Brown, Mac/Win support, 4000mAh battery."
                     )
                 )
 
             # Fallback 4: General catalog recommendation
-            all_products = self.catalog.search("", limit=3)
+            all_products = self.catalog.search("", limit=4)
             if all_products:
                 return self._structured_response(all_products)
 
             return ChatResponse(
                 answer=(
-                    "I searched for top matches. To find the exact deal, try asking for a specific model or budget, e.g. **'Best phone under 20000'** or **'Compare iPhone 15 vs Galaxy S24'**!"
+                    "I searched verified Indian catalogs. Try asking for **'Best wireless earbuds under ₹2,000'**, **'Mechanical keyboard for gaming'**, or **'Compare iPhone 15 vs OnePlus 12'**!"
                 )
             )
 

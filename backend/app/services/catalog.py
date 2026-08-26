@@ -31,8 +31,10 @@ class CatalogService:
             "iphone": ["iphone", "apple", "phone", "smartphone"],
             "samsung": ["samsung", "galaxy", "phone", "smartphone"],
             "apple": ["apple", "iphone", "macbook", "ipad", "airpods"],
-            "laptop": ["laptop", "notebook", "macbook"],
-            "headphones": ["headphone", "headphones", "earbuds", "earphones", "airpods"],
+            "laptop": ["laptop", "notebook", "macbook", "asus", "tuf"],
+            "keyboard": ["keyboard", "mechanical keyboard", "firefly", "keychron", "redragon", "cosmic byte", "gaming keyboard"],
+            "earbuds": ["earbuds", "earbud", "tws", "airdopes", "oneplus buds", "sony", "headphones"],
+            "headphones": ["headphone", "headphones", "earbuds", "earphones", "airpods", "airdopes"],
             "watch": ["watch", "smartwatch", "apple watch", "galaxy watch"],
             "speaker": ["speaker", "speakers", "soundbar"],
             "tablet": ["tablet", "tablets", "ipad"]

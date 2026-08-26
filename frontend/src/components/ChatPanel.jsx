@@ -16,24 +16,24 @@ const MODES = [
     icon: "⚖️",
     badge: "BENCHMARK",
     desc: "Side-by-side spec comparison, pros/cons, & value breakdown",
-    placeholder: "Enter 2+ products to benchmark (e.g. iPhone 15 Pro vs Galaxy S24 Ultra)...",
+    placeholder: "Enter 2+ products to benchmark (e.g. Compare iPhone 15 vs OnePlus 12)...",
     suggestions: [
-      "iPhone 15 Pro vs Samsung S24 Ultra",
-      "Sony WH-1000XM5 vs Bose QC Ultra",
-      "MacBook Air M3 vs Dell XPS 13",
+      "Compare iPhone 15 vs OnePlus 12",
+      "Sony WF-1000XM5 vs OnePlus Buds Pro 2",
+      "MacBook Air M3 vs ASUS TUF F15",
     ],
   },
   {
     id: "budget_optimizer",
     label: "Budget Cap",
     icon: "💰",
-    badge: "PRICE LIMIT",
-    desc: "Maximize performance-to-price ratio within your exact budget ceiling",
-    placeholder: "Set target budget (e.g. Best noise-cancelling headphones under $100)...",
+    badge: "INR BUDGET",
+    desc: "Maximize performance-to-price ratio within your exact budget limit in ₹",
+    placeholder: "Set target budget (e.g. Best TWS earbuds under ₹2,000)...",
     suggestions: [
-      "Best wireless earbuds under $50",
-      "Gaming laptops under $800",
-      "4K Smart TVs under $400",
+      "Best TWS earbuds under ₹2,000",
+      "Gaming laptops under ₹60,000",
+      "Best 5G phones under ₹20,000",
     ],
   },
   {
@@ -41,12 +41,12 @@ const MODES = [
     label: "Gift Finder",
     icon: "🎁",
     badge: "CURATED",
-    desc: "Personalized gift suggestions based on recipient profile & budget",
-    placeholder: "Who is the gift for? (e.g. Tech gift for gamer under $75)...",
+    desc: "Personalized gift suggestions for Indian occasions & recipients",
+    placeholder: "Who is the gift for? (e.g. Birthday gift for brother under ₹3,000)...",
     suggestions: [
-      "Tech gift for photographer under $100",
-      "Gift for coffee enthusiast under $50",
-      "Ergonomic workspace gifts",
+      "Tech gift for gamer under ₹5,000",
+      "Birthday gift for sister under ₹2,000",
+      "Useful office desk gadgets under ₹1,500",
     ],
   },
   {
@@ -54,52 +54,52 @@ const MODES = [
     label: "Quick Verdict",
     icon: "⚡",
     badge: "INSTANT",
-    desc: "Fast, no-fluff buying recommendation & deal sanity check",
-    placeholder: "Ask any buying question (e.g. Is iPhone 15 worth it in 2026?)...",
+    desc: "Fast buying verdict & deal verification",
+    placeholder: "Ask any buying question (e.g. Is Redmi Note 13 Pro+ worth buying?)...",
     suggestions: [
-      "Is M3 MacBook Air worth buying today?",
-      "OLED vs QLED: Which should I choose?",
-      "Best value iPad for students",
+      "Is OnePlus 12 worth buying in 2026?",
+      "Best mechanical keyboard for typing under ₹3,000",
+      "OLED vs QLED TV for Indian living room",
     ],
   },
 ];
 
-// Curated live preview products to give visual commerce feel immediately
+// Curated live Indian showcase products
 const SHOWCASE_PRODUCTS = [
   {
-    name: "Sony WH-1000XM5 Noise Cancelling",
+    name: "boAt Airdopes 141 ANC (32dB ANC, 42H)",
     category: "Audio",
-    price: "$328.00",
-    oldPrice: "$399.99",
-    savings: "18% OFF",
-    rating: "4.8 ★",
-    prompt: "Show me deals and review summary for Sony WH-1000XM5",
+    price: "₹1,499",
+    oldPrice: "₹4,490",
+    savings: "66% OFF",
+    rating: "4.3 ★",
+    prompt: "Show me review digest and pros/cons for boAt Airdopes 141 ANC",
   },
   {
-    name: "Apple MacBook Air 13\" M3",
-    category: "Laptops",
-    price: "$999.00",
-    oldPrice: "$1,099.00",
-    savings: "$100 OFF",
-    rating: "4.9 ★",
-    prompt: "Compare MacBook Air M3 with M2 model",
+    name: "Cosmic Byte CB-GK-16 Firefly Mechanical Keyboard",
+    category: "Peripherals",
+    price: "₹2,199",
+    oldPrice: "₹2,999",
+    savings: "27% OFF",
+    rating: "4.4 ★",
+    prompt: "Recommend a mechanical gaming keyboard under ₹3000",
   },
   {
-    name: "Samsung Galaxy S24 Ultra 5G",
+    name: "OnePlus 12 5G (16GB RAM, 512GB Storage)",
     category: "Smartphones",
-    price: "$1,149.00",
-    oldPrice: "$1,299.99",
-    savings: "$150 OFF",
+    price: "₹64,999",
+    oldPrice: "₹69,999",
+    savings: "₹5,000 OFF",
     rating: "4.7 ★",
-    prompt: "Compare Galaxy S24 Ultra with iPhone 15 Pro",
+    prompt: "Compare OnePlus 12 with iPhone 15 and Galaxy S24",
   },
 ];
 
 const DEFAULT_SUGGESTIONS = [
-  "Find top wireless earbuds under $100",
-  "Compare iPhone 15 and Samsung Galaxy S24",
+  "Best wireless earbuds under ₹2,000",
   "Recommend a mechanical gaming keyboard",
-  "Top 4K Smart TVs with OLED display",
+  "Compare iPhone 15 and OnePlus 12",
+  "Top 5G smartphones under ₹25,000",
 ];
 
 const URL_PATTERN = /^https?:\/\/\S+$/i;
@@ -204,7 +204,7 @@ export default function ChatPanel({ onError, onClearError }) {
             ...prev,
             {
               role: "assistant",
-              text: `**${label}**: [${result.product.name}](${text})\n\nCaptured at **${result.product.currency || "$"}${result.product.price}**. Price tracking & deal monitoring are active.`,
+              text: `**${label}**: [${result.product.name}](${text})\n\nCaptured price: **₹${Number(result.product.price).toLocaleString('en-IN')}**. Price tracking is active for this product!`,
               response: {},
               products: [result.product],
             },
@@ -269,11 +269,11 @@ export default function ChatPanel({ onError, onClearError }) {
 
   return (
     <section className="chat-panel-commerce" aria-live="polite">
-      {/* ── 1. TACTILE SHOPPING MODES (Clear visual hierarchy) ── */}
+      {/* ── 1. SHOPPING MODES DECK ── */}
       <div className="mode-deck">
         <div className="mode-deck-header">
-          <span className="deck-title">SHOPPING MODES</span>
-          <span className="deck-sub">Click a mode to focus recommendations</span>
+          <span className="deck-title">AI SHOPPING MODES</span>
+          <span className="deck-sub">Click a mode to focus buying recommendations</span>
         </div>
 
         <div className="mode-cards-grid">
@@ -298,7 +298,7 @@ export default function ChatPanel({ onError, onClearError }) {
           })}
         </div>
 
-        {/* Active mode description banner */}
+        {/* Active mode banner */}
         <AnimatePresence>
           {activeModeConfig && (
             <motion.div
@@ -316,7 +316,7 @@ export default function ChatPanel({ onError, onClearError }) {
                 type="button"
                 className="clear-mode-btn"
                 onClick={() => setMode(null)}
-                title="Reset to all categories"
+                title="Reset mode"
               >
                 ✕ Reset
               </button>
@@ -329,10 +329,10 @@ export default function ChatPanel({ onError, onClearError }) {
       <div className="messages-stream">
         {messages.length === 0 && !loading ? (
           <div className="commerce-empty-state">
-            {/* Live visual product preview showcase */}
+            {/* Indian Market Showcase Showcase */}
             <div className="showcase-header">
-              <span className="showcase-badge">TRENDING DEALS & BENCHMARKS</span>
-              <p className="showcase-title">Click any item below to compare live prices, or type below:</p>
+              <span className="showcase-badge">POPULAR DEALS IN INDIA 🇮🇳</span>
+              <p className="showcase-title">Click any item below to benchmark or type your query:</p>
             </div>
 
             <div className="showcase-cards-row">
@@ -360,9 +360,9 @@ export default function ChatPanel({ onError, onClearError }) {
               ))}
             </div>
 
-            {/* Understated prompt ideas */}
+            {/* Smart Prompt Chips */}
             <div className="smart-prompts-container">
-              <span className="prompts-label">Or try asking:</span>
+              <span className="prompts-label">Popular Indian Shopping Queries:</span>
               <div className="prompts-list">
                 {currentSuggestions.map((prompt, i) => (
                   <button
@@ -392,7 +392,7 @@ export default function ChatPanel({ onError, onClearError }) {
                   exit={{ opacity: 0 }}
                 >
                   <div className="typing-pulse-beacon" />
-                  <span className="typing-msg">Querying price history & verified catalog...</span>
+                  <span className="typing-msg">Querying Indian catalog & live deals...</span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -401,7 +401,7 @@ export default function ChatPanel({ onError, onClearError }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ── 3. SUGGESTION BAR (In-session) ── */}
+      {/* ── 3. IN-CHAT SUGGESTIONS ── */}
       {messages.length > 0 && !loading && (
         <div className="inchat-prompts-bar">
           <span className="inchat-title">Suggested:</span>
@@ -441,7 +441,7 @@ export default function ChatPanel({ onError, onClearError }) {
         )}
       </AnimatePresence>
 
-      {/* ── 5. PRECISION COMPOSER DOCK ── */}
+      {/* ── 5. COMPOSER DOCK ── */}
       <form className="composer-dock" onSubmit={handleSubmit}>
         <input
           ref={fileInputRef}
@@ -465,7 +465,7 @@ export default function ChatPanel({ onError, onClearError }) {
         <input
           className="dock-input"
           type="text"
-          placeholder={activeModeConfig ? activeModeConfig.placeholder : "Ask about products, compare models, paste a link, or attach a photo..."}
+          placeholder={activeModeConfig ? activeModeConfig.placeholder : "Ask about products in ₹, compare models, paste a product link..."}
           autoComplete="off"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}

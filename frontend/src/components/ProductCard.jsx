@@ -56,7 +56,7 @@ export default function ProductCard({ product, response }) {
           </div>
         )}
         <div className="product-price-badge">
-          {product.currency || "$"}{Number(product.price).toLocaleString()}
+          {product.currency && product.currency !== "$" ? product.currency : "₹"}{Number(product.price).toLocaleString('en-IN')}
         </div>
       </div>
 

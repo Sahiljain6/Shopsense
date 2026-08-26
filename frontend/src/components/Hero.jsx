@@ -18,10 +18,10 @@ export default function Hero({ authed, onLogout }) {
               <circle cx="15" cy="20" r="1" fill="currentColor"/>
             </svg>
           </div>
-          <span className="brand-name">ShopSense</span>
+          <span className="brand-name">ShopSense India</span>
           <span className="live-indicator">
             <span className="live-pulse" />
-            Live Catalog Index
+            IN Catalog & Live Web Engine
           </span>
         </div>
 
@@ -42,42 +42,17 @@ export default function Hero({ authed, onLogout }) {
       <div className="hero-main-content">
         <div className="hero-copy-column">
           <h1 className="hero-headline">
-            The AI Copilot for <span className="highlight-coral">Confident Buying.</span>
+            Smart AI Shopping Copilot for <span className="highlight-coral">India 🇮🇳</span>
           </h1>
           <p className="hero-subtext">
-            Grounded price comparisons, instant deal verification, and historical price intelligence across thousands of catalog items.
+            Instant price discovery, grounded spec benchmarks, and deal recommendations across Amazon India, Flipkart, Croma, and verified catalog items.
           </p>
 
           <div className="hero-metadata-strip">
+            <span className="meta-tag">🇮🇳 INR Price Discovery</span>
             <span className="meta-tag">⚡ Live Deal Sync</span>
-            <span className="meta-tag">🏷️ Price History Tracking</span>
             <span className="meta-tag">⚖️ Multi-Product Benchmark</span>
-            <span className="meta-tag">📷 Visual Match</span>
-          </div>
-        </div>
-
-        {/* Live commerce pulse mini widget */}
-        <div className="hero-ticker-card">
-          <div className="ticker-header">
-            <span className="ticker-title">MARKET ACTIVITY</span>
-            <span className="ticker-live-badge">REAL-TIME</span>
-          </div>
-          <div className="ticker-items">
-            <div className="ticker-row">
-              <span className="ticker-dot green" />
-              <span className="ticker-name">Sony WH-1000XM5</span>
-              <span className="ticker-price-drop">-$70.00</span>
-            </div>
-            <div className="ticker-row">
-              <span className="ticker-dot blue" />
-              <span className="ticker-name">MacBook Air M3</span>
-              <span className="ticker-tag">Best Value</span>
-            </div>
-            <div className="ticker-row">
-              <span className="ticker-dot amber" />
-              <span className="ticker-name">Galaxy S24 Ultra</span>
-              <span className="ticker-tag">Price Drop</span>
-            </div>
+            <span className="meta-tag">📷 Visual Product Search</span>
           </div>
         </div>
       </div>
