@@ -7,43 +7,37 @@ export default function MessageBubble({ message }) {
   const products = Array.isArray(message.products) ? message.products : [];
 
   return (
-    <motion.div
-      className={`message-group ${isUser ? "user-group" : "assistant-group"}`}
-      initial={{ opacity: 0, y: 16, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-    >
-      <div className="message-header-meta">
-        <span className="role-avatar-badge">
-          {isUser ? "👤 You" : "✨ ShopSense AI"}
-        </span>
-      </div>
-
-      <div className={`message-bubble ${isUser ? "user" : "assistant"}`}>
+    <div className={`chat-message-row ${isUser ? "user-row" : "assistant-row"}`}>
+      <div className="message-avatar-box">
         {isUser ? (
-          <p className="user-message-text">{message.text || ""}</p>
+          <div className="avatar-circle user-avatar">
+            <span>M</span>
+          </div>
         ) : (
-          <MarkdownRenderer content={message.text || ""} />
+          <div className="avatar-circle ai-avatar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 7H20L18.5 17H5.5L4 7Z" stroke="#ffffff" strokeWidth="2.2"/>
+              <path d="M9 7V5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V7" stroke="#ffffff" strokeWidth="2.2"/>
+            </svg>
+          </div>
         )}
       </div>
 
-      {message.response?.clarification && (
-        <div className="clarification-banner">
-          <span className="clarification-icon">💡</span>
-          <div className="clarification-text">
-            <strong>Note from Assistant:</strong> {message.response.clarification}
-          </div>
+      <div className="message-content-box">
+        <div className="message-sender-name">
+          {isUser ? "You" : "ShopSense AI"}
         </div>
-      )}
 
-      {products.length > 0 && (
-        <div className="product-results-section">
-          <div className="product-results-header">
-            <span className="results-count-badge">
-              🛍️ {products.length} {products.length === 1 ? "Product Match" : "Product Matches Found"}
-            </span>
-          </div>
-          <div className="product-grid">
+        <div className={`message-bubble-body ${isUser ? "user-bubble" : "assistant-bubble"}`}>
+          {isUser ? (
+            <p className="user-text-content">{message.text || ""}</p>
+          ) : (
+            <MarkdownRenderer content={message.text || ""} />
+          )}
+        </div>
+
+        {products.length > 0 && (
+          <div className="message-product-cards-grid">
             {products.map((product) => (
               <ProductCard
                 key={product.id}
@@ -52,8 +46,8 @@ export default function MessageBubble({ message }) {
               />
             ))}
           </div>
-        </div>
-      )}
-    </motion.div>
+        )}
+      </div>
+    </div>
   );
 }

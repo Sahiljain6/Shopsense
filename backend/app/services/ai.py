@@ -339,7 +339,64 @@ class AIOrchestrator:
         if guardrail_refusal:
             return ChatResponse(answer=guardrail_refusal)
 
-        # 2. Auto-detect product URL pasted in chat message (e.g. "Fetch link: https://amzn.in/d/0au0AjZK" or raw URL)
+        # 2. Live Barcode / GTIN Lookup API Trigger
+        barcode_match = re.search(r'\b(?:barcode\s*)?(\d{8,14})\b', message, re.IGNORECASE)
+        if barcode_match:
+            code = barcode_match.group(1)
+            try:
+                from app.services.barcode_lookup import lookup_barcode
+                res = lookup_barcode(code)
+                if res:
+                    return ChatResponse(
+                        answer=(
+                            f"### 📦 Barcode Product Details ({res['barcode']})\n\n"
+                            f"• **Product**: {res['name']}\n"
+                            f"• **Brand**: {res['brand']}\n"
+                            f"• **Category**: {res['categories']}\n"
+                            f"• **Health / Nutri-Score**: `{res['health_score']}`\n"
+                            f"• **Allergens**: {res['allergens']}\n"
+                            f"• **Ingredients**: {res['ingredients'][:250]}...\n\n"
+                            f"✓ Verified via Open Food & Product Facts database."
+                        )
+                    )
+            except Exception as err:
+                print(f"Barcode lookup notice: {err}")
+
+        # 3. Live Currency Conversion API Trigger (Frankfurter API)
+        curr_match = re.search(r'(?:convert|what is|how much is)\s+\$?(\d+(?:\.\d+)?)\s*(usd|eur|gbp|cad|aud|jpy)?\s*(?:in|to)?\s*(inr|rupees|usd|eur)?', message, re.IGNORECASE)
+        if curr_match and any(w in message.lower() for w in ["convert", "inr", "rupees", "usd"]):
+            try:
+                amount = float(curr_match.group(1))
+                from_c = (curr_match.group(2) or "USD").upper()
+                to_c = (curr_match.group(3) or "INR").upper()
+                if to_c == "RUPEES":
+                    to_c = "INR"
+                from app.services.currency import convert_price
+                converted = convert_price(amount, from_c, to_c)
+                return ChatResponse(
+                    answer=(
+                        f"### 💱 Live Currency Conversion\n\n"
+                        f"**{amount:.2f} {from_c}** = **₹{converted:,.2f} {to_c}**\n\n"
+                        f"*(Real-time exchange rate updated via Frankfurter Financial API)*"
+                    )
+                )
+            except Exception as err:
+                print(f"Currency conversion notice: {err}")
+
+        # 4. Live Gaming Deals API Trigger (CheapShark API)
+        if any(w in message.lower() for w in ["gaming deal", "steam deal", "game deal", "pc deal"]):
+            try:
+                from app.services.deal_hunter import fetch_gaming_deals
+                deals = fetch_gaming_deals(limit=5)
+                if deals:
+                    lines = ["### 🎮 Live Gaming & Software Price Drops (CheapShark API):\n"]
+                    for d in deals:
+                        lines.append(f"• **[{d['title']}]({d['deal_url']})** — **${d['sale_price']}** ~~(was ${d['normal_price']})~~ (**{d['savings_percentage']}% OFF**)")
+                    return ChatResponse(answer="\n".join(lines))
+            except Exception as err:
+                print(f"CheapShark deal lookup notice: {err}")
+
+        # 5. Auto-detect product URL pasted in chat message (e.g. "Fetch link: https://amzn.in/d/0au0AjZK" or raw URL)
         url_match = re.search(r'https?://[^\s]+', message)
         if url_match:
             target_url = url_match.group(0)
