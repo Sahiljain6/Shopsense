@@ -59,7 +59,7 @@ async function apiFetch(path, options = {}) {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
   try {
     const response = await fetch(`${API_URL}${path}`, {
       ...options,
@@ -74,7 +74,7 @@ async function apiFetch(path, options = {}) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new ApiError(
         408,
-        "The request timed out after 15 seconds. Please try again."
+        "The request timed out after 30 seconds. The server may be warming up — please try again."
       );
     }
     throw new ApiError(
@@ -98,6 +98,9 @@ export async function register(payload) {
   });
   return login({ email: payload.email, password: payload.password });
 }
+
+export const googleLogin = () =>
+  apiFetch("/auth/google", { method: "POST" });
 
 export const sendChat = (message, mode, history) =>
   apiFetch("/chat", {

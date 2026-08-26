@@ -393,7 +393,7 @@ class AIOrchestrator:
             except Exception as err:
                 print(f"CheapShark deal lookup notice: {err}")
 
-        # 5. Auto-detect product URL pasted in chat message (e.g. "Fetch link: https://amzn.in/d/0au0AjZK" or raw URL)
+        # 5. Auto-detect product URL pasted in chat message
         url_match = re.search(r'https?://[^\s]+', message)
         if url_match:
             target_url = url_match.group(0)
@@ -406,7 +406,38 @@ class AIOrchestrator:
             except Exception as err:
                 print(f"Chat URL auto-scrape notice: {err}")
 
-        normalized = normalize_query(message)
+        # 6. CONVERSATION MEMORY: Extract context from previous messages
+        # If user says "under 20000 and 5g" after asking about mobiles,
+        # we need to carry forward the product category from history.
+        enriched_message = message
+        if history:
+            category_keywords = {
+                "phone": ["phone", "mobile", "smartphone", "iphone", "samsung", "galaxy", "redmi", "oneplus"],
+                "laptop": ["laptop", "notebook", "macbook", "asus"],
+                "earbuds": ["earbuds", "earphone", "headphone", "tws", "airdopes", "buds"],
+                "keyboard": ["keyboard", "mechanical", "keychron", "redragon"],
+                "watch": ["watch", "smartwatch"],
+                "tv": ["tv", "television", "smart tv"],
+            }
+
+            lowered = message.lower()
+            has_category = any(
+                any(kw in lowered for kw in kws)
+                for kws in category_keywords.values()
+            )
+
+            if not has_category:
+                # Check last 4 history turns for category context
+                for turn in reversed(history[-4:]):
+                    content = (turn.get("content") or "").lower()
+                    for cat, kws in category_keywords.items():
+                        if any(kw in content for kw in kws):
+                            enriched_message = f"{cat} {message}"
+                            break
+                    if enriched_message != message:
+                        break
+
+        normalized = normalize_query(enriched_message)
 
         products = self.catalog.search(normalized, limit=12)
 
@@ -496,7 +527,7 @@ class AIOrchestrator:
             })
 
         prompt = f"""
-You are ShopSense, an intelligent shopping assistant.
+You are ShopSense, an intelligent Indian shopping assistant.
 
 User request:
 {message}
@@ -505,31 +536,20 @@ Available products from the ShopSense catalog:
 
 {json.dumps(product_context, ensure_ascii=False, default=str)}
 
-Give a helpful and natural recommendation.
-
-Use ONLY the products provided above.
-
-Never invent:
-- product names
-- prices
-- ratings
-- specifications
-- URLs
-- brands
-
-Respect the user's budget if one was mentioned.
-
-Consider the user's:
-- occasion
-- recipient
-- use case
-- budget
-- preferences
-
-If this is a gift request, explain briefly why the selected products
-would make suitable gifts.
-
-Keep the response concise and useful.
+RESPONSE RULES:
+1. Recommend ONLY the products listed above. Never invent names, prices, ratings, specs, or URLs.
+2. Respect the user's budget if mentioned.
+3. For EACH product, include:
+   - Product name, price in ₹ (INR), key specs
+   - **Where to buy**: List 2-3 Indian stores with direct search links:
+     • Amazon India: https://www.amazon.in/s?k=PRODUCT+NAME
+     • Flipkart: https://www.flipkart.com/search?q=PRODUCT+NAME
+     • Croma: https://www.croma.com/searchB?q=PRODUCT+NAME
+   - **Ongoing offers**: Mention typical offers (bank discounts, exchange offers, no-cost EMI) available on these platforms
+   - **Best time to buy**: Brief tip (e.g. "prices usually drop during Flipkart Big Billion Days or Amazon Great Indian Festival")
+4. If this is a comparison, use a markdown table with Price, Key Specs, Pros, Cons columns.
+5. Keep the response concise and practical for Indian buyers.
+6. Use ₹ for all prices, formatted in Indian numbering (e.g. ₹1,04,900).
 """
 
         answer = self._chat(

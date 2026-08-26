@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { login, register, setToken, friendlyError } from "../api";
+import { login, register, googleLogin, setToken, friendlyError } from "../api";
 
 export default function AuthCard({ onLogin, onError }) {
   const [isRegister, setIsRegister] = useState(false);
@@ -31,17 +31,7 @@ export default function AuthCard({ onLogin, onError }) {
     onError(null);
     setLoading(true);
     try {
-      const googleAccount = {
-        email: "user.google@shopsense.local",
-        password: "GoogleAuthPass123!",
-        full_name: "Google Shopper",
-      };
-      let token;
-      try {
-        token = await login({ email: googleAccount.email, password: googleAccount.password });
-      } catch {
-        token = await register(googleAccount);
-      }
+      const token = await googleLogin();
       setToken(token.access_token);
       onLogin();
     } catch (err) {
@@ -59,7 +49,6 @@ export default function AuthCard({ onLogin, onError }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
       >
-        {/* Top Minimal Asterisk Mark */}
         <div className="auth-logo-mark">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2V22M2 12H22M4.92893 4.92893L19.0711 19.0711M4.92893 19.0711L19.0711 4.92893" stroke="#18181b" strokeWidth="2.2" strokeLinecap="round"/>
@@ -70,7 +59,6 @@ export default function AuthCard({ onLogin, onError }) {
           Welcome to <span className="auth-title-bold">ShopSense</span>
         </h1>
 
-        {/* Google Authentication Pill */}
         <div className="social-buttons-group">
           <button
             type="button"
@@ -84,16 +72,14 @@ export default function AuthCard({ onLogin, onError }) {
               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
             </svg>
-            <span>{loading ? "Authenticating..." : "Continue with Google"}</span>
+            <span>{loading ? "Signing in..." : "Continue with Google"}</span>
           </button>
         </div>
 
-        {/* Divider */}
         <div className="auth-divider">
           <span>or</span>
         </div>
 
-        {/* Stacked Email Form */}
         <form className="auth-form" onSubmit={handleSubmit}>
           <AnimatePresence>
             {isRegister && (
@@ -142,33 +128,18 @@ export default function AuthCard({ onLogin, onError }) {
                 type="button"
                 className="password-toggle-btn"
                 onClick={() => setShowPassword((prev) => !prev)}
-                title={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? "👁️" : "🙈"}
               </button>
             </div>
           </div>
 
-          <button
-            className="auth-primary-btn"
-            type="submit"
-            disabled={loading}
-          >
+          <button className="auth-primary-btn" type="submit" disabled={loading}>
             {loading ? "Please wait..." : "Continue"}
           </button>
         </form>
 
         <div className="auth-footer-links">
-          {!isRegister && (
-            <button
-              type="button"
-              className="auth-link-btn"
-              onClick={() => onError("Password reset link sent to your email!")}
-            >
-              Reset your password
-            </button>
-          )}
-
           <button
             type="button"
             className="auth-link-btn"

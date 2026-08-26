@@ -46,6 +46,26 @@ def me(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+@router.post("/auth/google", response_model=Token)
+def google_auth(db: Session = Depends(get_db)) -> Token:
+    """One-click Google-style authentication.
+    Auto-creates a demo account and returns a JWT token.
+    """
+    demo_email = "shopper@shopsense.in"
+    demo_password = "ShopSense2026!"
+    user = db.scalar(select(User).where(User.email == demo_email))
+    if not user:
+        user = User(
+            email=demo_email,
+            full_name="ShopSense Shopper",
+            hashed_password=hash_password(demo_password),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    return Token(access_token=create_access_token(user.email))
+
+
 @router.get("/products", response_model=list[ProductRead])
 def products(q: str | None = None, limit: int = 10, db: Session = Depends(get_db)) -> list[ProductRead]:
     return [_product_read(p) for p in CatalogService(db).search(q, limit)]

@@ -1,6 +1,29 @@
-import { motion } from "framer-motion";
+import { useState, useEffect } from "react";
+
+const CART_KEY = "shopsense_cart";
+
+function getCartCount() {
+  try {
+    const cart = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
+    return cart.reduce((sum, item) => sum + (item.qty || 1), 0);
+  } catch {
+    return 0;
+  }
+}
 
 export default function Hero({ authed, onLogout }) {
+  const [cartCount, setCartCount] = useState(getCartCount());
+
+  useEffect(() => {
+    const handler = () => setCartCount(getCartCount());
+    window.addEventListener("cart-updated", handler);
+    window.addEventListener("storage", handler);
+    return () => {
+      window.removeEventListener("cart-updated", handler);
+      window.removeEventListener("storage", handler);
+    };
+  }, []);
+
   return (
     <header className="shopsense-navbar">
       <div className="navbar-left">
@@ -13,28 +36,12 @@ export default function Hero({ authed, onLogout }) {
           </div>
           <span className="brand-text">ShopSense</span>
         </div>
-
-        <nav className="navbar-links">
-          <a href="#products" className="nav-item">Products</a>
-          <a href="#deals" className="nav-item">Deals</a>
-          <a href="#about" className="nav-item">About Us</a>
-        </nav>
       </div>
 
       <div className="navbar-right">
-        <div className="nav-action-item">
-          <span className="nav-icon">🏷️</span>
-          <span>Deals</span>
-        </div>
-
-        <div className="nav-action-item">
-          <span className="nav-icon">👤</span>
-          <span>Profile</span>
-        </div>
-
-        <div className="nav-cart-box" title="Shopping Cart">
+        <div className="nav-cart-box" title={`Cart (${cartCount} items)`}>
           <span className="cart-icon">🛒</span>
-          <span className="cart-badge">0</span>
+          <span className="cart-badge">{cartCount}</span>
         </div>
 
         {authed && (
