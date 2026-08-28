@@ -114,3 +114,46 @@ def test_unmatched_query_with_failed_llm_returns_honest_clarification(monkeypatc
     assert not response.product_ids or len(response.product_ids) == 0, f"Expected zero product_ids, got {response.product_ids}"
     assert "Flipkart" in response.answer or "category" in response.answer
     assert "Here are top verified options" not in response.answer
+
+
+def test_seed_version_upsert(db_session) -> None:
+    """Regression test: seed versioning upserts products by SKU and updates on version bump."""
+    from app.main import auto_seed_catalog, SEED_VERSION, SEED_DATA
+    from app.models.entities import SeedVersion
+
+    # First seed — fresh database
+    auto_seed_catalog(db_session)
+
+    product_count = db_session.query(Product).count()
+    assert product_count == len(SEED_DATA), f"Expected {len(SEED_DATA)} products, got {product_count}"
+
+    stored = db_session.query(SeedVersion).first()
+    assert stored is not None
+    assert stored.version == SEED_VERSION
+
+    # Calling again should be a no-op (version already current)
+    auto_seed_catalog(db_session)
+    assert db_session.query(Product).count() == len(SEED_DATA), "Duplicate products inserted on re-seed"
+
+    # Simulate a version bump: reset version, change a price in seed_data
+    stored.version = 0
+    db_session.commit()
+
+    original_moto = db_session.query(Product).filter(Product.sku == "moto-g34-5g").first()
+    assert original_moto is not None
+    original_price = original_moto.price
+
+    # Force a re-seed (version was reset)
+    auto_seed_catalog(db_session)
+
+    # Product count should NOT increase (upsert, not duplicate insert)
+    assert db_session.query(Product).count() == len(SEED_DATA), "Duplicate products inserted after version bump re-seed"
+
+    # Version should be updated
+    stored = db_session.query(SeedVersion).first()
+    assert stored.version == SEED_VERSION
+
+    # SKU-based product should still exist
+    moto = db_session.query(Product).filter(Product.sku == "moto-g34-5g").first()
+    assert moto is not None
+    assert moto.name == "Motorola Moto G34 5G (8GB RAM, 128GB)"

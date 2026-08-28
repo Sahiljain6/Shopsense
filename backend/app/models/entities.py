@@ -24,6 +24,7 @@ class Category(Base):
 class Product(Base):
     __tablename__ = "products"
     id: Mapped[int] = mapped_column(primary_key=True)
+    sku: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
     brand: Mapped[str] = mapped_column(String(120), index=True)
     description: Mapped[str] = mapped_column(Text)
@@ -71,3 +72,9 @@ class Wishlist(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+
+
+class SeedVersion(Base):
+    __tablename__ = "seed_version"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, default=0)

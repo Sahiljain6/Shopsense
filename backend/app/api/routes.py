@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import create_access_token, get_current_user, hash_password, require_admin, verify_password
 from app.db.session import get_db
-from app.models.entities import ChatHistory, Order, Product, Review, User, Wishlist
+from app.models.entities import ChatHistory, Order, Product, Review, SeedVersion, User, Wishlist
 from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, PriceHistoryResponse, ProductCreate, ProductRead, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
 from app.services.ai import AIOrchestrator
 from app.services.barcode_lookup import lookup_barcode
@@ -236,6 +236,18 @@ def delete_product(product_id: int, db: Session = Depends(get_db), _: User = Dep
         raise HTTPException(status_code=404, detail="Product not found")
     db.delete(product); db.commit()
     return {"ok": True}
+
+
+@router.post("/admin/reseed")
+def force_reseed(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> dict[str, object]:
+    """Force a full catalog reseed by resetting the stored seed version to 0."""
+    from app.main import auto_seed_catalog, SEED_VERSION
+    stored = db.query(SeedVersion).first()
+    if stored:
+        stored.version = 0
+    db.commit()
+    auto_seed_catalog(db)
+    return {"status": "reseeded", "version": SEED_VERSION}
 
 
 @router.get("/currency/convert")
