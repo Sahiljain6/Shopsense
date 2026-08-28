@@ -100,62 +100,7 @@ def needs_clarification(message: str) -> str | None:
     return None
 
 
-def extract_budget(message: str) -> float | None:
-    text = message.lower().replace(",", "")
-
-    # USD to INR conversion ($100 -> ₹8,300)
-    usd = re.search(r"\$\s*(\d+(?:\.\d+)?)", text)
-    if usd:
-        return float(usd.group(1)) * 83.0
-
-    lakh = re.search(r"(\d+(?:\.\d+)?)\s*lakhs?", text)
-    if lakh:
-        return float(lakh.group(1)) * 100000
-
-    thousand = re.search(r"(\d+(?:\.\d+)?)\s*k\b", text)
-    if thousand:
-        return float(thousand.group(1)) * 1000
-
-    amount = re.search(
-        r"(?:under|below|upto|up to|within|budget|around|less than)?\s*[₹rs\.]*\s*(\d{3,7})",
-        text
-    )
-
-    if amount:
-        return float(amount.group(1))
-
-    return None
-
-
-def normalize_query(message: str) -> str:
-    text = message.lower()
-
-    replacements = {
-        "smartphones": "phone",
-        "smartphone": "phone",
-        "mobiles": "phone",
-        "mobile": "phone",
-        "cell phone": "phone",
-        "cellphone": "phone",
-        "notebooks": "laptop",
-        "notebook": "laptop",
-        "mechanical keyboards": "keyboard",
-        "gaming keyboard": "keyboard",
-        "gaming keyboards": "keyboard",
-        "keyboards": "keyboard",
-        "wireless earbuds": "earbuds",
-        "earphones": "earbuds",
-        "earbud": "earbuds",
-        "tws": "earbuds",
-        "headsets": "headphones",
-        "smartwatch": "watch",
-        "smart watches": "watch",
-    }
-
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-
-    return text
+from app.services.search import clean_search_terms, extract_budget, normalize_query
 
 
 def is_prompt_injection(message: str) -> bool:
@@ -164,21 +109,6 @@ def is_prompt_injection(message: str) -> bool:
 
 def parse_budget(text: str) -> float | None:
     return extract_budget(text)
-
-
-def clean_search_terms(text: str) -> str:
-    """Clean action words, stop words, and budget numbers so SQL full-text search
-    searches strictly for the core product category (e.g. 'phone' instead of 'search me phone under 10000').
-    """
-    cleaned = re.sub(
-        r'\b(?:search|me|give|find|show|recommend|suggest|under|below|budget|upto|up to|within|around|rs|inr|₹|less than|\d+k?)\b',
-        ' ',
-        text,
-        flags=re.IGNORECASE
-    )
-    cleaned = re.sub(r'\b\d+\b', ' ', cleaned)
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    return cleaned if cleaned else text
 
 
 def get_active_groq_models(api_key: str) -> list[str]:
@@ -575,33 +505,15 @@ class AIOrchestrator:
         wants_cards = any(kw in lowered_msg for kw in card_intent_keywords) or extract_budget(message) is not None
 
         if wants_cards:
-            normalized = normalize_query(enriched_message)
-            cleaned_query = clean_search_terms(normalized)
-            products = self.catalog.search(cleaned_query, limit=20)
-            budget = extract_budget(message)
-
-            if budget is not None:
-                products = [p for p in products if p.price <= budget]
-
-            # If budget or keyword search returned no products in DB,
-            # query live e-commerce search & multi-model LLMs in real time!
-            if not products:
-                all_catalog = self.catalog.search("", limit=50)
-                budget_items = [p for p in all_catalog if p.price <= (budget if budget else 999999)]
-
-                # Filter by category if category was mentioned (e.g. phone, laptop, earbuds)
-                if any(w in lowered_msg for w in ["phone", "mobile", "smartphone"]):
-                    phone_items = [p for p in budget_items if "phone" in p.name.lower() or (p.category and p.category.name.lower() == "phones")]
-                    if phone_items:
-                        budget_items = phone_items
-                elif any(w in lowered_msg for w in ["earbud", "earphone", "audio", "tws"]):
-                    audio_items = [p for p in budget_items if p.category and p.category.name.lower() == "audio"]
-                    if audio_items:
-                        budget_items = audio_items
-
-                products = budget_items
-
-            products = self._rank_products(products)
+            from app.services.search import resolve_products
+            resolved = resolve_products(
+                message=enriched_message,
+                history=history,
+                cart=cart,
+                db=self.db,
+                limit=20
+            )
+            products = self._rank_products(resolved.products)
 
             if products:
                 products = products[:(

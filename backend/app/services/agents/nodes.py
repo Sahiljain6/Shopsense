@@ -1,6 +1,8 @@
+import logging
 from app.models.entities import Product
 from app.schemas.api import ChatResponse
-from app.services.ai import AIOrchestrator, clean_search_terms, extract_budget, needs_clarification
+from app.services.ai import AIOrchestrator, needs_clarification
+from app.services.search import resolve_products
 from app.services.agents.state import ShopSenseState
 
 
@@ -18,33 +20,13 @@ def orchestrator_node(state: ShopSenseState) -> ShopSenseState:
 
 
 def search_node(state: ShopSenseState) -> ShopSenseState:
-    message = state["message"]
-    cleaned_query = clean_search_terms(message)
-    budget = extract_budget(message)
-
-    orchestrator = AIOrchestrator(state["db"])
-    products = orchestrator.catalog.search(cleaned_query, limit=12, max_price=budget)
-
-    if budget is not None:
-        products = [p for p in products if p.price <= budget]
-
-    if budget is not None and not products:
-        all_catalog = orchestrator.catalog.search("", limit=50, max_price=budget)
-        budget_items = [p for p in all_catalog if p.price <= budget]
-
-        lowered_msg = message.lower()
-        if any(w in lowered_msg for w in ["phone", "mobile", "smartphone"]):
-            phone_items = [p for p in budget_items if "phone" in p.name.lower() or (p.category and p.category.name.lower() == "phones")]
-            if phone_items:
-                budget_items = phone_items
-        elif any(w in lowered_msg for w in ["earbud", "earphone", "audio", "tws"]):
-            audio_items = [p for p in budget_items if p.category and p.category.name.lower() == "audio"]
-            if audio_items:
-                budget_items = audio_items
-
-        products = budget_items
-
-    state["product_ids"] = [p.id for p in products]
+    resolved = resolve_products(
+        message=state["message"],
+        cart=state.get("cart"),
+        db=state["db"],
+        limit=12
+    )
+    state["product_ids"] = [p.id for p in resolved.products]
     return state
 
 
@@ -65,19 +47,23 @@ def review_node(state: ShopSenseState) -> ShopSenseState:
 
 def guardrail_node(state: ShopSenseState) -> ShopSenseState:
     response = state.get("response") or ChatResponse(answer="I can help you find products, compare options, find gifts, or choose something within your budget. What are you looking for?")
-    allowed = set(state.get("product_ids", []))
-    if allowed and response.product_ids:
-        filtered = [pid for pid in response.product_ids if pid in allowed]
-        if filtered:
-            response.product_ids = filtered
+    search_product_ids = set(state.get("product_ids", []))
+    recommend_product_ids = response.product_ids
+
+    if recommend_product_ids:
+        if search_product_ids:
+            filtered = [pid for pid in recommend_product_ids if pid in search_product_ids]
+            if filtered:
+                response.product_ids = filtered
+            else:
+                logging.warning(
+                    f"guardrail_node intersection was empty for message '{state.get('message')}'. "
+                    f"search_node IDs: {search_product_ids}, recommend IDs: {recommend_product_ids}. "
+                    "Using recommend_node IDs as fallback."
+                )
+                response.product_ids = recommend_product_ids
         else:
-            budget = extract_budget(state["message"])
-            if budget is not None:
-                valid_ids = []
-                for pid in response.product_ids:
-                    p = state["db"].get(Product, pid)
-                    if p and p.price <= budget:
-                        valid_ids.append(pid)
-                response.product_ids = valid_ids
+            response.product_ids = recommend_product_ids
+
     state["response"] = response
     return state
