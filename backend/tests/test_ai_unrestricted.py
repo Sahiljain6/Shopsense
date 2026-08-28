@@ -157,3 +157,24 @@ def test_seed_version_upsert(db_session) -> None:
     moto = db_session.query(Product).filter(Product.sku == "moto-g34-5g").first()
     assert moto is not None
     assert moto.name == "Motorola Moto G34 5G (8GB RAM, 128GB)"
+
+
+def test_tool_calling_search_catalog(monkeypatch, db_session) -> None:
+    """Test that tool-calling executes search_catalog and attaches product_ids."""
+    from app.main import auto_seed_catalog
+    auto_seed_catalog(db_session)
+
+    orchestrator = AIOrchestrator(db_session)
+
+    # Mock _chat_with_tools to simulate LLM invoking search_catalog tool
+    def mock_chat_with_tools(system, user, history=None):
+        orchestrator._execute_tool("search_catalog", {"category": "Phones", "budget": 15000})
+        return "I found great phone options under ₹15,000 for you!"
+
+    monkeypatch.setattr(orchestrator, "_chat_with_tools", mock_chat_with_tools)
+
+    response = orchestrator._tool_calling_answer("find me a phone under 15000")
+    assert response is not None
+    assert "phone" in response.answer.lower()
+    assert len(response.product_ids) > 0
+    assert all(pid in response.reasons for pid in [str(p) for p in response.product_ids])

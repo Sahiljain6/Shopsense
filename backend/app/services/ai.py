@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 from sqlalchemy.orm import Session
@@ -144,6 +145,65 @@ def get_active_groq_models(api_key: str) -> list[str]:
         print(f"Notice fetching Groq model list dynamically: {err}")
 
     return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+
+
+logger = logging.getLogger("shopsense.ai")
+
+# ---------- Tool-Calling Definitions ----------
+
+TOOL_DEFINITIONS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_catalog",
+            "description": "Search the ShopSense product catalog by category, budget, and keywords. Use this when the user wants to find, compare, or get recommendations for products.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string", "enum": ["Phones", "Laptops", "Audio", "Peripherals"], "description": "Product category to search in"},
+                    "budget": {"type": "number", "description": "Maximum price in INR (₹)"},
+                    "keywords": {"type": "string", "description": "Specific brand/model keywords (e.g. 'redmi 5g', 'macbook air')"}
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_live_web",
+            "description": "Search live Indian e-commerce websites (Amazon India, Flipkart, Croma) for real-time prices, deals, and availability. Use this when the user asks about current offers, live prices, or products not in the catalog.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query for live web deals"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "convert_currency",
+            "description": "Convert an amount between currencies using live exchange rates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "amount": {"type": "number", "description": "Amount to convert"},
+                    "from_currency": {"type": "string", "default": "USD", "description": "Source currency code"},
+                    "to_currency": {"type": "string", "default": "INR", "description": "Target currency code"}
+                },
+                "required": ["amount"]
+            }
+        }
+    }
+]
+
+# Gemini-compatible tool declarations (different schema format)
+GEMINI_TOOL_DECLARATIONS = [{
+    "function_declarations": [t["function"] for t in TOOL_DEFINITIONS]
+}]
+
 
 
 class AIOrchestrator:
@@ -335,7 +395,326 @@ class AIOrchestrator:
                 print(f"{self.provider} API error: {type(error).__name__}: {error}")
                 return None
 
+        logger.warning("All AI LLM providers failed or returned None for user prompt: '%s...' (provider: %s)", user[:60], self.provider)
         return None
+
+    # ---------- Tool Execution ----------
+
+    def _execute_tool(self, tool_name: str, arguments: dict) -> str:
+        """Execute a tool by name and return its result as a JSON string."""
+        try:
+            if tool_name == "search_catalog":
+                return self._execute_search_catalog(
+                    category=arguments.get("category"),
+                    budget=arguments.get("budget"),
+                    keywords=arguments.get("keywords", "")
+                )
+            elif tool_name == "search_live_web":
+                return self._execute_search_live_web(
+                    query=arguments.get("query", "")
+                )
+            elif tool_name == "convert_currency":
+                return self._execute_convert_currency(
+                    amount=arguments.get("amount", 0),
+                    from_c=arguments.get("from_currency", "USD"),
+                    to_c=arguments.get("to_currency", "INR")
+                )
+            else:
+                return json.dumps({"error": f"Unknown tool: {tool_name}"})
+        except Exception as err:
+            logger.warning("Tool execution error (%s): %s", tool_name, err)
+            return json.dumps({"error": str(err)})
+
+    def _execute_search_catalog(self, category: str | None = None, budget: float | None = None, keywords: str = "") -> str:
+        """Search catalog and return product data as JSON string."""
+        from app.services.search import resolve_products
+        query_parts = []
+        if category:
+            query_parts.append(category.lower())
+        if keywords:
+            query_parts.append(keywords)
+        query = " ".join(query_parts) or ""
+
+        if budget:
+            query += f" under {budget:.0f}"
+
+        resolved = resolve_products(message=query, db=self.db, limit=8)
+        products = resolved.products
+
+        if budget is not None:
+            products = [p for p in products if p.price <= budget]
+
+        # Store matched products for later response construction
+        self._tool_products = getattr(self, "_tool_products", [])
+        self._tool_products.extend(products)
+
+        product_dicts = []
+        for p in products:
+            product_dicts.append({
+                "id": p.id, "name": p.name, "brand": p.brand,
+                "price": p.price, "currency": p.currency,
+                "rating": p.rating, "description": p.description[:200],
+                "attributes": p.attributes
+            })
+
+        return json.dumps({"products": product_dicts, "count": len(product_dicts)}, ensure_ascii=False)
+
+    def _execute_search_live_web(self, query: str) -> str:
+        """Search live e-commerce deals and return as JSON string."""
+        deals = search_live_deals(query, max_results=5)
+        return json.dumps({"deals": deals, "count": len(deals)}, ensure_ascii=False, default=str)
+
+    def _execute_convert_currency(self, amount: float, from_c: str = "USD", to_c: str = "INR") -> str:
+        """Convert currency and return as JSON string."""
+        from app.services.currency import convert_price
+        converted = convert_price(amount, from_c.upper(), to_c.upper())
+        return json.dumps({"amount": amount, "from": from_c.upper(), "to": to_c.upper(), "converted": converted})
+
+    # ---------- Tool-Calling Chat ----------
+
+    def _chat_with_tools(
+        self,
+        system: str,
+        user: str,
+        history: list[dict[str, str]] | None = None
+    ) -> str | None:
+        """Call LLM with tool definitions. If the model returns a tool call,
+        execute it and feed the result back for the final answer."""
+
+        clean_messages = [{"role": "system", "content": system}]
+        if history:
+            for turn in history:
+                if isinstance(turn, dict) and turn.get("role") and turn.get("content"):
+                    clean_messages.append({"role": str(turn["role"]), "content": str(turn["content"])})
+        clean_messages.append({"role": "user", "content": user})
+
+        # --- OpenAI / Groq (native tool support) ---
+        if self.provider in ("openai", "groq") and self.client:
+            candidate_models = (
+                [self.model, "gpt-4o-mini", "gpt-4o"] if self.provider == "openai"
+                else self.active_models or ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+            )
+            for model_name in candidate_models:
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model_name,
+                        messages=clean_messages,
+                        tools=TOOL_DEFINITIONS,
+                        tool_choice="auto"
+                    )
+                    msg = response.choices[0].message
+
+                    # If the model wants to call a tool
+                    if msg.tool_calls:
+                        tool_messages = list(clean_messages)
+                        tool_messages.append(msg.model_dump())
+
+                        for tool_call in msg.tool_calls:
+                            fn_name = tool_call.function.name
+                            fn_args = json.loads(tool_call.function.arguments)
+                            result = self._execute_tool(fn_name, fn_args)
+                            tool_messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": result
+                            })
+
+                        # Second call: LLM synthesizes answer from tool results
+                        final = self.client.chat.completions.create(
+                            model=model_name,
+                            messages=tool_messages
+                        )
+                        if final.choices:
+                            return final.choices[0].message.content
+
+                    # Model answered directly without tools
+                    if msg.content:
+                        return msg.content
+                except Exception as err:
+                    logger.warning("%s tool-calling error with '%s': %s", self.provider, model_name, err)
+                    continue
+
+        # --- Gemini (native tool support via REST) ---
+        if self.provider == "gemini" and getattr(self, "gemini_api_key", None):
+            gemini_contents = _build_gemini_contents(user, history)
+            models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+            for model_name in models_to_try:
+                try:
+                    import httpx
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_api_key}"
+                    payload = {
+                        "system_instruction": {"parts": [{"text": system}]},
+                        "contents": gemini_contents,
+                        "tools": GEMINI_TOOL_DECLARATIONS
+                    }
+                    with httpx.Client(timeout=15) as client:
+                        resp = client.post(url, json=payload)
+                        if resp.status_code != 200:
+                            continue
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if not candidates:
+                            continue
+
+                        parts = candidates[0].get("content", {}).get("parts", [])
+
+                        # Check for function call in response
+                        fn_call = next((p.get("functionCall") for p in parts if "functionCall" in p), None)
+                        if fn_call:
+                            fn_name = fn_call["name"]
+                            fn_args = fn_call.get("args", {})
+                            result = self._execute_tool(fn_name, fn_args)
+
+                            # Feed tool result back to Gemini
+                            followup_contents = list(gemini_contents)
+                            followup_contents.append({"role": "model", "parts": parts})
+                            followup_contents.append({
+                                "role": "user",
+                                "parts": [{"functionResponse": {"name": fn_name, "response": {"result": result}}}]
+                            })
+
+                            payload2 = {
+                                "system_instruction": {"parts": [{"text": system}]},
+                                "contents": followup_contents
+                            }
+                            resp2 = client.post(url, json=payload2)
+                            if resp2.status_code == 200:
+                                data2 = resp2.json()
+                                cands2 = data2.get("candidates", [])
+                                if cands2:
+                                    parts2 = cands2[0].get("content", {}).get("parts", [])
+                                    text_parts = [p["text"] for p in parts2 if "text" in p]
+                                    if text_parts:
+                                        return "\n".join(text_parts)
+
+                        # Direct text response
+                        text_parts = [p["text"] for p in parts if "text" in p]
+                        if text_parts:
+                            return "\n".join(text_parts)
+                except Exception as err:
+                    logger.warning("Gemini tool-calling error with '%s': %s", model_name, err)
+
+        # --- HuggingFace fallback (prompt-based tool instructions) ---
+        if self.hf_token or self.provider == "huggingface":
+            tool_prompt = (
+                f"{system}\n\n"
+                "You have access to these tools:\n"
+                "1. search_catalog(category, budget, keywords) - Search product catalog\n"
+                "2. search_live_web(query) - Search live e-commerce deals\n"
+                "3. convert_currency(amount, from_currency, to_currency) - Convert currencies\n\n"
+                "If you need data from a tool, output EXACTLY one line: TOOL_CALL:tool_name({\"arg\": \"value\"})\n"
+                "Otherwise, answer the user directly.\n"
+            )
+            answer = self._chat(tool_prompt, user, history)
+            if answer and answer.strip().startswith("TOOL_CALL:"):
+                try:
+                    call_str = answer.strip().removeprefix("TOOL_CALL:")
+                    paren = call_str.index("(")
+                    fn_name = call_str[:paren]
+                    fn_args = json.loads(call_str[paren + 1:-1])
+                    result = self._execute_tool(fn_name, fn_args)
+                    # Second call with tool result
+                    followup = f"{tool_prompt}\n\nTool result for {fn_name}:\n{result}\n\nNow answer the user's question using this data."
+                    return self._chat(followup, user, history)
+                except Exception:
+                    pass
+            return answer
+
+        # Fall through to None
+        return None
+
+    # ---------- Small Talk ----------
+
+    def _check_small_talk(self, message: str) -> str | None:
+        """Return a small-talk response if applicable, else None."""
+        clean_msg = message.strip().lower()
+        conversational_map = {
+            "hi": "Hello! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
+            "hello": "Hello! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
+            "hey": "Hey! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
+            "how are you": "I'm doing great! 🛍️ Ready to help you discover products, compare specs, or find the best deals in India. What are you looking for today?",
+            "how are you doing": "I'm doing awesome! 🛍️ Ready to help you shop smart and save money. What product or budget are you considering today?",
+            "who are you": "I'm **ShopSense**, your AI shopping copilot! 🛍️ I help you discover products, compare models side-by-side, analyze live deals across Amazon India, Flipkart & Croma, and track prices in ₹.",
+            "what can you do": "I can help you:\n• 🔍 Search & recommend products by category or budget\n• ⚖️ Benchmark specs side-by-side\n• 💰 Track prices & live deals across Amazon India, Flipkart & Croma\n• 🏷️ Check ongoing bank offers & coupon codes",
+            "thank you": "You're very welcome! 😊 Let me know if you need any more product recommendations or price comparisons!",
+            "thanks": "Happy to help! 😊 Feel free to ask if you want to compare other models or check deals!",
+        }
+        return conversational_map.get(clean_msg)
+
+    # ---------- Tool-Calling Answer ----------
+
+    def _tool_calling_answer(
+        self,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+        cart: list[dict[str, object]] | None = None,
+        mode: str | None = None
+    ) -> ChatResponse:
+        """Main tool-calling answer method: let the LLM decide which tools to call."""
+        self._tool_products = []
+
+        cart_summary = self._get_cart_summary_text(cart)
+
+        system_prompt = (
+            "You are ShopSense, an expert AI shopping copilot for Indian consumers.\n"
+            "STRICT CONSTRAINT: You are EXCLUSIVELY a shopping and e-commerce assistant. "
+            "You ONLY assist with product discovery, price comparisons, deal finding, budgeting, and buying decisions. "
+            "You MUST REFUSE any requests to write code, debug software, solve non-shopping math/homework, write essays/stories, or perform non-shopping tasks.\n\n"
+            "You have tools to search the product catalog and live e-commerce deals. "
+            "Use search_catalog when users ask about products, categories, or budgets. "
+            "Use search_live_web when users ask about current offers, deals, or prices on specific retailers. "
+            "Use convert_currency for currency conversions.\n\n"
+            "RESPONSE RULES:\n"
+            "1. Recommend ONLY products returned by your tools. Never invent names, prices, or specs.\n"
+            "2. Respect the user's budget if mentioned.\n"
+            "3. For each product, include: name, price in ₹ (INR), key specs, and where to buy links.\n"
+            "4. Use ₹ for all prices, formatted in Indian numbering.\n"
+            "5. Keep responses concise and practical for Indian buyers.\n"
+            f"6. {cart_summary}\n"
+            "7. Only reference the user's cart when directly relevant to their request.\n"
+        )
+
+        answer = self._chat_with_tools(system_prompt, message, history)
+
+        if answer is None:
+            # LLM is offline / no API key configured — resolve catalog products before generic fallback
+            from app.services.search import resolve_products
+            resolved = resolve_products(message=message, history=history, cart=cart, db=self.db, limit=8)
+            if resolved.products:
+                ranked = self._rank_products(resolved.products)[:3]
+                return self._structured_response(ranked)
+
+            return self._general_ai_response(message, history, cart=cart)
+
+        # Build product_ids from any tools that were called
+        product_ids = [p.id for p in self._tool_products]
+        products = self._tool_products
+
+        if products:
+            pros_map = {}
+            cons_map = {}
+            reasons_map = {}
+            for product in products:
+                pid_str = str(product.id)
+                p_pros, p_cons = generate_trust_pros_cons(
+                    rating=product.rating or 0.0,
+                    price=product.price or 0.0,
+                    brand=product.brand or "",
+                    store_name="ShopSense Catalog"
+                )
+                pros_map[pid_str] = p_pros
+                cons_map[pid_str] = p_cons
+                reasons_map[pid_str] = f"Verified catalog item ({product.rating:.1f}/5★ rating)."
+
+            return ChatResponse(
+                answer=answer,
+                product_ids=product_ids,
+                reasons=reasons_map,
+                pros=pros_map,
+                cons=cons_map
+            )
+
+        return ChatResponse(answer=answer)
 
     def _find_last_product(
         self,
@@ -373,7 +752,12 @@ class AIOrchestrator:
         if guardrail_refusal:
             return ChatResponse(answer=guardrail_refusal)
 
-        # 2. Live Barcode / GTIN Lookup API Trigger
+        # 2. Small talk intercepts (no LLM/tool call needed)
+        small_talk = self._check_small_talk(message)
+        if small_talk:
+            return ChatResponse(answer=small_talk)
+
+        # 3. Live Barcode / GTIN Lookup API Trigger (specific pattern — keep as pre-check)
         barcode_match = re.search(r'\b(?:barcode\s*)?(\d{8,14})\b', message, re.IGNORECASE)
         if barcode_match:
             code = barcode_match.group(1)
@@ -396,28 +780,7 @@ class AIOrchestrator:
             except Exception as err:
                 print(f"Barcode lookup notice: {err}")
 
-        # 3. Live Currency Conversion API Trigger (Frankfurter API)
-        curr_match = re.search(r'(?:convert|what is|how much is)\s+\$?(\d+(?:\.\d+)?)\s*(usd|eur|gbp|cad|aud|jpy)?\s*(?:in|to)?\s*(inr|rupees|usd|eur)?', message, re.IGNORECASE)
-        if curr_match and any(w in message.lower() for w in ["convert", "inr", "rupees", "usd"]):
-            try:
-                amount = float(curr_match.group(1))
-                from_c = (curr_match.group(2) or "USD").upper()
-                to_c = (curr_match.group(3) or "INR").upper()
-                if to_c == "RUPEES":
-                    to_c = "INR"
-                from app.services.currency import convert_price
-                converted = convert_price(amount, from_c, to_c)
-                return ChatResponse(
-                    answer=(
-                        f"### 💱 Live Currency Conversion\n\n"
-                        f"**{amount:.2f} {from_c}** = **₹{converted:,.2f} {to_c}**\n\n"
-                        f"*(Real-time exchange rate updated via Frankfurter Financial API)*"
-                    )
-                )
-            except Exception as err:
-                print(f"Currency conversion notice: {err}")
-
-        # 4. Live Gaming Deals API Trigger (CheapShark API)
+        # 4. Live Gaming Deals API Trigger (specific pattern — keep as pre-check)
         if any(w in message.lower() for w in ["gaming deal", "steam deal", "game deal", "pc deal"]):
             try:
                 from app.services.deal_hunter import fetch_gaming_deals
@@ -430,7 +793,7 @@ class AIOrchestrator:
             except Exception as err:
                 print(f"CheapShark deal lookup notice: {err}")
 
-        # 5. Auto-detect product URL pasted in chat message
+        # 5. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
         url_match = re.search(r'https?://[^\s]+', message)
         if url_match:
             target_url = url_match.group(0)
@@ -443,41 +806,13 @@ class AIOrchestrator:
             except Exception as err:
                 print(f"Chat URL auto-scrape notice: {err}")
 
-        # 6. CONVERSATION MEMORY: Extract context from previous messages
-        # If user says "under 20000 and 5g" after asking about mobiles,
-        # we need to carry forward the product category from history.
-        enriched_message = message
-        if history:
-            category_keywords = {
-                "phone": ["phone", "mobile", "smartphone", "iphone", "samsung", "galaxy", "redmi", "oneplus"],
-                "laptop": ["laptop", "notebook", "macbook", "asus"],
-                "earbuds": ["earbuds", "earphone", "headphone", "tws", "airdopes", "buds"],
-                "keyboard": ["keyboard", "mechanical", "keychron", "redragon"],
-                "watch": ["watch", "smartwatch"],
-                "tv": ["tv", "television", "smart tv"],
-            }
-
-            lowered = message.lower()
-            has_category = any(
-                any(kw in lowered for kw in kws)
-                for kws in category_keywords.values()
-            )
-
-            if not has_category:
-                # Check last 4 history turns for category context
-                for turn in reversed(history[-4:]):
-                    content = (turn.get("content") or "").lower()
-                    for cat, kws in category_keywords.items():
-                        if any(kw in content for kw in kws):
-                            enriched_message = f"{cat} {message}"
-                            break
-                    if enriched_message != message:
-                        break
-
+        # 6. Follow-up: Specific Product Context Resolution (matching cover, offers/discounts on this product)
         lowered_msg = message.lower()
-
-        # Follow-up Specific Product Context Resolution (e.g. "matching cover", "offers on this", "discounts")
-        followup_kws = ["matching cover", "back cover", "phone cover", "case for this", "cover for it", "matching case", "tempered glass", "screen guard", "case", "cover", "offer", "offers", "discount", "discounts", "coupon", "coupons", "cashback", "emi"]
+        followup_kws = [
+            "matching cover", "back cover", "phone cover", "case for this", "cover for it",
+            "matching case", "tempered glass", "screen guard",
+            "offer", "offers", "discount", "discounts", "coupon", "coupons", "cashback", "emi"
+        ]
         if any(kw in lowered_msg for kw in followup_kws):
             last_prod = self._find_last_product(history, cart)
             if last_prod:
@@ -503,50 +838,8 @@ class AIOrchestrator:
                     product_ids=[last_prod.id]
                 )
 
-        # Rule 1: Handle comparison queries explicitly (e.g. "Compare iPhone 15 vs OnePlus 12")
-        if "vs" in lowered_msg or "compare" in lowered_msg:
-            parts = re.split(r'\b(?:vs\.?|versus|and|compare)\b', lowered_msg, flags=re.IGNORECASE)
-            comparison_products = []
-            for part in parts:
-                clean_part = part.strip()
-                if clean_part and len(clean_part) > 2 and clean_part not in ["iphone", "phone", "specs", "best"]:
-                    matches = self.catalog.search(clean_part, limit=1)
-                    for m in matches:
-                        if m.id not in [p.id for p in comparison_products]:
-                            comparison_products.append(m)
-            if len(comparison_products) >= 2:
-                return self._generate_ai_response(message, comparison_products[:3], history)
-
-        # Rule 2: Explicit recommendation / search intent check
-        card_intent_keywords = [
-            "recommend", "suggest", "show me", "find me", "search", "under", "below",
-            "budget", "options", "best phone", "best laptop", "best earbuds", "best keyboard",
-            "best watch", "best tv", "deals", "buy", "pick", "offer", "offers", "discount", "discounts", "coupon", "coupons", "cashback", "emi"
-        ]
-
-        wants_cards = any(kw in lowered_msg for kw in card_intent_keywords) or extract_budget(message) is not None
-
-        if wants_cards:
-            from app.services.search import resolve_products
-            resolved = resolve_products(
-                message=enriched_message,
-                history=history,
-                cart=cart,
-                db=self.db,
-                limit=20
-            )
-            products = self._rank_products(resolved.products)
-
-            if products:
-                products = products[:(
-                    1 if "quick_answer" in select_modifiers(message, mode)
-                    else 3
-                )]
-                return self._generate_ai_response(message, products, history, cart=cart)
-
-        # REAL-TIME INTERNET / MULTI-MODEL FALLBACK:
-        # If still no catalog items matched or non-card query, generate real-time live response
-        return self._general_ai_response(message, history, cart=cart)
+        # 7. PRIMARY PATH: Tool-calling — let the LLM decide what to do
+        return self._tool_calling_answer(message, history, cart, mode)
 
     def answer_via_agents(
         self,
