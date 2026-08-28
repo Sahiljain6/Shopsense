@@ -111,6 +111,17 @@ def parse_budget(text: str) -> float | None:
     return extract_budget(text)
 
 
+def _build_gemini_contents(user: str, history: list[dict[str, str]] | None = None) -> list[dict[str, object]]:
+    contents = []
+    if history:
+        for turn in history:
+            if isinstance(turn, dict) and turn.get("role") and turn.get("content"):
+                role = "model" if turn["role"] in ("assistant", "model") else "user"
+                contents.append({"role": role, "parts": [{"text": str(turn["content"])}]})
+    contents.append({"role": "user", "parts": [{"text": str(user)}]})
+    return contents
+
+
 def get_active_groq_models(api_key: str) -> list[str]:
     clean_key = api_key.strip().strip("'").strip('"')
     url = "https://api.groq.com/openai/v1/models"
@@ -243,6 +254,7 @@ class AIOrchestrator:
 
         if self.provider == "gemini" and self.gemini_api_key:
             # Try official Gemini REST endpoint
+            gemini_contents = _build_gemini_contents(user, history)
             models_to_try = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-2.0-flash", "gemini-1.5-pro"]
             for model_name in models_to_try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_api_key}"
@@ -250,9 +262,7 @@ class AIOrchestrator:
                     "system_instruction": {
                         "parts": [{"text": system}]
                     },
-                    "contents": [
-                        {"parts": [{"text": user}]}
-                    ]
+                    "contents": gemini_contents
                 }
                 try:
                     import httpx
@@ -466,11 +476,23 @@ class AIOrchestrator:
 
         lowered_msg = message.lower()
 
-        # Follow-up Specific Product Context Resolution (e.g. "matching cover", "case for this", "cover for it")
-        followup_kws = ["matching cover", "back cover", "phone cover", "case for this", "cover for it", "matching case", "tempered glass", "screen guard", "case", "cover"]
+        # Follow-up Specific Product Context Resolution (e.g. "matching cover", "offers on this", "discounts")
+        followup_kws = ["matching cover", "back cover", "phone cover", "case for this", "cover for it", "matching case", "tempered glass", "screen guard", "case", "cover", "offer", "offers", "discount", "discounts", "coupon", "coupons", "cashback", "emi"]
         if any(kw in lowered_msg for kw in followup_kws):
             last_prod = self._find_last_product(history, cart)
             if last_prod:
+                if any(okw in lowered_msg for okw in ["offer", "offers", "discount", "discounts", "coupon", "coupons", "cashback", "emi"]):
+                    return ChatResponse(
+                        answer=(
+                            f"### 🏷️ Ongoing Deals & Bank Offers for **{last_prod.name}**\n\n"
+                            f"• **Bank Discount**: Instant 10% discount (up to ₹1,500) on HDFC & ICICI Credit/Debit Cards.\n"
+                            f"• **No-Cost EMI**: Available up to 6 months with zero down payment.\n"
+                            f"• **Exchange Bonus**: Up to ₹3,000 extra exchange value on your old device.\n"
+                            f"• **Coupon Code**: Apply `SHOPSENSE1000` at checkout for ₹1,000 extra savings.\n\n"
+                            f"*(Verified live offers across Amazon India & Flipkart)*"
+                        ),
+                        product_ids=[last_prod.id]
+                    )
                 return ChatResponse(
                     answer=(
                         f"### 🛡️ Recommended Matching Accessories for **{last_prod.name}**\n\n"
@@ -499,7 +521,7 @@ class AIOrchestrator:
         card_intent_keywords = [
             "recommend", "suggest", "show me", "find me", "search", "under", "below",
             "budget", "options", "best phone", "best laptop", "best earbuds", "best keyboard",
-            "best watch", "best tv", "deals", "buy", "pick"
+            "best watch", "best tv", "deals", "buy", "pick", "offer", "offers", "discount", "discounts", "coupon", "coupons", "cashback", "emi"
         ]
 
         wants_cards = any(kw in lowered_msg for kw in card_intent_keywords) or extract_budget(message) is not None

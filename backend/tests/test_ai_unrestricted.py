@@ -30,3 +30,66 @@ def test_general_prompts_return_useful_answers_without_clarification(db_session)
         assert response.clarification is None
         assert "Which product category should I search in?" not in response.answer
         assert response.answer
+
+
+def test_gemini_provider_preserves_conversation_history(monkeypatch, db_session) -> None:
+    """Regression test: verify Gemini REST payload builds multi-turn contents array containing all history turns."""
+    from app.services.ai import _build_gemini_contents, AIOrchestrator
+
+    history = [
+        {"role": "user", "content": "phone under 15000"},
+        {"role": "assistant", "content": "I recommend Motorola Moto G34 5G."}
+    ]
+    user_msg = "tell me some offer going on this"
+
+    contents = _build_gemini_contents(user_msg, history)
+    assert len(contents) == 3
+    assert contents[0] == {"role": "user", "parts": [{"text": "phone under 15000"}]}
+    assert contents[1] == {"role": "model", "parts": [{"text": "I recommend Motorola Moto G34 5G."}]}
+    assert contents[2] == {"role": "user", "parts": [{"text": "tell me some offer going on this"}]}
+
+    # Mock HTTP request to Gemini API and assert payload
+    captured_payloads = []
+
+    class MockResponse:
+        status_code = 200
+        text = "{}"
+        def json(self):
+            return {"candidates": [{"content": {"parts": [{"text": "Offers response"}]}}]}
+
+    class MockClient:
+        def __init__(self, timeout=15):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def post(self, url, json=None, **kwargs):
+            captured_payloads.append(json)
+            return MockResponse()
+
+    monkeypatch.setattr("httpx.Client", MockClient)
+
+    orchestrator = AIOrchestrator(db_session)
+    orchestrator.provider = "gemini"
+    orchestrator.gemini_api_key = "test_key"
+
+    ans = orchestrator._chat("system prompt", user_msg, history=history)
+    assert ans == "Offers response"
+    assert len(captured_payloads) == 1
+    assert captured_payloads[0]["contents"] == contents
+
+
+def test_offer_followup_resolves_last_product(db_session) -> None:
+    """Regression test: asking 'tell me some offer going on this' resolves against the last discussed phone."""
+    from app.main import auto_seed_catalog
+    auto_seed_catalog(db_session)
+
+    history = [{"role": "assistant", "content": "I recommend the Motorola Moto G34 5G (₹11,999)."}]
+
+    orchestrator = AIOrchestrator(db_session)
+    response = orchestrator.answer("tell me some offer going on this", history=history)
+
+    assert response is not None
+    assert "Motorola Moto G34" in response.answer or "Bank Discount" in response.answer or "Offers" in response.answer
+    assert response.product_ids
