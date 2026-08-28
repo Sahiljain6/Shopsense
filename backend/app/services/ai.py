@@ -464,11 +464,29 @@ class AIOrchestrator:
 
         if wants_cards:
             normalized = normalize_query(enriched_message)
-            products = self.catalog.search(normalized, limit=12)
+            products = self.catalog.search(normalized, limit=20)
             budget = extract_budget(message)
 
             if budget is not None:
                 products = [p for p in products if p.price <= budget]
+
+            # If budget was set but keyword search returned zero items under budget,
+            # fallback to searching all catalog products strictly under budget!
+            if budget is not None and not products:
+                all_catalog = self.catalog.search("", limit=50)
+                budget_items = [p for p in all_catalog if p.price <= budget]
+
+                # Filter by category if category was mentioned (e.g. phone, laptop, earbuds)
+                if any(w in lowered_msg for w in ["phone", "mobile", "smartphone"]):
+                    phone_items = [p for p in budget_items if "phone" in p.name.lower() or (p.category and p.category.name.lower() == "phones")]
+                    if phone_items:
+                        budget_items = phone_items
+                elif any(w in lowered_msg for w in ["earbud", "earphone", "audio", "tws"]):
+                    audio_items = [p for p in budget_items if p.category and p.category.name.lower() == "audio"]
+                    if audio_items:
+                        budget_items = audio_items
+
+                products = budget_items
 
             products = self._rank_products(products)
 
@@ -674,19 +692,42 @@ RESPONSE RULES:
                     lines.append(f"• **[{d['store']}]** [{d['title']}]({d['url']}){price_info}")
                 return ChatResponse(answer="\n".join(lines))
 
-            # Fallback 2: Intelligent Catalog Search Matching
+            # Fallback 2: Intelligent Catalog Search Matching with strict budget filtering
             keywords = ["keyboard", "earbuds", "phone", "iphone", "samsung", "apple", "laptop", "macbook", "audio", "watch", "deal", "gaming", "tws"]
             lowered = message.lower()
+            budget = extract_budget(message)
             matched_keywords = [k for k in keywords if k in lowered]
             if matched_keywords:
                 search_query = " ".join(matched_keywords)
-                fallback_products = self.catalog.search(search_query, limit=4)
+                fallback_products = self.catalog.search(search_query, limit=8)
+                if budget is not None:
+                    fallback_products = [p for p in fallback_products if p.price <= budget]
                 if fallback_products:
                     return self._structured_response(fallback_products)
 
-            # Fallback 3: Category-specific expert breakdown
+            # Fallback 3: Dedicated Budget Phones Under ₹15,000 / ₹20,000 Breakdown
+            if any(w in lowered for w in ["phone", "mobile", "smartphone"]):
+                budget_phones = self.catalog.search("phone", limit=10)
+                if budget is not None:
+                    budget_phones = [p for p in budget_phones if p.price <= budget]
+                if budget_phones:
+                    return self._structured_response(budget_phones)
+                return ChatResponse(
+                    answer=(
+                        "### 📱 Top 5G Phones Under ₹15,000 in India\n\n"
+                        "• **Best Overall Value**: **Motorola Moto G34 5G** (₹11,999) — Snapdragon 695 5G, 120Hz display, clean stock Android 14.\n"
+                        "• **Best Performance & Design**: **CMF Phone 1 by Nothing** (₹14,999) — Dimensity 7300 4nm, 120Hz Super AMOLED.\n"
+                        "• **Fastest Charging Champion**: **Realme 12x 5G** (₹11,999) — 45W SUPERVOOC, 50MP AI camera, Dimensity 6100+ 5G.\n"
+                        "• **Best Premium Glass Design**: **Poco M6 Pro 5G** (₹10,999) — Snapdragon 4 Gen 2, glass back, 90Hz FHD+.\n"
+                        "• **Most Affordable 5G Choice**: **Redmi 13C 5G** (₹9,999) — 50MP AI camera, 5000mAh battery."
+                    )
+                )
+
+            # Fallback 4: Category-specific expert breakdown
             if any(w in lowered for w in ["earbud", "earbuds", "tws", "headphone", "earphone", "audio"]):
                 earbuds = self.catalog.search("earbuds", limit=4)
+                if budget is not None:
+                    earbuds = [p for p in earbuds if p.price <= budget]
                 if earbuds:
                     return self._structured_response(earbuds)
                 return ChatResponse(
@@ -694,8 +735,7 @@ RESPONSE RULES:
                         "### 🎧 Top Wireless Earbuds in India (Best Value to Flagship)\n\n"
                         "• **Budget King (Under ₹2,000)**: **boAt Airdopes 141 ANC** (₹1,499) — 32dB ANC, 42H battery, low latency beast.\n"
                         "• **Mid-Range Champion (Under ₹5,000)**: **Realme Buds Air 6 Pro** (₹4,999) — 50dB ANC, Hi-Res LDAC audio, dual drivers.\n"
-                        "• **Flagship Excellence (Under ₹10,000)**: **OnePlus Buds Pro 2** (₹8,999) — Dynaudio tuning, Spatial Audio, 48dB ANC.\n"
-                        "• **Ultimate Audiophile Pick**: **Sony WF-1000XM5** (₹24,990) — Industry-leading noise cancellation & LDAC Hi-Res sound."
+                        "• **Flagship Excellence (Under ₹10,000)**: **OnePlus Buds Pro 2** (₹8,999) — Dynaudio tuning, Spatial Audio, 48dB ANC."
                     )
                 )
 

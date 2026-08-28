@@ -12,7 +12,9 @@ Base.metadata.create_all(bind=engine)
 def auto_seed_catalog():
     db = SessionLocal()
     try:
-        if db.query(Product).count() > 0:
+        existing_count = db.query(Product).count()
+        has_budget_phone = db.query(Product).filter(Product.price <= 15000).count() > 0
+        if existing_count > 0 and has_budget_phone:
             return
 
         seed_data = [
@@ -27,11 +29,19 @@ def auto_seed_catalog():
             {"name": "Keychron K2 V2 Wireless Mechanical Keyboard (Gateron Brown)", "brand": "Keychron", "category": "Peripherals", "price": 7999, "rating": 4.8, "image": "https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=500&q=80", "desc": "75% compact wireless keyboard compatible with Mac & Windows, hot-swappable switches, and 4000mAh battery.", "attrs": {"switch": "Gateron Brown Tactile", "layout": "75% 84-Key", "connectivity": "Bluetooth 5.1 / Type-C"}},
             {"name": "Redragon K552 Kumara RGB Mechanical Gaming Keyboard", "brand": "Redragon", "category": "Peripherals", "price": 2790, "rating": 4.5, "image": "https://images.unsplash.com/photo-1595225476474-87563907a212?w=500&q=80", "desc": "Durable metal-ABS construction with custom mechanical red linear switches and splash-proof design.", "attrs": {"switch": "Red Linear Switches", "layout": "Tenkeyless", "lighting": "RGB 18 Modes"}},
 
-            # Phones
+            # Phones — Flagship & Mid-Range
             {"name": "OnePlus 12 5G (16GB RAM, 512GB Storage)", "brand": "OnePlus", "category": "Phones", "price": 64999, "rating": 4.7, "image": "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=500&q=80", "desc": "Snapdragon 8 Gen 3, 2K 120Hz ProXDR Display, Hasselblad 4th Gen camera, and 100W SUPERVOOC charging.", "attrs": {"processor": "Snapdragon 8 Gen 3", "camera": "50MP Sony LYT-808", "battery": "5400mAh 100W"}},
             {"name": "Apple iPhone 15 (128GB, Black)", "brand": "Apple", "category": "Phones", "price": 69900, "rating": 4.8, "image": "https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=500&q=80", "desc": "Dynamic Island, 48MP main camera with 2x Telephoto, A16 Bionic chip, and USB-C connectivity.", "attrs": {"processor": "A16 Bionic", "camera": "48MP Dual", "display": "6.1 Super Retina XDR"}},
             {"name": "Samsung Galaxy S24 Ultra 5G (12GB RAM, 256GB)", "brand": "Samsung", "category": "Phones", "price": 129999, "rating": 4.8, "image": "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=500&q=80", "desc": "Titanium frame, Galaxy AI live translation, 200MP camera with 100x Space Zoom, and built-in S-Pen.", "attrs": {"processor": "Snapdragon 8 Gen 3 for Galaxy", "camera": "200MP Quad", "screen": "6.8 QHD+ AMOLED 120Hz"}},
             {"name": "Redmi Note 13 Pro+ 5G (8GB RAM, 256GB)", "brand": "Xiaomi", "category": "Phones", "price": 27999, "rating": 4.4, "image": "https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=500&q=80", "desc": "200MP OIS camera, 3D Curved 1.5K AMOLED display, IP68 water resistance, and 120W HyperCharge.", "attrs": {"processor": "Dimensity 7200 Ultra", "camera": "200MP OIS", "charging": "120W Fast Charge"}},
+
+            # Budget 5G Phones Under ₹15,000
+            {"name": "Motorola Moto G34 5G (8GB RAM, 128GB)", "brand": "Motorola", "category": "Phones", "price": 11999, "rating": 4.5, "image": "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=500&q=80", "desc": "Best overall 5G phone under ₹12,000. Snapdragon 695 5G, 120Hz display, clean stock Android 14, and 5000mAh battery.", "attrs": {"processor": "Snapdragon 695 5G", "screen": "120Hz HD+", "battery": "5000mAh"}},
+            {"name": "Realme 12x 5G (6GB RAM, 128GB)", "brand": "Realme", "category": "Phones", "price": 11999, "rating": 4.4, "image": "https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=500&q=80", "desc": "Dimensity 6100+ 5G processor, 45W SUPERVOOC fast charging, 50MP AI camera, and 120Hz display.", "attrs": {"processor": "Dimensity 6100+", "charging": "45W Fast Charge", "camera": "50MP AI"}},
+            {"name": "Poco M6 Pro 5G (6GB RAM, 128GB)", "brand": "POCO", "category": "Phones", "price": 10999, "rating": 4.3, "image": "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=500&q=80", "desc": "Snapdragon 4 Gen 2 4nm 5G chipset, premium glass back design, 90Hz FHD+ display, and IP53 splash resistance.", "attrs": {"processor": "Snapdragon 4 Gen 2", "display": "90Hz FHD+ Glass Back", "battery": "5000mAh"}},
+            {"name": "Samsung Galaxy M14 5G (6GB RAM, 128GB)", "brand": "Samsung", "category": "Phones", "price": 12490, "rating": 4.4, "image": "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=500&q=80", "desc": "Monster 6000mAh battery, 5nm Exynos 1330 5G processor, 50MP triple camera, and 13 5G bands.", "attrs": {"battery": "6000mAh", "processor": "Exynos 1330 5G", "camera": "50MP Triple"}},
+            {"name": "CMF Phone 1 by Nothing (6GB RAM, 128GB)", "brand": "Nothing", "category": "Phones", "price": 14999, "rating": 4.6, "image": "https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=500&q=80", "desc": "Best design & performance under ₹15,000. Dimensity 7300 4nm processor, 120Hz Super AMOLED display, and unique modular back panel.", "attrs": {"processor": "MediaTek Dimensity 7300", "display": "120Hz Super AMOLED", "camera": "50MP Sony"}},
+            {"name": "Redmi 13C 5G (4GB RAM, 128GB)", "brand": "Xiaomi", "category": "Phones", "price": 9999, "rating": 4.2, "image": "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=500&q=80", "desc": "Most affordable 5G phone in India under ₹10,000. Dimensity 6100+ processor, 50MP AI camera, and starshine glass design.", "attrs": {"processor": "Dimensity 6100+", "screen": "90Hz HD+", "battery": "5000mAh"}},
 
             # Laptops
             {"name": "Apple MacBook Air M3 (13.6-inch, 8GB RAM, 256GB SSD)", "brand": "Apple", "category": "Laptops", "price": 104900, "rating": 4.9, "image": "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=500&q=80", "desc": "Blazing-fast M3 chip with 8-core CPU and 10-core GPU, Liquid Retina display, and 18 hours battery life.", "attrs": {"processor": "Apple M3 Chip", "display": "13.6 Liquid Retina", "battery": "18 Hours"}},
