@@ -102,10 +102,10 @@ export async function register(payload) {
 export const googleLogin = () =>
   apiFetch("/auth/google", { method: "POST" });
 
-export const sendChat = (message, mode, history) =>
+export const sendChat = (message, mode, history, cart = []) =>
   apiFetch("/chat", {
     method: "POST",
-    body: JSON.stringify({ message, mode, history }),
+    body: JSON.stringify({ message, mode, history, cart }),
   });
 
 export const fetchLink = (url) =>

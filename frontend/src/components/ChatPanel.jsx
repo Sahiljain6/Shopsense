@@ -134,7 +134,7 @@ export default function ChatPanel({ onError, onClearError }) {
 
         (async () => {
           try {
-            const response = await sendChat(text, null, history);
+            const response = await sendChat(text, null, history, getCart());
             const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
             let products = [];
             if (ids.length > 0) {

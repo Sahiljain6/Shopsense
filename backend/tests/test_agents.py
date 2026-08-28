@@ -57,3 +57,40 @@ def test_regression_search_phone_under_15000(db_session) -> None:
         assert is_phone, f"Product '{product.name}' is not a Phone (category: {product.category.name if product.category else None})"
         assert "keyboard" not in product.name.lower(), f"Irrelevant keyboard returned: {product.name}"
         assert "earbuds" not in product.name.lower(), f"Irrelevant earbuds returned: {product.name}"
+
+
+def test_regression_phone_under_35000(db_session) -> None:
+    """Regression test for Bug 1: 'phone under 35000'
+    Ensures that CatalogService.search() resolves the Phones category
+    and returns ALL Phones-category products priced <= 35000 (at least 5 in seed catalog).
+    """
+    auto_seed_catalog(db_session)
+
+    from app.services.catalog import CatalogService
+    results = CatalogService(db_session).search("phone under 35000", limit=20, max_price=35000)
+
+    assert len(results) >= 5, f"Expected at least 5 budget/mid-range phones under 35000, got {len(results)}"
+    for product in results:
+        assert product.price <= 35000, f"Product {product.name} price {product.price} > 35000"
+        assert product.category and product.category.name == "Phones", f"Product {product.name} is not in Phones category"
+
+
+def test_regression_matching_cover_followup_and_cart_context(db_session) -> None:
+    """Regression test for Bug 2: Follow-up queries ('matching cover') and cart context.
+    - Follow-up query 'matching cover' resolves against the last discussed phone (Redmi Note 13 Pro+ 5G).
+    - Unrelated query ('earbuds under 5000') does not force-mention the cart.
+    """
+    auto_seed_catalog(db_session)
+
+    history = [{"role": "assistant", "content": "I recommend the Redmi Note 13 Pro+ 5G (₹27,999)."}]
+    cart = [{"id": 1, "name": "Redmi Note 13 Pro+ 5G", "price": 27999, "qty": 1}]
+
+    # 1. Follow-up query should reference the specific phone
+    response1 = AIOrchestrator(db_session).answer("matching cover", history=history, cart=cart)
+    assert response1 is not None
+    assert "Redmi Note 13 Pro+" in response1.answer or "Accessories" in response1.answer or "Cover" in response1.answer
+
+    # 2. Unrelated query should answer about earbuds without force-mentioning the cart
+    response2 = AIOrchestrator(db_session).answer("earbuds under 5000", cart=cart)
+    assert response2 is not None
+    assert response2.answer

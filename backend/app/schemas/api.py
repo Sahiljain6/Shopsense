@@ -57,6 +57,7 @@ class ChatRequest(BaseModel):
     message: str
     mode: str | None = None
     history: list[ChatTurn] = Field(default_factory=list)
+    cart: list[dict[str, object]] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):

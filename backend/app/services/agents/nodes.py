@@ -49,17 +49,17 @@ def search_node(state: ShopSenseState) -> ShopSenseState:
 
 
 def recommend_node(state: ShopSenseState) -> ShopSenseState:
-    state["response"] = AIOrchestrator(state["db"]).answer(state["message"], state.get("mode"))
+    state["response"] = AIOrchestrator(state["db"]).answer(state["message"], state.get("mode"), cart=state.get("cart"))
     return state
 
 
 def compare_node(state: ShopSenseState) -> ShopSenseState:
-    state["response"] = AIOrchestrator(state["db"]).answer(state["message"], "compare")
+    state["response"] = AIOrchestrator(state["db"]).answer(state["message"], "compare", cart=state.get("cart"))
     return state
 
 
 def review_node(state: ShopSenseState) -> ShopSenseState:
-    state["response"] = AIOrchestrator(state["db"]).answer(state["message"], "review_digest")
+    state["response"] = AIOrchestrator(state["db"]).answer(state["message"], "review_digest", cart=state.get("cart"))
     return state
 
 

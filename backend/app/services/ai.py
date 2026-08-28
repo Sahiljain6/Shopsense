@@ -397,11 +397,35 @@ class AIOrchestrator:
 
         return None
 
+    def _find_last_product(
+        self,
+        history: list[dict[str, str]] | None,
+        cart: list[dict[str, object]] | None = None
+    ) -> Product | None:
+        catalog_products = self.catalog.search("", limit=50)
+        if history:
+            for turn in reversed(history[-6:]):
+                content = (turn.get("content") or "").lower()
+                for p in catalog_products:
+                    # Match name or core model name
+                    model_words = [w for w in p.name.lower().split() if len(w) > 2 and w not in ["phone", "5g", "ram", "storage", "black", "blue"]]
+                    if p.name.lower() in content or (len(model_words) >= 2 and all(mw in content for mw in model_words[:2])):
+                        return p
+        if cart:
+            for item in reversed(cart):
+                item_name = (item.get("name") or "").lower()
+                if item_name:
+                    matches = self.catalog.search(item_name, limit=1)
+                    if matches:
+                        return matches[0]
+        return None
+
     def answer(
         self,
         message: str,
         mode: str | None = None,
-        history: list[dict[str, str]] | None = None
+        history: list[dict[str, str]] | None = None,
+        cart: list[dict[str, object]] | None = None
     ) -> ChatResponse:
 
         # 1. Strict Scope & Guardrail check (Prevent coding, hacking, homework, and non-shopping usage)
@@ -512,6 +536,21 @@ class AIOrchestrator:
 
         lowered_msg = message.lower()
 
+        # Follow-up Specific Product Context Resolution (e.g. "matching cover", "case for this", "cover for it")
+        followup_kws = ["matching cover", "back cover", "phone cover", "case for this", "cover for it", "matching case", "tempered glass", "screen guard", "case", "cover"]
+        if any(kw in lowered_msg for kw in followup_kws):
+            last_prod = self._find_last_product(history, cart)
+            if last_prod:
+                return ChatResponse(
+                    answer=(
+                        f"### 🛡️ Recommended Matching Accessories for **{last_prod.name}**\n\n"
+                        f"• **Matte Protective Back Cover / Shockproof Case** (₹399) — Precision cutouts, raised camera protection & anti-fingerprint grip.\n"
+                        f"• **9H Curved Tempered Glass Screen Guard** (₹299) — Full-screen scratch & drop protection.\n"
+                        f"• **Fast Charging Wall Adapter & USB Cable** (₹1,299) — Official fast charging support for {last_prod.brand}."
+                    ),
+                    product_ids=[last_prod.id]
+                )
+
         # Rule 1: Handle comparison queries explicitly (e.g. "Compare iPhone 15 vs OnePlus 12")
         if "vs" in lowered_msg or "compare" in lowered_msg:
             parts = re.split(r'\b(?:vs\.?|versus|and|compare)\b', lowered_msg, flags=re.IGNORECASE)
@@ -569,38 +608,40 @@ class AIOrchestrator:
                     1 if "quick_answer" in select_modifiers(message, mode)
                     else 3
                 )]
-                return self._generate_ai_response(message, products, history)
+                return self._generate_ai_response(message, products, history, cart=cart)
 
         # REAL-TIME INTERNET / MULTI-MODEL FALLBACK:
         # If still no catalog items matched or non-card query, generate real-time live response
-        return self._general_ai_response(message, history)
+        return self._general_ai_response(message, history, cart=cart)
 
     def answer_via_agents(
         self,
         message: str,
         mode: str | None = None,
-        history: list[dict[str, str]] | None = None
+        history: list[dict[str, str]] | None = None,
+        cart: list[dict[str, object]] | None = None
     ) -> ChatResponse:
 
         try:
             if not get_settings().enable_multi_agent:
-                return self.answer(message, mode, history)
+                return self.answer(message, mode, history, cart=cart)
 
             from app.services.agents.graph import run_graph
 
             data = run_graph({
                 "message": message,
                 "mode": mode,
-                "db": self.db
+                "db": self.db,
+                "cart": cart
             })
 
             if isinstance(data.get("response"), ChatResponse):
                 return data["response"]
 
-            return self.answer(message, mode, history)
+            return self.answer(message, mode, history, cart=cart)
 
         except Exception:
-            return self.answer(message, mode, history)
+            return self.answer(message, mode, history, cart=cart)
 
     def _rank_products(
         self,
@@ -615,11 +656,25 @@ class AIOrchestrator:
             )
         )
 
+    def _get_cart_summary_text(self, cart: list[dict[str, object]] | None) -> str:
+        if not cart:
+            return "User's cart is empty."
+        items = []
+        for i in cart:
+            name = i.get("name", "Product")
+            qty = i.get("qty", 1)
+            price = i.get("price", 0)
+            items.append(f"{qty}x {name} (₹{price:,.0f})")
+        if not items:
+            return "User's cart is empty."
+        return "User's current cart: " + ", ".join(items) + "."
+
     def _generate_ai_response(
         self,
         message: str,
         products: list[Product],
-        history: list[dict[str, str]] | None = None
+        history: list[dict[str, str]] | None = None,
+        cart: list[dict[str, object]] | None = None
     ) -> ChatResponse:
 
         ids = [product.id for product in products]
@@ -665,6 +720,8 @@ RESPONSE RULES:
 6. Use ₹ for all prices, formatted in Indian numbering (e.g. ₹1,04,900).
 """
 
+        cart_summary = self._get_cart_summary_text(cart)
+
         answer = self._chat(
             system=(
                 "You are ShopSense, an expert AI shopping copilot.\n"
@@ -672,6 +729,8 @@ RESPONSE RULES:
                 "You ONLY assist with product discovery, price comparisons, deal finding, budgeting, and buying decisions. "
                 "You MUST REFUSE any requests to write code, debug software, solve non-shopping math/homework, write essays/stories, or perform non-shopping tasks. "
                 "If the user asks for coding or non-shopping tasks, politely refuse and redirect them to shopping products.\n"
+                f"{cart_summary}\n"
+                "CRITICAL RULE FOR CART CONTEXT: Only reference the user's cart when it is directly relevant to the user's request (e.g. recommending matching accessories for cart items, checking for duplicate purchases, or when the user explicitly asks about their cart). Do NOT force-mention the cart on unrelated queries.\n"
                 "Recommend only real products provided in the catalog context. Use the conversation history to understand context like budget or brand."
             ),
             user=prompt,
@@ -708,7 +767,8 @@ RESPONSE RULES:
     def _general_ai_response(
         self,
         message: str,
-        history: list[dict[str, str]] | None = None
+        history: list[dict[str, str]] | None = None,
+        cart: list[dict[str, object]] | None = None
     ) -> ChatResponse:
 
         # Conversational / Small Talk Intercepts (No web search, no random links)

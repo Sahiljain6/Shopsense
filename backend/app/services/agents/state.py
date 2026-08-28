@@ -7,6 +7,7 @@ class ShopSenseState(TypedDict, total=False):
     message: str
     mode: str | None
     db: Session
+    cart: list[dict[str, Any]]
     intent: str
     product_ids: list[int]
     response: ChatResponse

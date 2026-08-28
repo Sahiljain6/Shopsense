@@ -74,7 +74,7 @@ def products(q: str | None = None, limit: int = 10, db: Session = Depends(get_db
 @router.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
-    response = AIOrchestrator(db).answer_via_agents(payload.message, payload.mode, history)
+    response = AIOrchestrator(db).answer_via_agents(payload.message, payload.mode, history, cart=payload.cart)
     db.add(ChatHistory(user_id=None, message=payload.message, response=response.model_dump()))
     db.commit()
     return response
