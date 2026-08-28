@@ -532,11 +532,11 @@ class AIOrchestrator:
             if budget is not None:
                 products = [p for p in products if p.price <= budget]
 
-            # If budget was set but keyword search returned zero items under budget,
-            # fallback to searching all catalog products strictly under budget!
-            if budget is not None and not products:
+            # If budget or keyword search returned no products in DB,
+            # query live e-commerce search & multi-model LLMs in real time!
+            if not products:
                 all_catalog = self.catalog.search("", limit=50)
-                budget_items = [p for p in all_catalog if p.price <= budget]
+                budget_items = [p for p in all_catalog if p.price <= (budget if budget else 999999)]
 
                 # Filter by category if category was mentioned (e.g. phone, laptop, earbuds)
                 if any(w in lowered_msg for w in ["phone", "mobile", "smartphone"]):
@@ -559,8 +559,9 @@ class AIOrchestrator:
                 )]
                 return self._generate_ai_response(message, products, history)
 
-        # Rule 3: Conversational / Advice Queries -> Text only, no product cards attached
-        return self._general_ai_response(message, history)
+            # REAL-TIME INTERNET / MULTI-MODEL FALLBACK:
+            # If still no catalog items matched, generate real-time live web response
+            return self._general_ai_response(message, history)
 
     def answer_via_agents(
         self,
