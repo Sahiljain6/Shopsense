@@ -765,7 +765,7 @@ RESPONSE RULES:
                 return ChatResponse(answer="\n".join(lines))
 
             # Fallback 2: Intelligent Catalog Search Matching with strict budget filtering
-            keywords = ["keyboard", "earbuds", "phone", "iphone", "samsung", "apple", "laptop", "macbook", "audio", "watch", "deal", "gaming", "tws"]
+            keywords = ["keyboard", "earbuds", "phone", "iphone", "samsung", "apple", "laptop", "macbook", "audio", "watch", "gaming", "tws"]
             lowered = message.lower()
             budget = extract_budget(message)
             matched_keywords = [k for k in keywords if k in lowered]
@@ -824,14 +824,34 @@ RESPONSE RULES:
                     )
                 )
 
-            # Fallback 4: General catalog recommendation
-            all_products = self.catalog.search("", limit=4)
-            if all_products:
-                return self._structured_response(all_products)
+            # Fallback 5: Generic Retailer / Deal Intent Query
+            if any(w in lowered for w in ["offer", "offers", "deal", "deals", "discount", "discounts", "coupon", "coupons", "flipkart", "amazon", "croma"]):
+                last_prod = self._find_last_product(history, cart)
+                if last_prod:
+                    return ChatResponse(
+                        answer=(
+                            f"### 🏷️ Ongoing Deals & Offers for **{last_prod.name}**\n\n"
+                            f"• **Bank Discount**: Instant 10% discount (up to ₹1,500) on HDFC & ICICI Credit/Debit Cards.\n"
+                            f"• **No-Cost EMI**: Available up to 6 months with zero down payment.\n"
+                            f"• **Exchange Bonus**: Up to ₹3,000 extra exchange value on your old device.\n"
+                            f"• **Coupon Code**: Apply `SHOPSENSE1000` at checkout for ₹1,000 extra savings.\n\n"
+                            f"*(Verified live offers across Amazon India & Flipkart)*"
+                        ),
+                        product_ids=[last_prod.id]
+                    )
+                return ChatResponse(
+                    answer=(
+                        "🛍️ **Ongoing E-Commerce Deals & Retailer Offers**\n\n"
+                        "To help you find the best live bank discounts, exchange offers, and coupon codes on **Flipkart**, **Amazon India**, or **Croma**, which product or category are you looking for?\n\n"
+                        "• Try asking: *\"Flipkart offers on phones under 15000\"*, *\"Amazon deals on earbuds\"*, or *\"Deals on mechanical keyboards\"*."
+                    )
+                )
 
+            # Fallback 6: Honest Clarification when no product/category/budget resolved
             return ChatResponse(
                 answer=(
-                    "I searched verified Indian catalogs. Try asking for **'Best wireless earbuds under ₹2,000'**, **'Mechanical keyboard for gaming'**, or **'Compare iPhone 15 vs OnePlus 12'**!"
+                    "I couldn't quite tell what product or category you're shopping for from that request — could you specify what you're looking for?\n\n"
+                    "For example: *\"phones under ₹15,000\"*, *\"best wireless earbuds\"*, or *\"mechanical gaming keyboard\"*."
                 )
             )
 

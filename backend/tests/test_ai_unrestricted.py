@@ -93,3 +93,24 @@ def test_offer_followup_resolves_last_product(db_session) -> None:
     assert response is not None
     assert "Motorola Moto G34" in response.answer or "Bank Discount" in response.answer or "Offers" in response.answer
     assert response.product_ids
+
+
+def test_unmatched_query_with_failed_llm_returns_honest_clarification(monkeypatch, db_session) -> None:
+    """Regression test for random catalog product dump:
+    When query is 'fetch me some offer on flipkart' and _chat() returns None (LLM provider failed),
+    the system must NOT return top-rated random catalog products (MacBook Air / Sony earbuds / Keychron).
+    Instead, it must ask an honest clarifying question.
+    """
+    from app.main import auto_seed_catalog
+    auto_seed_catalog(db_session)
+
+    orchestrator = AIOrchestrator(db_session)
+    monkeypatch.setattr(orchestrator, "_chat", lambda *args, **kwargs: None)
+
+    response = orchestrator.answer("fetch me some offer on flipkart")
+
+    assert response is not None
+    # Must NOT return random product_ids
+    assert not response.product_ids or len(response.product_ids) == 0, f"Expected zero product_ids, got {response.product_ids}"
+    assert "Flipkart" in response.answer or "category" in response.answer
+    assert "Here are top verified options" not in response.answer

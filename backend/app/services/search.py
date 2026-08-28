@@ -149,65 +149,83 @@ def resolve_products(
     category_name = resolve_category(message, history, cart, db)
 
     # 1. Primary Filter by Category Relationship & Budget in SQL
-    stmt = select(Product)
-    matched_cat = None
     if category_name:
         matched_cat = db.scalars(
             select(Category).where(Category.name.ilike(category_name))
         ).first()
 
-    if matched_cat:
-        stmt = stmt.where(Product.category_id == matched_cat.id)
+        if matched_cat:
+            stmt = select(Product).where(Product.category_id == matched_cat.id)
+            if budget is not None:
+                stmt = stmt.where(Product.price <= budget)
 
-    if budget is not None:
-        stmt = stmt.where(Product.price <= budget)
+            # Apply secondary specific term filters if specific model words exist
+            specific_words = [
+                w for w in cleaned.split()
+                if w not in {"phone", "phones", "mobile", "mobiles", "smartphone", "laptop", "laptops", "earbuds", "keyboard", "under", "below", "budget", "show", "me", "give", "find", "best", "good", "recommend"}
+                and len(w) > 2 and not w.isdigit()
+            ]
 
-    # Apply secondary specific term filters if specific model words exist
-    specific_words = [
-        w for w in cleaned.split()
-        if w not in {"phone", "phones", "mobile", "mobiles", "smartphone", "laptop", "laptops", "earbuds", "keyboard", "under", "below", "budget", "show", "me", "give", "find", "best", "good", "recommend"}
-        and len(w) > 2 and not w.isdigit()
-    ]
+            if specific_words:
+                spec_filters = []
+                for sw in specific_words:
+                    spec_filters.extend([
+                        Product.name.ilike(f"%{sw}%"),
+                        Product.brand.ilike(f"%{sw}%"),
+                        Product.description.ilike(f"%{sw}%")
+                    ])
+                spec_stmt = stmt.where(or_(*spec_filters)).order_by(Product.rating.desc()).limit(limit)
+                spec_results = list(db.scalars(spec_stmt).all())
+                if spec_results:
+                    return ResolvedSearch(
+                        query=message,
+                        cleaned_query=cleaned,
+                        category_name=category_name,
+                        budget=budget,
+                        products=spec_results
+                    )
 
-    if specific_words:
-        spec_filters = []
-        for sw in specific_words:
-            spec_filters.extend([
-                Product.name.ilike(f"%{sw}%"),
-                Product.brand.ilike(f"%{sw}%"),
-                Product.description.ilike(f"%{sw}%")
-            ])
-        spec_stmt = stmt.where(or_(*spec_filters)).order_by(Product.rating.desc()).limit(limit)
-        spec_results = list(db.scalars(spec_stmt).all())
-        if spec_results:
+            stmt = stmt.order_by(Product.rating.desc()).limit(limit)
+            results = list(db.scalars(stmt).all())
             return ResolvedSearch(
                 query=message,
                 cleaned_query=cleaned,
                 category_name=category_name,
                 budget=budget,
-                products=spec_results
+                products=results
             )
 
-    stmt = stmt.order_by(Product.rating.desc()).limit(limit)
-    results = list(db.scalars(stmt).all())
+    # 2. If no category is resolved, perform strict product term matching
+    non_product_words = {
+        "fetch", "some", "offer", "offers", "deal", "deals", "discount", "discounts",
+        "coupon", "coupons", "cashback", "emi", "flipkart", "amazon", "croma",
+        "under", "below", "budget", "recommend", "suggest", "good", "best", "show",
+        "me", "give", "find", "buy", "pick", "want", "need", "price", "today", "running"
+    }
 
-    # 2. Fallback to Substring ILIKE search if no products matched resolved category
-    if not results and cleaned:
+    terms = [
+        t for t in cleaned.split()
+        if len(t) > 2
+        and t not in non_product_words
+        and not t.isdigit()
+    ]
+
+    if terms:
         fallback_stmt = select(Product)
         if budget is not None:
             fallback_stmt = fallback_stmt.where(Product.price <= budget)
 
-        terms = [t for t in cleaned.split() if len(t) > 2]
-        if terms:
-            term_filters = []
-            for t in terms:
-                term_filters.extend([
-                    Product.name.ilike(f"%{t}%"),
-                    Product.brand.ilike(f"%{t}%"),
-                    Product.description.ilike(f"%{t}%")
-                ])
-            fallback_stmt = fallback_stmt.where(or_(*term_filters)).order_by(Product.rating.desc()).limit(limit)
-            results = list(db.scalars(fallback_stmt).all())
+        term_filters = []
+        for t in terms:
+            term_filters.extend([
+                Product.name.ilike(f"%{t}%"),
+                Product.brand.ilike(f"%{t}%"),
+                Product.description.ilike(f"%{t}%")
+            ])
+        fallback_stmt = fallback_stmt.where(or_(*term_filters)).order_by(Product.rating.desc()).limit(limit)
+        results = list(db.scalars(fallback_stmt).all())
+    else:
+        results = []
 
     return ResolvedSearch(
         query=message,
