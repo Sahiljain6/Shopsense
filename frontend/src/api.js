@@ -25,12 +25,13 @@ export function clearToken() {
 export function friendlyError(error) {
   if (error instanceof ApiError) {
     const message = error.message || "Request failed";
-    if (error.status === 0) return `Connection error: ${message}`;
-    if (error.status === 400) return `400 validation error: ${message}`;
-    if (error.status === 401) return `401 authentication error: ${message}`;
-    if (error.status === 403) return `403 authorization error: ${message}`;
-    if (error.status === 404) return `404 endpoint not found: ${message}`;
-    if (error.status >= 500) return `${error.status} backend/server error: ${message}`;
+    if (error.status === 0) return `Connection notice: ${message}. The server may be waking up — please try sending again.`;
+    if (error.status === 408) return `Server wake-up notice: ${message}`;
+    if (error.status === 400) return `Validation error: ${message}`;
+    if (error.status === 401) return `Authentication error: ${message}`;
+    if (error.status === 403) return `Authorization error: ${message}`;
+    if (error.status === 404) return `Endpoint not found: ${message}`;
+    if (error.status >= 500) return `Server error (${error.status}): ${message}`;
     return `${error.status}: ${message}`;
   }
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
@@ -47,7 +48,7 @@ async function responseMessage(response) {
   }
 }
 
-async function apiFetch(path, options = {}) {
+export async function apiFetch(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const headers = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
@@ -58,33 +59,73 @@ async function apiFetch(path, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
-  try {
-    const response = await fetch(`${API_URL}${path}`, {
-      ...options,
-      headers,
-      signal: controller.signal,
-    });
-    if (!response.ok)
-      throw new ApiError(response.status, await responseMessage(response));
-    return response.json();
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    if (error instanceof DOMException && error.name === "AbortError") {
+  const maxRetries = options.retries ?? 1;
+  const onStatusChange = options.onStatusChange;
+
+  let attempt = 0;
+  while (attempt <= maxRetries) {
+    // 35s on first attempt, 65s on second attempt to accommodate Render free-tier spin-up
+    const timeoutMs = attempt === 0 ? 35000 : 65000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      if (attempt > 0 && onStatusChange) {
+        onStatusChange("waking");
+      }
+      const response = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        // Render free-tier returns 502/503/504 while waking the container
+        if (attempt < maxRetries && [502, 503, 504].includes(response.status)) {
+          attempt++;
+          if (onStatusChange) onStatusChange("waking");
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          continue;
+        }
+        throw new ApiError(response.status, await responseMessage(response));
+      }
+      return await response.json();
+    } catch (error) {
+      if (error instanceof ApiError && ![502, 503, 504].includes(error.status)) {
+        throw error;
+      }
+      const isTimeout = error instanceof DOMException && error.name === "AbortError";
+      const isNetworkError =
+        error instanceof TypeError ||
+        error.name === "TypeError" ||
+        (error instanceof ApiError && error.status === 0);
+
+      if (
+        attempt < maxRetries &&
+        (isTimeout || isNetworkError || (error instanceof ApiError && [502, 503, 504].includes(error.status)))
+      ) {
+        attempt++;
+        if (onStatusChange) onStatusChange("waking");
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        continue;
+      }
+
+      if (error instanceof ApiError) throw error;
+      if (isTimeout) {
+        throw new ApiError(
+          408,
+          "The server took longer than expected to respond. It may still be waking up — please try again in a moment."
+        );
+      }
       throw new ApiError(
-        408,
-        "The request timed out after 30 seconds. The server may be warming up — please try again."
+        0,
+        error instanceof Error
+          ? error.message
+          : "Network request failed. Please check your connection."
       );
+    } finally {
+      clearTimeout(timeoutId);
     }
-    throw new ApiError(
-      0,
-      error instanceof Error
-        ? error.message
-        : "Network request failed. Please try again."
-    );
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 
@@ -102,10 +143,12 @@ export async function register(payload) {
 export const googleLogin = () =>
   apiFetch("/auth/google", { method: "POST" });
 
-export const sendChat = (message, mode, history, cart = []) =>
+export const sendChat = (message, mode, history, cart = [], onStatusChange = null) =>
   apiFetch("/chat", {
     method: "POST",
     body: JSON.stringify({ message, mode, history, cart }),
+    onStatusChange,
+    retries: 1,
   });
 
 export const fetchLink = (url) =>

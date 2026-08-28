@@ -38,9 +38,11 @@ export default function ChatPanel({ onError, onClearError }) {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isWarmingUp, setIsWarmingUp] = useState(false);
   const [attachedFile, setAttachedFile] = useState(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const warmUpTimerRef = useRef(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -125,6 +127,12 @@ export default function ChatPanel({ onError, onClearError }) {
 
       // AI chat flow
       setInputText("");
+      setIsWarmingUp(false);
+      if (warmUpTimerRef.current) clearTimeout(warmUpTimerRef.current);
+      warmUpTimerRef.current = setTimeout(() => {
+        setIsWarmingUp(true);
+      }, 7000);
+
       setMessages((prev) => {
         const history = prev.slice(-8).map((m) => ({
           role: m.role === "user" ? "user" : "assistant",
@@ -134,7 +142,17 @@ export default function ChatPanel({ onError, onClearError }) {
 
         (async () => {
           try {
-            const response = await sendChat(text, null, history, getCart());
+            const response = await sendChat(
+              text,
+              null,
+              history,
+              getCart(),
+              (status) => {
+                if (status === "waking") {
+                  setIsWarmingUp(true);
+                }
+              }
+            );
             const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
             let products = [];
             if (ids.length > 0) {
@@ -147,7 +165,11 @@ export default function ChatPanel({ onError, onClearError }) {
               response, products,
             }]);
           } catch (err) { onError(friendlyError(err)); }
-          finally { setLoading(false); }
+          finally {
+            if (warmUpTimerRef.current) clearTimeout(warmUpTimerRef.current);
+            setLoading(false);
+            setIsWarmingUp(false);
+          }
         })();
 
         return next;
@@ -206,10 +228,17 @@ export default function ChatPanel({ onError, onClearError }) {
               <MessageBubble key={i} message={msg} />
             ))}
             {loading && (
-              <div className="chat-typing-row">
-                <span className="typing-dot" />
-                <span className="typing-dot" />
-                <span className="typing-dot" />
+              <div className="chat-typing-container">
+                <div className="chat-typing-row">
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                </div>
+                {isWarmingUp && (
+                  <div className="chat-warming-notice">
+                    <span>⚡</span> Waking up the server, this can take up to a minute...
+                  </div>
+                )}
               </div>
             )}
           </>

@@ -1,0 +1,17 @@
+﻿name: Keep Render Backend Warm
+
+on:
+  schedule:
+    # Runs every 10 minutes (Render free tier spins down after 15 minutes of inactivity)
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-render:
+    name: Health Ping
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping ShopSense API
+        run: |
+          echo "Pinging ShopSense API health endpoint..."
+          curl -s -f -m 45 https://shopsense-api-pb2g.onrender.com/health || echo "Endpoint waking or returned non-200"

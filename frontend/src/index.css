@@ -768,6 +768,26 @@ button:disabled {
   40% { transform: translateY(-6px); opacity: 1; }
 }
 
+.chat-warming-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  margin: 0 1rem 0.5rem;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-sm);
+  color: #1e40af;
+  font-size: 0.78rem;
+  font-weight: 500;
+  animation: pulseWarming 2s infinite ease-in-out;
+}
+
+@keyframes pulseWarming {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    6. BUY LINKS, PRICE INSIGHTS, OFFERS, SPECS (Product Card Expanded)
    ═══════════════════════════════════════════════════════════════════════════ */
