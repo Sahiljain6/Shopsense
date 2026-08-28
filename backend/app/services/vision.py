@@ -1,4 +1,5 @@
 import base64
+import os
 import httpx
 
 VISION_ENDPOINT = "https://vision.googleapis.com/v1/images:annotate"
@@ -7,11 +8,16 @@ FREE_HF_BLIP_ENDPOINT = "https://api-inference.huggingface.co/models/Salesforce/
 
 
 def identify_image_free(image_bytes: bytes) -> list[str]:
-    """100% Free image identification using Hugging Face's open vision models (0 API key required)."""
+    """100% Free image identification using Hugging Face's open vision models (ViT & BLIP)."""
+    headers = {}
+    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_API_KEY")
+    if hf_token and hf_token.strip():
+        headers["Authorization"] = f"Bearer {hf_token.strip()}"
+
     try:
-        # 1. Try free ViT image classifier
+        # 1. Try free ViT image classifier (Hugging Face Vision AI)
         with httpx.Client(timeout=10) as client:
-            resp = client.post(FREE_HF_VISION_ENDPOINT, content=image_bytes)
+            resp = client.post(FREE_HF_VISION_ENDPOINT, headers=headers, content=image_bytes)
             if resp.status_code == 200:
                 results = resp.json()
                 if isinstance(results, list):
@@ -20,9 +26,9 @@ def identify_image_free(image_bytes: bytes) -> list[str]:
                         clean_labels = [l.split(",")[0].strip() for l in labels[:5]]
                         return clean_labels
 
-        # 2. Try free BLIP image captioner
+        # 2. Try free BLIP image captioner (Hugging Face Multimodal AI)
         with httpx.Client(timeout=10) as client:
-            resp = client.post(FREE_HF_BLIP_ENDPOINT, content=image_bytes)
+            resp = client.post(FREE_HF_BLIP_ENDPOINT, headers=headers, content=image_bytes)
             if resp.status_code == 200:
                 results = resp.json()
                 if isinstance(results, list) and len(results) > 0:
@@ -33,7 +39,7 @@ def identify_image_free(image_bytes: bytes) -> list[str]:
     except Exception as error:
         print(f"Free Hugging Face Vision API notice: {error}")
 
-    return ["product", "item", "gadget"]
+    return ["phone", "gadget", "product"]
 
 
 def identify_image(image_bytes: bytes, api_key: str | None = None) -> list[str]:
@@ -86,5 +92,5 @@ def identify_image(image_bytes: bytes, api_key: str | None = None) -> list[str]:
         except Exception as error:
             print(f"Google Vision API fallback to free vision: {error}")
 
-    # 100% Free fallback when no Google API Key is provided
+    # 100% Free Hugging Face Open Vision models fallback
     return identify_image_free(image_bytes)

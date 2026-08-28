@@ -154,6 +154,21 @@ def normalize_query(message: str) -> str:
     return text
 
 
+def clean_search_terms(text: str) -> str:
+    """Clean action words, stop words, and budget numbers so SQL full-text search
+    searches strictly for the core product category (e.g. 'phone' instead of 'search me phone under 10000').
+    """
+    cleaned = re.sub(
+        r'\b(?:search|me|give|find|show|recommend|suggest|under|below|budget|upto|up to|within|around|rs|inr|₹|less than|\d+k?)\b',
+        ' ',
+        text,
+        flags=re.IGNORECASE
+    )
+    cleaned = re.sub(r'\b\d+\b', ' ', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned if cleaned else text
+
+
 def get_active_groq_models(api_key: str) -> list[str]:
     clean_key = api_key.strip().strip("'").strip('"')
     url = "https://api.groq.com/openai/v1/models"
@@ -510,7 +525,8 @@ class AIOrchestrator:
 
         if wants_cards:
             normalized = normalize_query(enriched_message)
-            products = self.catalog.search(normalized, limit=20)
+            cleaned_query = clean_search_terms(normalized)
+            products = self.catalog.search(cleaned_query, limit=20)
             budget = extract_budget(message)
 
             if budget is not None:
