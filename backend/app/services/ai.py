@@ -56,6 +56,10 @@ def check_shopping_guardrail(message: str) -> str | None:
         ]
     )
 
+    # Prompt injection patterns
+    if any(pat in lowered for pat in ["ignore previous", "act as admin", "ignore system", "system prompt"]):
+        return "I am ShopSense, an AI shopping copilot! 🛍️ I can only assist with shopping, products, pricing, and buying advice."
+
     # 1. Coding / Programming / Software Development requests
     coding_patterns = [
         r"\b(write|generate|create|build|debug|fix|explain|refactor)\b.*\b(code|python|javascript|typescript|c\+\+|java|html|css|sql|script|function|algorithm|regex|class|component|api|backend|frontend)\b",
@@ -152,6 +156,14 @@ def normalize_query(message: str) -> str:
         text = text.replace(old, new)
 
     return text
+
+
+def is_prompt_injection(message: str) -> bool:
+    return check_shopping_guardrail(message) is not None
+
+
+def parse_budget(text: str) -> float | None:
+    return extract_budget(text)
 
 
 def clean_search_terms(text: str) -> str:
@@ -559,9 +571,9 @@ class AIOrchestrator:
                 )]
                 return self._generate_ai_response(message, products, history)
 
-            # REAL-TIME INTERNET / MULTI-MODEL FALLBACK:
-            # If still no catalog items matched, generate real-time live web response
-            return self._general_ai_response(message, history)
+        # REAL-TIME INTERNET / MULTI-MODEL FALLBACK:
+        # If still no catalog items matched or non-card query, generate real-time live response
+        return self._general_ai_response(message, history)
 
     def answer_via_agents(
         self,
@@ -703,6 +715,9 @@ RESPONSE RULES:
         clean_msg = message.strip().lower()
 
         conversational_map = {
+            "hi": "Hello! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
+            "hello": "Hello! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
+            "hey": "Hey! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
             "how are you": "I'm doing great! 🛍️ Ready to help you discover products, compare specs, or find the best deals in India. What are you looking for today?",
             "how are you doing": "I'm doing awesome! 🛍️ Ready to help you shop smart and save money. What product or budget are you considering today?",
             "who are you": "I'm **ShopSense**, your AI shopping copilot! 🛍️ I help you discover products, compare models side-by-side, analyze live deals across Amazon India, Flipkart & Croma, and track prices in ₹.",
@@ -826,7 +841,9 @@ RESPONSE RULES:
                 )
             )
 
-        return ChatResponse(answer=answer)
+        return ChatResponse(
+            answer=answer or "Hello! 👋 I'm ShopSense, your AI shopping copilot. I can help you find products, compare options, check prices, or find top deals under a budget. What are you looking for today?"
+        )
 
     def _structured_response(
         self,

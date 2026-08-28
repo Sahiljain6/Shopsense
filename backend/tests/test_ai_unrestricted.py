@@ -26,6 +26,7 @@ def test_general_prompts_return_useful_answers_without_clarification(db_session)
 
     for prompt in ["hello", "recommend something good", "I need a gift for my brother", "what can I buy with 20000?"]:
         response = AIOrchestrator(db_session).answer(prompt)
+        assert response is not None, f"Response was None for prompt '{prompt}'"
         assert response.clarification is None
         assert "Which product category should I search in?" not in response.answer
         assert response.answer

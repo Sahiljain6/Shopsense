@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 from app.api.routes import router
 from app.db.session import Base, SessionLocal, engine
 from app import models  # noqa: F401
@@ -9,8 +10,11 @@ from app.core.config import get_settings
 Base.metadata.create_all(bind=engine)
 
 # Auto-seed initial catalog for Indian Market if database is fresh
-def auto_seed_catalog():
-    db = SessionLocal()
+def auto_seed_catalog(db: Session | None = None):
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
     try:
         existing_count = db.query(Product).count()
         has_budget_phone = db.query(Product).filter(Product.price <= 15000).count() > 0
@@ -79,7 +83,8 @@ def auto_seed_catalog():
     except Exception as err:
         print(f"Auto-seed notice: {err}")
     finally:
-        db.close()
+        if should_close:
+            db.close()
 
 auto_seed_catalog()
 

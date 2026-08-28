@@ -11,17 +11,16 @@ class CatalogService:
     def search(
         self,
         q: str | None = None,
-        limit: int = 10
+        limit: int = 10,
+        max_price: float | None = None
     ) -> list[Product]:
 
-        if not q:
-            return list(
-                self.db.scalars(
-                    select(Product)
-                    .order_by(Product.rating.desc())
-                    .limit(limit)
-                ).all()
-            )
+        if not q or not q.strip():
+            stmt = select(Product).order_by(Product.rating.desc())
+            if max_price is not None:
+                stmt = stmt.where(Product.price <= max_price)
+            stmt = stmt.limit(limit)
+            return list(self.db.scalars(stmt).all())
 
         text = q.lower()
 
@@ -48,23 +47,18 @@ class CatalogService:
             if key in text:
                 search_terms.update(values)
 
+        non_informative_words = {
+            "under", "below", "budget", "recommend", "suggest", "good", "best",
+            "with", "for", "around", "upto", "within", "search", "give", "show",
+            "me", "find", "less", "than", "price", "please", "get", "product",
+            "item", "option", "options", "buy", "pick", "want", "need", "cheap",
+            "affordable", "like", "which", "what", "where", "how", "much"
+        }
+
         search_terms = [
             term for term in search_terms
             if len(term) > 2
-            and term not in {
-                "under",
-                "below",
-                "budget",
-                "recommend",
-                "suggest",
-                "good",
-                "best",
-                "with",
-                "for",
-                "around",
-                "upto",
-                "within"
-            }
+            and term not in non_informative_words
             and not term.isdigit()
         ]
 
@@ -77,21 +71,15 @@ class CatalogService:
                 Product.description.ilike(f"%{term}%")
             ])
 
-        if not filters:
-            return list(
-                self.db.scalars(
-                    select(Product)
-                    .order_by(Product.rating.desc())
-                    .limit(limit)
-                ).all()
-            )
+        stmt = select(Product)
 
-        stmt = (
-            select(Product)
-            .where(or_(*filters))
-            .order_by(Product.rating.desc())
-            .limit(limit)
-        )
+        if filters:
+            stmt = stmt.where(or_(*filters))
+
+        if max_price is not None:
+            stmt = stmt.where(Product.price <= max_price)
+
+        stmt = stmt.order_by(Product.rating.desc()).limit(limit)
 
         return list(self.db.scalars(stmt).all())
 
