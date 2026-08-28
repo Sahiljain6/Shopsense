@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
 
+    hf_token: str = ""
+    huggingface_api_key: str = ""
+
     scraperapi_key: str = ""
     google_vision_api_key: str = ""
 

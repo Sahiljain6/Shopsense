@@ -196,7 +196,9 @@ class AIOrchestrator:
         groq_key = settings.groq_api_key or os.getenv("GROQ_API_KEY")
         ollama_key = settings.ollama_api_key or os.getenv("OLLAMA_API_KEY")
 
-        self.gemini_api_key = None
+        hf_key = settings.hf_token or os.getenv("HF_TOKEN") or settings.huggingface_api_key or os.getenv("HUGGINGFACE_API_KEY")
+
+        self.hf_token = hf_key.strip().strip("'").strip('"') if hf_key and hf_key.strip() else None
 
         if openai_key and openai_key.strip():
             clean_key = openai_key.strip().strip("'").strip('"')
@@ -219,6 +221,10 @@ class AIOrchestrator:
             self.active_models = get_active_groq_models(clean_key)
             self.model = self.active_models[0] if self.active_models else "llama-3.3-70b-versatile"
 
+        elif self.hf_token:
+            self.provider = "huggingface"
+            self.model = "meta-llama/Llama-3.3-70B-Instruct"
+
         elif ollama_key and ollama_key.strip():
             clean_key = ollama_key.strip().strip("'").strip('"')
             self.client = Client(
@@ -236,7 +242,47 @@ class AIOrchestrator:
         user: str,
         history: list[dict[str, str]] | None = None
     ) -> str | None:
-        """Call whichever provider is configured (OpenAI, Gemini, Groq, Ollama)."""
+        """Call whichever provider is configured (Hugging Face Multi-Model, Gemini, OpenAI, Groq, Ollama)."""
+
+        # 1. Try Hugging Face Multi-Model Serverless API
+        if self.hf_token or self.provider == "huggingface":
+            hf_token = self.hf_token or os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_API_KEY")
+            if hf_token:
+                hf_models = [
+                    "meta-llama/Llama-3.3-70B-Instruct",
+                    "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+                    "mistralai/Mistral-7B-Instruct-v0.3",
+                    "Qwen/Qwen2.5-72B-Instruct"
+                ]
+                headers = {"Authorization": f"Bearer {hf_token}"}
+                clean_messages = [{"role": "system", "content": system}]
+                if history:
+                    for turn in history:
+                        if isinstance(turn, dict) and turn.get("role") and turn.get("content"):
+                            clean_messages.append({"role": str(turn["role"]), "content": str(turn["content"])})
+                clean_messages.append({"role": "user", "content": user})
+
+                import httpx
+                for model_name in hf_models:
+                    url = "https://api-inference.huggingface.co/v1/chat/completions"
+                    payload = {
+                        "model": model_name,
+                        "messages": clean_messages,
+                        "max_tokens": 600,
+                        "temperature": 0.3
+                    }
+                    try:
+                        with httpx.Client(timeout=12) as client:
+                            resp = client.post(url, headers=headers, json=payload)
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                choices = data.get("choices", [])
+                                if choices:
+                                    content = choices[0].get("message", {}).get("content")
+                                    if content and content.strip():
+                                        return content.strip()
+                    except Exception as hf_err:
+                        print(f"Hugging Face ({model_name}) error: {hf_err}")
 
         if self.provider == "gemini" and self.gemini_api_key:
             # Try official Gemini REST endpoint
