@@ -347,7 +347,7 @@ class AIOrchestrator:
                                     if content and content.strip():
                                         return content.strip()
                     except Exception as hf_err:
-                        print(f"Hugging Face ({model_name}) error: {hf_err}")
+                        logger.warning("[AI PROVIDER FAILURE] provider=huggingface model=%s error=%s", model_name, hf_err)
 
         if self.provider == "gemini" and self.gemini_api_key:
             # Try official Gemini REST endpoint with live models
@@ -372,9 +372,9 @@ class AIOrchestrator:
                                 parts = candidates[0].get("content", {}).get("parts", [])
                                 if parts:
                                     return parts[0].get("text")
-                        print(f"Gemini ({model_name}) Notice ({resp.status_code}): {resp.text[:150]}")
+                        logger.warning("[AI PROVIDER FAILURE] provider=gemini model=%s status=%s error=%s", model_name, resp.status_code, resp.text[:150])
                 except Exception as err:
-                    print(f"Gemini ({model_name}) API error: {err}")
+                    logger.warning("[AI PROVIDER FAILURE] provider=gemini model=%s error=%s", model_name, err)
 
         if not self.client and self.provider != "gemini":
             return None
@@ -400,7 +400,7 @@ class AIOrchestrator:
                     if response and response.choices:
                         return response.choices[0].message.content
                 except Exception as error:
-                    print(f"OpenAI API error with model '{model_name}': {type(error).__name__}: {error}")
+                    logger.warning("[AI PROVIDER FAILURE] provider=openai model=%s error=%s", model_name, error)
                     continue
             return None
 
@@ -416,7 +416,7 @@ class AIOrchestrator:
                     if response and response.choices:
                         return response.choices[0].message.content
                 except Exception as error:
-                    print(f"Groq API error with model '{model_name}': {type(error).__name__}: {error}")
+                    logger.warning("[AI PROVIDER FAILURE] provider=groq model=%s error=%s", model_name, error)
                     continue
             return None
 
@@ -429,7 +429,7 @@ class AIOrchestrator:
                 )
                 return response.message.content
             except Exception as error:
-                print(f"{self.provider} API error: {type(error).__name__}: {error}")
+                logger.warning("[AI PROVIDER FAILURE] provider=%s model=%s error=%s", self.provider, self.model, error)
                 return None
 
         logger.warning("All AI LLM providers failed or returned None for user prompt: '%s...' (provider: %s)", user[:60], self.provider)
@@ -463,7 +463,7 @@ class AIOrchestrator:
             return json.dumps({"error": str(err)})
 
     def _execute_search_catalog(self, category: str | None = None, budget: float | None = None, keywords: str = "") -> str:
-        """Search catalog and return product data as JSON string."""
+        """Search catalog and return product data as JSON string with deduplication and sanitization."""
         from app.services.search import resolve_products
         query_parts = []
         if category:
@@ -475,31 +475,49 @@ class AIOrchestrator:
         if budget:
             query += f" under {budget:.0f}"
 
-        resolved = resolve_products(message=query, db=self.db, limit=8)
+        # Pass conversation history and cart context
+        history = getattr(self, "_current_history", None)
+        cart = getattr(self, "_current_cart", None)
+        resolved = resolve_products(message=query, history=history, cart=cart, db=self.db, limit=8)
         products = resolved.products
 
         if budget is not None:
             products = [p for p in products if p.price <= budget]
 
-        # Store matched products for later response construction
+        # De-duplicate products across multiple tool calls
         self._tool_products = getattr(self, "_tool_products", [])
-        self._tool_products.extend(products)
+        existing_ids = {p.id for p in self._tool_products}
+        self._tool_products.extend([p for p in products if p.id not in existing_ids])
 
         product_dicts = []
         for p in products:
+            desc = (p.description or "")[:120].replace("```", "").replace("<system>", "")
             product_dicts.append({
                 "id": p.id, "name": p.name, "brand": p.brand,
                 "price": p.price, "currency": p.currency,
-                "rating": p.rating, "description": p.description[:200],
+                "rating": p.rating, "description": desc,
                 "attributes": p.attributes
             })
 
         return json.dumps({"products": product_dicts, "count": len(product_dicts)}, ensure_ascii=False)
 
     def _execute_search_live_web(self, query: str) -> str:
-        """Search live e-commerce deals and return as JSON string."""
-        deals = search_live_deals(query, max_results=5)
-        return json.dumps({"deals": deals, "count": len(deals)}, ensure_ascii=False, default=str)
+        """Search live e-commerce deals with sanitization and length caps."""
+        clean_q = re.sub(r'[\r\n\t]+', ' ', query).strip()[:100]
+        deals = search_live_deals(clean_q, max_results=4)
+        sanitized_deals = []
+        for d in deals:
+            title = str(d.get("title", ""))[:90].replace("```", "").replace("<system>", "")
+            snippet = str(d.get("snippet", "") or d.get("desc", ""))[:150].replace("```", "").replace("<system>", "")
+            sanitized_deals.append({
+                "title": title,
+                "price": d.get("price"),
+                "currency": d.get("currency", "INR"),
+                "source": d.get("source", "Web"),
+                "url": d.get("url", ""),
+                "snippet": snippet
+            })
+        return json.dumps({"deals": sanitized_deals, "count": len(sanitized_deals)}, ensure_ascii=False, default=str)
 
     def _execute_convert_currency(self, amount: float, from_c: str = "USD", to_c: str = "INR") -> str:
         """Convert currency and return as JSON string."""
@@ -689,6 +707,30 @@ class AIOrchestrator:
     ) -> ChatResponse:
         """Main tool-calling answer method: let the LLM decide which tools to call."""
         self._tool_products = []
+        self._current_history = history
+        self._current_cart = cart
+
+        # Explicit Comparison Pre-Check ("X vs Y" / "Compare X and Y")
+        comp_match = re.search(r'(?:compare\s+)?(.+?)\s+(?:vs\.?|versus|compared\s+to)\s+(.+)', message, re.IGNORECASE)
+        if comp_match:
+            from app.services.search import resolve_products
+            item_a = comp_match.group(1).strip()
+            item_b = comp_match.group(2).strip()
+            item_a = re.sub(r'^(?:compare\s+)?(?:between\s+)?(?:the\s+)?', '', item_a, flags=re.IGNORECASE).strip()
+            item_b = re.sub(r'^(?:the\s+)?', '', item_b, flags=re.IGNORECASE).strip()
+
+            res_a = resolve_products(message=item_a, history=history, cart=cart, db=self.db, limit=2)
+            res_b = resolve_products(message=item_b, history=history, cart=cart, db=self.db, limit=2)
+
+            comp_products = []
+            seen_ids = set()
+            for p in res_a.products[:1] + res_b.products[:1]:
+                if p.id not in seen_ids:
+                    comp_products.append(p)
+                    seen_ids.add(p.id)
+
+            if len(comp_products) >= 2:
+                self._tool_products = comp_products
 
         cart_summary = self._get_cart_summary_text(cart)
 
@@ -714,6 +756,21 @@ class AIOrchestrator:
         answer = self._chat_with_tools(system_prompt, message, history)
 
         if answer is None:
+            if getattr(self, "_tool_products", None) and len(self._tool_products) >= 2:
+                p1, p2 = self._tool_products[0], self._tool_products[1]
+                comp_answer = (
+                    f"### ⚖️ Side-by-Side Comparison: **{p1.name}** vs **{p2.name}**\n\n"
+                    f"| Feature | **{p1.brand}** | **{p2.brand}** |\n"
+                    f"| :--- | :--- | :--- |\n"
+                    f"| **Model** | {p1.name} | {p2.name} |\n"
+                    f"| **Price** | ₹{p1.price:,.0f} | ₹{p2.price:,.0f} |\n"
+                    f"| **Rating** | {p1.rating:.1f}/5★ | {p2.rating:.1f}/5★ |\n"
+                    f"| **Category** | {p1.category.name if p1.category else 'Tech'} | {p2.category.name if p2.category else 'Tech'} |\n\n"
+                    f"**Analysis**: Both are standout choices. **{p1.name}** offers {p1.description[:80]}... "
+                    f"while **{p2.name}** offers {p2.description[:80]}..."
+                )
+                return self._structured_response(self._tool_products, answer_override=comp_answer)
+
             # LLM is offline / no API key configured — resolve catalog products before generic fallback
             from app.services.search import resolve_products
             resolved = resolve_products(message=message, history=history, cart=cart, db=self.db, limit=8)
@@ -1191,7 +1248,8 @@ RESPONSE RULES:
 
     def _structured_response(
         self,
-        products: list[Product]
+        products: list[Product],
+        answer_override: str | None = None
     ) -> ChatResponse:
 
         ids = [product.id for product in products]
@@ -1218,7 +1276,7 @@ RESPONSE RULES:
             reasons_map[pid_str] = f"Trusted catalog match with {product.rating:.1f}/5★ rating."
 
         return ChatResponse(
-            answer=f"Here are top verified options: {names}.",
+            answer=answer_override or f"Here are top verified options: {names}.",
             product_ids=ids,
             reasons=reasons_map,
             pros=pros_map,

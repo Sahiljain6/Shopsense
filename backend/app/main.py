@@ -67,13 +67,69 @@ SEED_DATA = [
 
 
 # Auto-seed initial catalog for Indian Market with version-based upsert
+from app.models.entities import Category, Product, Review, SeedVersion, Wishlist
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+
+def cleanup_duplicate_products(db: Session) -> int:
+    """Find and delete duplicate products by name or SKU, preserving the row with complete/correct SKU."""
+    deleted_count = 0
+    try:
+        # Check by name duplicates
+        names_with_dupes = db.execute(
+            text("SELECT name FROM products GROUP BY name HAVING COUNT(*) > 1")
+        ).fetchall()
+
+        for row in names_with_dupes:
+            name = row[0]
+            prods = db.query(Product).filter(Product.name == name).all()
+            # Sort: products with non-empty SKU first, then by id descending
+            prods.sort(key=lambda p: (1 if p.sku else 0, p.id), reverse=True)
+            if len(prods) > 1:
+                for dup in prods[1:]:
+                    db.query(Review).filter(Review.product_id == dup.id).delete(synchronize_session=False)
+                    db.query(Wishlist).filter(Wishlist.product_id == dup.id).delete(synchronize_session=False)
+                    db.delete(dup)
+                    deleted_count += 1
+
+        # Check by SKU duplicates (if any exist)
+        skus_with_dupes = db.execute(
+            text("SELECT sku FROM products WHERE sku IS NOT NULL AND sku != '' GROUP BY sku HAVING COUNT(*) > 1")
+        ).fetchall()
+
+        for row in skus_with_dupes:
+            sku = row[0]
+            prods = db.query(Product).filter(Product.sku == sku).order_by(Product.id.desc()).all()
+            if len(prods) > 1:
+                for dup in prods[1:]:
+                    db.query(Review).filter(Review.product_id == dup.id).delete(synchronize_session=False)
+                    db.query(Wishlist).filter(Wishlist.product_id == dup.id).delete(synchronize_session=False)
+                    db.delete(dup)
+                    deleted_count += 1
+
+        if deleted_count > 0:
+            db.commit()
+            print(f"Cleaned up {deleted_count} duplicate product records.")
+    except Exception as err:
+        db.rollback()
+        print(f"Notice during duplicate cleanup: {err}")
+
+    return deleted_count
+
+
+# Auto-seed initial catalog for Indian Market with version-based upsert
 def auto_seed_catalog(db: Session | None = None):
     should_close = False
     if db is None:
         db = SessionLocal()
         should_close = True
     try:
-        # Check stored seed version — skip if already up to date
+        # 1. Clean up any existing duplicates first
+        cleanup_duplicate_products(db)
+
+        # 2. Check stored seed version — skip if already up to date
         stored = db.query(SeedVersion).first()
         if stored and stored.version >= SEED_VERSION:
             return
@@ -91,11 +147,15 @@ def auto_seed_catalog(db: Session | None = None):
                 db.flush()
                 cats[name] = new_cat
 
-        # Upsert products by stable SKU
+        # Upsert products by stable SKU (or match existing name to avoid duplicates)
         for item in SEED_DATA:
             existing = db.query(Product).filter(Product.sku == item["sku"]).first()
+            if not existing:
+                existing = db.query(Product).filter(Product.name == item["name"]).first()
+
             if existing:
                 # Update fields that may have changed
+                existing.sku = item["sku"]
                 existing.name = item["name"]
                 existing.brand = item["brand"]
                 existing.description = item["desc"]
@@ -128,6 +188,9 @@ def auto_seed_catalog(db: Session | None = None):
                     body="Performs exceptionally well in this price bracket. Highly recommended for daily use."
                 ))
 
+        # Final cleanup pass
+        cleanup_duplicate_products(db)
+
         # Update or create seed version record
         if stored:
             stored.version = SEED_VERSION
@@ -146,11 +209,17 @@ auto_seed_catalog()
 
 settings = get_settings()
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
+
 app = FastAPI(title="ShopSense API - India Edition")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=settings.cors_origins_list,
+    allow_origin_regex=settings.cors_origin_regex,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -71,3 +71,87 @@ def test_ensure_schema_upgrades_idempotent() -> None:
     from app.main import ensure_schema_upgrades
     ensure_schema_upgrades()
     ensure_schema_upgrades()
+
+
+def test_duplicate_catalog_cleanup_and_unique_sku(db_session) -> None:
+    """Ensure cleanup_duplicate_products removes duplicates and preserves correct sku."""
+    from app.main import cleanup_duplicate_products
+    cat = Category(name="Phones")
+    db_session.add(cat)
+    db_session.flush()
+
+    p1 = Product(name="Duplicate Phone", sku=None, brand="BrandA", description="first", price=10000, category_id=cat.id)
+    p2 = Product(name="Duplicate Phone", sku="dup-phone-sku", brand="BrandA", description="second", price=10000, category_id=cat.id)
+    db_session.add_all([p1, p2])
+    db_session.commit()
+
+    deleted = cleanup_duplicate_products(db_session)
+    assert deleted == 1
+
+    remaining = db_session.query(Product).filter(Product.name == "Duplicate Phone").all()
+    assert len(remaining) == 1
+    assert remaining[0].sku == "dup-phone-sku"
+
+
+def test_comparison_pre_check_resolves_two_distinct_products(client, db_session) -> None:
+    """Ensure 'X vs Y' comparison resolves both items without duplicate cards."""
+    cat = Category(name="Phones")
+    db_session.add(cat)
+    db_session.flush()
+
+    p1 = Product(name="Apple iPhone 15", sku="iphone-15", brand="Apple", description="A16 Bionic phone", price=69900, rating=4.8, category_id=cat.id)
+    p2 = Product(name="OnePlus 12", sku="oneplus-12", brand="OnePlus", description="Snapdragon 8 Gen 3 phone", price=64999, rating=4.7, category_id=cat.id)
+    db_session.add_all([p1, p2])
+    db_session.commit()
+
+    res = client.post("/chat", json={"message": "Compare iPhone 15 vs OnePlus 12"})
+    assert res.status_code == 200
+    body = res.json()
+    assert p1.id in body["product_ids"]
+    assert p2.id in body["product_ids"]
+    assert len(body["product_ids"]) == len(set(body["product_ids"]))
+
+
+def test_tool_products_deduplication(db_session) -> None:
+    """Ensure _execute_search_catalog deduplicates products across calls."""
+    from app.services.ai import AIOrchestrator
+    cat = Category(name="Phones")
+    db_session.add(cat)
+    db_session.flush()
+
+    p1 = Product(name="Test Phone", sku="test-phone-1", brand="TestBrand", description="test phone", price=12000, rating=4.5, category_id=cat.id)
+    db_session.add(p1)
+    db_session.commit()
+
+    orchestrator = AIOrchestrator(db_session)
+    orchestrator._execute_search_catalog(category="Phones")
+    orchestrator._execute_search_catalog(category="Phones")
+
+    assert len(orchestrator._tool_products) == 1
+    assert orchestrator._tool_products[0].id == p1.id
+
+
+def test_cors_restricted_origins(client) -> None:
+    """Ensure unauthorized origins do not receive allow-origin header."""
+    res = client.options(
+        "/auth/login",
+        headers={
+            "Origin": "https://malicious-phishing-site.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert res.headers.get("access-control-allow-origin") != "https://malicious-phishing-site.com"
+
+
+def test_rate_limiting_flood_returns_429(client) -> None:
+    """Ensure flooding /auth/register triggers 429 Too Many Requests."""
+    statuses = []
+    for i in range(10):
+        r = client.post("/auth/register", json={
+            "email": f"flood{i}@example.com",
+            "password": "Password123!",
+            "full_name": f"Flooder {i}"
+        })
+        statuses.append(r.status_code)
+    assert 429 in statuses

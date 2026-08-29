@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./shopsense.db"
 
-    jwt_secret: str = "change-me-to-something-long-and-random"
+    jwt_secret: str = "shopsense-hackathon-secure-secret-key-2026-production"
     pinecone_api_key: str = ""
 
     enable_multi_agent: bool = False

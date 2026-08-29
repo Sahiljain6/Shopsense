@@ -1,5 +1,7 @@
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.core.config import get_settings
@@ -16,6 +18,7 @@ from app.services.scraper import scrape_product
 from app.services.vision import identify_image
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 def _product_read(product: Product) -> ProductRead:
@@ -25,20 +28,38 @@ def _product_read(product: Product) -> ProductRead:
 
 
 @router.post("/auth/register", response_model=UserRead)
-def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
-    if db.scalar(select(User).where(User.email == payload.email)):
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(email=payload.email, full_name=payload.full_name, hashed_password=hash_password(payload.password))
-    db.add(user); db.commit(); db.refresh(user)
-    return user
+@limiter.limit("5/minute")
+def register(request: Request, payload: UserCreate, db: Session = Depends(get_db)) -> User:
+    try:
+        if db.scalar(select(User).where(User.email == payload.email)):
+            raise HTTPException(status_code=400, detail="Email already registered")
+        user = User(email=payload.email, full_name=payload.full_name, hashed_password=hash_password(payload.password))
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
 
 
 @router.post("/auth/login", response_model=Token)
-def login(payload: UserLogin, db: Session = Depends(get_db)) -> Token:
-    user = db.scalar(select(User).where(User.email == payload.email))
-    if user is None or not verify_password(payload.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    return Token(access_token=create_access_token(user.email))
+@limiter.limit("10/minute")
+def login(request: Request, payload: UserLogin, db: Session = Depends(get_db)) -> Token:
+    try:
+        user = db.scalar(select(User).where(User.email == payload.email))
+        if user is None or not verify_password(payload.password, user.hashed_password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        return Token(access_token=create_access_token(user.email))
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Login failed. Please try again.")
 
 
 @router.get("/auth/me", response_model=UserRead)
@@ -47,32 +68,42 @@ def me(user: User = Depends(get_current_user)) -> User:
 
 
 @router.post("/auth/google", response_model=Token)
-def google_auth(db: Session = Depends(get_db)) -> Token:
+@limiter.limit("15/minute")
+def google_auth(request: Request, db: Session = Depends(get_db)) -> Token:
     """One-click Google-style authentication.
     Auto-creates a demo account and returns a JWT token.
     """
     demo_email = "shopper@shopsense.in"
     demo_password = "ShopSense2026!"
-    user = db.scalar(select(User).where(User.email == demo_email))
-    if not user:
-        user = User(
-            email=demo_email,
-            full_name="ShopSense Shopper",
-            hashed_password=hash_password(demo_password),
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    return Token(access_token=create_access_token(user.email))
+    try:
+        user = db.scalar(select(User).where(User.email == demo_email))
+        if not user:
+            user = User(
+                email=demo_email,
+                full_name="ShopSense Shopper",
+                hashed_password=hash_password(demo_password),
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        return Token(access_token=create_access_token(user.email))
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Google authentication failed. Please try again.")
 
 
 @router.get("/products", response_model=list[ProductRead])
 def products(q: str | None = None, limit: int = 10, db: Session = Depends(get_db)) -> list[ProductRead]:
-    return [_product_read(p) for p in CatalogService(db).search(q, limit)]
+    try:
+        return [_product_read(p) for p in CatalogService(db).search(q, limit)]
+    except Exception:
+        db.rollback()
+        return []
 
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+@limiter.limit("30/minute")
+def chat(request: Request, payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
     try:
         response = AIOrchestrator(db).answer_via_agents(payload.message, payload.mode, history, cart=payload.cart)
@@ -192,64 +223,112 @@ def wishlist(db: Session = Depends(get_db), user: User = Depends(get_current_use
 
 @router.post("/wishlist", response_model=list[int])
 def add_wishlist(payload: WishlistRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[int]:
-    if not db.scalar(select(Wishlist).where(Wishlist.user_id == user.id, Wishlist.product_id == payload.product_id)):
-        db.add(Wishlist(user_id=user.id, product_id=payload.product_id)); db.commit()
-    return wishlist(db, user)
+    try:
+        if not db.scalar(select(Wishlist).where(Wishlist.user_id == user.id, Wishlist.product_id == payload.product_id)):
+            db.add(Wishlist(user_id=user.id, product_id=payload.product_id))
+            db.commit()
+        return wishlist(db, user)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Unable to update wishlist.")
 
 
 @router.delete("/wishlist/{product_id}", response_model=list[int])
 def delete_wishlist(product_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[int]:
-    row = db.scalar(select(Wishlist).where(Wishlist.user_id == user.id, Wishlist.product_id == product_id))
-    if row:
-        db.delete(row); db.commit()
-    return wishlist(db, user)
+    try:
+        row = db.scalar(select(Wishlist).where(Wishlist.user_id == user.id, Wishlist.product_id == product_id))
+        if row:
+            db.delete(row)
+            db.commit()
+        return wishlist(db, user)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Unable to remove from wishlist.")
 
 
 @router.get("/admin/analytics")
 def admin_analytics(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> dict[str, int]:
-    return {"users": db.scalar(select(func.count(User.id))) or 0, "products": db.scalar(select(func.count(Product.id))) or 0, "orders": db.scalar(select(func.count(Order.id))) or 0}
+    try:
+        return {"users": db.scalar(select(func.count(User.id))) or 0, "products": db.scalar(select(func.count(Product.id))) or 0, "orders": db.scalar(select(func.count(Order.id))) or 0}
+    except Exception:
+        db.rollback()
+        return {"users": 0, "products": 0, "orders": 0}
 
 
 @router.get("/admin/users", response_model=list[UserRead])
 def admin_users(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> list[User]:
-    return list(db.scalars(select(User)).all())
+    try:
+        return list(db.scalars(select(User)).all())
+    except Exception:
+        db.rollback()
+        return []
 
 
 @router.get("/admin/reviews", response_model=list[ReviewRead])
 def admin_reviews(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> list[Review]:
-    return list(db.scalars(select(Review)).all())
+    try:
+        return list(db.scalars(select(Review)).all())
+    except Exception:
+        db.rollback()
+        return []
 
 
 @router.get("/admin/orders")
 def admin_orders(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> list[dict[str, object]]:
-    return [{"id": o.id, "user_id": o.user_id, "total": o.total, "status": o.status} for o in db.scalars(select(Order)).all()]
+    try:
+        return [{"id": o.id, "user_id": o.user_id, "total": o.total, "status": o.status} for o in db.scalars(select(Order)).all()]
+    except Exception:
+        db.rollback()
+        return []
 
 
 @router.post("/admin/products/{product_id}", response_model=ProductRead)
 def create_product(product_id: int, payload: ProductCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)) -> ProductRead:
-    product = Product(id=product_id, **payload.model_dump())
-    db.add(product); db.commit(); db.refresh(product)
-    return _product_read(product)
+    try:
+        product = Product(id=product_id, **payload.model_dump())
+        db.add(product)
+        db.commit()
+        db.refresh(product)
+        return _product_read(product)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create product.")
 
 
 @router.put("/admin/products/{product_id}", response_model=ProductRead)
 def update_product(product_id: int, payload: ProductCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)) -> ProductRead:
-    product = db.get(Product, product_id)
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
-    for key, value in payload.model_dump().items():
-        setattr(product, key, value)
-    db.commit(); db.refresh(product)
-    return _product_read(product)
+    try:
+        product = db.get(Product, product_id)
+        if product is None:
+            raise HTTPException(status_code=404, detail="Product not found")
+        for key, value in payload.model_dump().items():
+            setattr(product, key, value)
+        db.commit()
+        db.refresh(product)
+        return _product_read(product)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update product.")
 
 
 @router.delete("/admin/products/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)) -> dict[str, bool]:
-    product = db.get(Product, product_id)
-    if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
-    db.delete(product); db.commit()
-    return {"ok": True}
+    try:
+        product = db.get(Product, product_id)
+        if product is None:
+            raise HTTPException(status_code=404, detail="Product not found")
+        db.delete(product)
+        db.commit()
+        return {"ok": True}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete product.")
 
 
 @router.post("/admin/reseed")
