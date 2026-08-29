@@ -109,3 +109,56 @@ def test_graph_search_keyboard_alone_returns_zero_phones_or_earbuds(db_session) 
         assert p.category and p.category.name == "Peripherals"
         assert "phone" not in p.name.lower()
         assert "earbuds" not in p.name.lower()
+
+
+def test_spacing_variants_category_resolution(db_session) -> None:
+    """Ensure natural spacing variants resolve to the correct category."""
+    from app.services.search import resolve_category
+    assert resolve_category("mac book m5") == "Laptops"
+    assert resolve_category("macbook m5") == "Laptops"
+    assert resolve_category("one plus 12") == "Phones"
+    assert resolve_category("i phone 15") == "Phones"
+    assert resolve_category("air dopes") == "Audio"
+    assert resolve_category("smart watch") == "Peripherals"
+
+
+def test_resolve_products_spacing_and_empty_catalog_signaling(db_session) -> None:
+    """Ensure existing items match with spacing variants, but non-existent items
+    (like mac book m5) return products=[] instead of dumping unrelated products.
+    """
+    auto_seed_catalog(db_session)
+    from app.services.search import resolve_products
+
+    # 1. "one plus 12" exists -> must resolve OnePlus 12
+    res_oneplus = resolve_products("one plus 12", db=db_session)
+    assert len(res_oneplus.products) >= 1
+    assert any("OnePlus 12" in p.name for p in res_oneplus.products)
+
+    # 2. "i phone 15" exists -> must resolve Apple iPhone 15
+    res_iphone = resolve_products("i phone 15", db=db_session)
+    assert len(res_iphone.products) >= 1
+    assert any("iPhone 15" in p.name for p in res_iphone.products)
+
+    # 3. "mac book m3" exists -> must resolve Apple MacBook Air M3
+    res_m3 = resolve_products("mac book m3", db=db_session)
+    assert len(res_m3.products) >= 1
+    assert any("M3" in p.name for p in res_m3.products)
+
+    # 4. "mac book m5" does NOT exist in catalog -> must return products=[]
+    # MUST NOT return MacBook Air M3 or unrelated laptops!
+    res_m5 = resolve_products("mac book m5", db=db_session)
+    assert res_m5.category_name == "Laptops"
+    assert len(res_m5.products) == 0, f"Expected 0 products for 'mac book m5', got {[p.name for p in res_m5.products]}"
+
+
+def test_execute_search_catalog_signals_live_search_when_empty(db_session) -> None:
+    """Ensure _execute_search_catalog returns guidance to use search_live_web when catalog has 0 matches."""
+    auto_seed_catalog(db_session)
+    from app.services.ai import AIOrchestrator
+    import json
+
+    orchestrator = AIOrchestrator(db_session)
+    result_str = orchestrator._execute_search_catalog(category="Laptops", keywords="mac book m5")
+    data = json.loads(result_str)
+    assert data["count"] == 0
+    assert "search_live_web" in data.get("message", "")

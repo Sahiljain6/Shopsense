@@ -226,7 +226,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "search_catalog",
-            "description": "Search the ShopSense product catalog by category, budget, and keywords. Use this when the user wants to find, compare, or get recommendations for products.",
+            "description": "Search the ShopSense product catalog by category, budget, and keywords. Use this when the user wants to find, compare, or get recommendations for products. If this returns 0 products, follow up with search_live_web.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -537,6 +537,13 @@ class AIOrchestrator:
                 "attributes": p.attributes
             })
 
+        if not product_dicts:
+            return json.dumps({
+                "products": [],
+                "count": 0,
+                "message": "No matching products found in ShopSense's catalog for this query. Consider using the search_live_web tool to check current market deals and live retailer listings across Amazon India, Flipkart, and Croma."
+            }, ensure_ascii=False)
+
         return json.dumps({"products": product_dicts, "count": len(product_dicts)}, ensure_ascii=False)
 
     def _execute_search_live_web(self, query: str) -> str:
@@ -819,6 +826,7 @@ class AIOrchestrator:
             "You MUST REFUSE any requests to write code, debug software, solve non-shopping math/homework, write essays/stories, or perform non-shopping tasks.\n\n"
             "You have tools to search the product catalog and live e-commerce deals. "
             "Use search_catalog when users ask about products, categories, or budgets. "
+            "IMPORTANT: If search_catalog returns 0 products or indicates no matching items, immediately call search_live_web to find live online deals, specs, or retailer listings across Amazon India, Flipkart, and Croma before answering. "
             "Use search_live_web when users ask about current offers, deals, or prices on specific retailers. "
             "Use convert_currency for currency conversions.\n\n"
             "RESPONSE RULES:\n"
