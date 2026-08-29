@@ -155,3 +155,41 @@ def test_rate_limiting_flood_returns_429(client) -> None:
         })
         statuses.append(r.status_code)
     assert 429 in statuses
+
+
+def test_entrypoint_script_has_lf_and_migration_command() -> None:
+    """Ensure container entrypoint script exists, uses LF line endings, and invokes alembic."""
+    from pathlib import Path
+    entrypoint = Path(__file__).resolve().parent.parent / "entrypoint.sh"
+    assert entrypoint.exists(), "backend/entrypoint.sh must exist"
+    content = entrypoint.read_bytes()
+    assert b"\r" not in content, "entrypoint.sh must have unix LF line endings to run in Linux container"
+    assert b"alembic upgrade head" in content
+    assert b"exec uvicorn app.main:app" in content
+
+
+def test_alembic_self_healing_orphaned_revision(db_session) -> None:
+    """Ensure an orphaned/unknown alembic revision is self-healed to baseline without crash."""
+    from sqlalchemy import text
+    from alembic.config import Config
+    from alembic import command
+    from pathlib import Path
+
+    backend_dir = Path(__file__).resolve().parent.parent
+    alembic_ini = backend_dir / "alembic.ini"
+
+    # Simulate an orphaned revision in alembic_version table
+    db_session.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY);"))
+    db_session.execute(text("DELETE FROM alembic_version;"))
+    db_session.execute(text("INSERT INTO alembic_version (version_num) VALUES ('stale_orphaned_9999');"))
+    db_session.commit()
+
+    cfg = Config(str(alembic_ini))
+    cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+    cfg.attributes["connection"] = db_session.connection()
+    # Run alembic upgrade head using the test engine connection
+    command.upgrade(cfg, "head")
+
+    # Verify that alembic healed to the actual head
+    current = db_session.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    assert current == "0002_dedupe_and_unique_sku"
