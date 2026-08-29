@@ -165,6 +165,8 @@ def test_entrypoint_script_has_lf_and_migration_command() -> None:
     content = entrypoint.read_bytes()
     assert b"\r" not in content, "entrypoint.sh must have unix LF line endings to run in Linux container"
     assert b"alembic upgrade head" in content
+    assert b'--port "${PORT:-8000}"' in content
+    assert b'PORT=""' not in content
     assert b"exec uvicorn app.main:app" in content
 
 
