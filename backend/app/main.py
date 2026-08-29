@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.api.routes import router
 from app.db.session import Base, SessionLocal, engine
@@ -8,6 +9,27 @@ from app.models.entities import Category, Product, Review, SeedVersion
 from app.core.config import get_settings
 
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_schema_upgrades() -> None:
+    """Ensure database schema is up-to-date across all database engines (PostgreSQL, SQLite)."""
+    try:
+        with engine.connect() as conn:
+            if engine.dialect.name == "postgresql":
+                conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS sku VARCHAR(120);"))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_products_sku ON products (sku);"))
+                conn.commit()
+            elif engine.dialect.name == "sqlite":
+                cols = [r[1] for r in conn.execute(text("PRAGMA table_info(products);")).fetchall()]
+                if cols and "sku" not in cols:
+                    conn.execute(text("ALTER TABLE products ADD COLUMN sku VARCHAR(120);"))
+                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_products_sku ON products (sku);"))
+                    conn.commit()
+    except Exception as err:
+        print(f"Notice during schema upgrade check: {err}")
+
+
+ensure_schema_upgrades()
 
 # Bump this number whenever seed_data changes (new products, price updates, etc.)
 SEED_VERSION = 2
@@ -138,3 +160,14 @@ app.include_router(router)
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "region": "IN", "currency": "INR"}
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc: Exception):
+    import traceback
+    print(f"Unhandled server error: {exc}\n{traceback.format_exc()}")
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred. Please try again."}
+    )

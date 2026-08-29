@@ -147,6 +147,38 @@ def get_active_groq_models(api_key: str) -> list[str]:
     return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
 
 
+def get_active_gemini_models(api_key: str) -> list[str]:
+    """Dynamically fetch live Gemini models supporting generateContent from Google's ListModels API."""
+    clean_key = api_key.strip().strip("'").strip('"')
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
+    try:
+        import httpx
+        with httpx.Client(timeout=5) as client:
+            resp = client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                models_data = data.get("models", [])
+                valid_ids = []
+                for m in models_data:
+                    methods = m.get("supportedGenerationMethods", [])
+                    name = m.get("name", "").removeprefix("models/")
+                    # Exclude retired 1.0/1.5 models if present
+                    if "generateContent" in methods and name and not any(retired in name for retired in ["1.0", "1.5"]):
+                        valid_ids.append(name)
+                if valid_ids:
+                    flash_models = [m for m in valid_ids if "flash" in m.lower()]
+                    pro_models = [m for m in valid_ids if "pro" in m.lower() and m not in flash_models]
+                    other_models = [m for m in valid_ids if m not in flash_models and m not in pro_models]
+                    ordered = flash_models + pro_models + other_models
+                    if ordered:
+                        return ordered
+    except Exception as err:
+        print(f"Notice fetching Gemini model list dynamically: {err}")
+
+    return ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+
+
+
 logger = logging.getLogger("shopsense.ai")
 
 # ---------- Tool-Calling Definitions ----------
@@ -237,7 +269,12 @@ class AIOrchestrator:
         elif gemini_key and gemini_key.strip():
             self.provider = "gemini"
             self.gemini_api_key = gemini_key.strip().strip("'").strip('"')
-            self.model = settings.gemini_model or "gemini-1.5-flash"
+            self.active_gemini_models = get_active_gemini_models(self.gemini_api_key)
+            self.model = (
+                settings.gemini_model
+                if (settings.gemini_model and not any(r in settings.gemini_model for r in ["1.0", "1.5", "2.0-flash"]))
+                else (self.active_gemini_models[0] if self.active_gemini_models else "gemini-2.5-flash")
+            )
 
         elif groq_key and groq_key.strip():
             clean_key = groq_key.strip().strip("'").strip('"')
@@ -272,7 +309,7 @@ class AIOrchestrator:
     ) -> str | None:
         """Call whichever provider is configured (Hugging Face Multi-Model, Gemini, OpenAI, Groq, Ollama)."""
 
-        # 1. Try Hugging Face Multi-Model Serverless API
+        # 1. Try Hugging Face Multi-Model Serverless API (via new router.huggingface.co)
         if self.hf_token or self.provider == "huggingface":
             hf_token = self.hf_token or os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_API_KEY")
             if hf_token:
@@ -292,7 +329,7 @@ class AIOrchestrator:
 
                 import httpx
                 for model_name in hf_models:
-                    url = "https://api-inference.huggingface.co/v1/chat/completions"
+                    url = "https://router.huggingface.co/v1/chat/completions"
                     payload = {
                         "model": model_name,
                         "messages": clean_messages,
@@ -313,9 +350,9 @@ class AIOrchestrator:
                         print(f"Hugging Face ({model_name}) error: {hf_err}")
 
         if self.provider == "gemini" and self.gemini_api_key:
-            # Try official Gemini REST endpoint
+            # Try official Gemini REST endpoint with live models
             gemini_contents = _build_gemini_contents(user, history)
-            models_to_try = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-2.0-flash", "gemini-1.5-pro"]
+            models_to_try = getattr(self, "active_gemini_models", None) or ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
             for model_name in models_to_try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_api_key}"
                 payload = {
@@ -537,7 +574,7 @@ class AIOrchestrator:
         # --- Gemini (native tool support via REST) ---
         if self.provider == "gemini" and getattr(self, "gemini_api_key", None):
             gemini_contents = _build_gemini_contents(user, history)
-            models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+            models_to_try = getattr(self, "active_gemini_models", None) or ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
             for model_name in models_to_try:
                 try:
                     import httpx

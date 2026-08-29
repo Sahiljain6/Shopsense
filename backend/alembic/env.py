@@ -1,6 +1,12 @@
+import os
+import sys
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+# Ensure backend root is in python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from app.core.config import get_settings
 from app.db.session import Base
 from app import models  # noqa: F401

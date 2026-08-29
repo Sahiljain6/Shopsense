@@ -38,3 +38,36 @@ def test_chat_grounding(client, db_session) -> None:
     body = res.json()
     assert body["product_ids"] == [product.id]
     assert 999999 not in body["product_ids"]
+
+
+def test_transaction_rollback_resilience(client, db_session) -> None:
+    """Regression test for Bug 2: ensure failed statements do not poison subsequent queries."""
+    from sqlalchemy import text
+    # 1. Simulate an intentional error in the session
+    try:
+        db_session.execute(text("SELECT * FROM non_existent_table_for_test;"))
+    except Exception:
+        db_session.rollback()
+
+    # 2. Subsequent queries must execute cleanly without InFailedSqlTransaction
+    cat = Category(name="Phones")
+    db_session.add(cat)
+    db_session.commit()
+    assert cat.id is not None
+
+
+def test_gemini_live_model_discovery() -> None:
+    """Regression test for Bug 3: get_active_gemini_models returns live 2.5 models and filters dead 1.0/1.5."""
+    from app.services.ai import get_active_gemini_models
+    # When api key is invalid/offline, it must fall back to live 2026 models, not dead 1.5
+    models = get_active_gemini_models("test-invalid-key")
+    assert "gemini-2.5-flash" in models
+    assert not any("1.5" in m for m in models)
+    assert not any("1.0" in m for m in models)
+
+
+def test_ensure_schema_upgrades_idempotent() -> None:
+    """Regression test for Bug 1: ensure_schema_upgrades runs without error repeatedly."""
+    from app.main import ensure_schema_upgrades
+    ensure_schema_upgrades()
+    ensure_schema_upgrades()

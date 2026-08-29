@@ -3,8 +3,8 @@ import os
 import httpx
 
 VISION_ENDPOINT = "https://vision.googleapis.com/v1/images:annotate"
-FREE_HF_VISION_ENDPOINT = "https://api-inference.huggingface.co/models/google/vit-base-patch16-224"
-FREE_HF_BLIP_ENDPOINT = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
+FREE_HF_VISION_ENDPOINT = "https://router.huggingface.co/hf-inference/models/google/vit-base-patch16-224"
+FREE_HF_BLIP_ENDPOINT = "https://router.huggingface.co/hf-inference/models/Salesforce/blip-image-captioning-base"
 
 
 def identify_image_free(image_bytes: bytes) -> list[str]:

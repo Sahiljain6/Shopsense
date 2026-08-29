@@ -74,9 +74,23 @@ def products(q: str | None = None, limit: int = 10, db: Session = Depends(get_db
 @router.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
-    response = AIOrchestrator(db).answer_via_agents(payload.message, payload.mode, history, cart=payload.cart)
-    db.add(ChatHistory(user_id=None, message=payload.message, response=response.model_dump()))
-    db.commit()
+    try:
+        response = AIOrchestrator(db).answer_via_agents(payload.message, payload.mode, history, cart=payload.cart)
+    except Exception as err:
+        db.rollback()
+        print(f"Error during AIOrchestrator.answer: {err}")
+        response = ChatResponse(
+            answer="I ran into a temporary issue retrieving product data. Please try asking again in a moment."
+        )
+
+    # Save chat history in an isolated transaction so history logging never crashes the response
+    try:
+        db.add(ChatHistory(user_id=None, message=payload.message, response=response.model_dump()))
+        db.commit()
+    except Exception as err:
+        db.rollback()
+        print(f"Notice: unable to save chat history: {err}")
+
     return response
 
 

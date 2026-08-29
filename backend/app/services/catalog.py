@@ -24,11 +24,16 @@ class CatalogService:
     ) -> list[Product]:
 
         if not q or not q.strip():
-            stmt = select(Product).order_by(Product.rating.desc())
-            if max_price is not None:
-                stmt = stmt.where(Product.price <= max_price)
-            stmt = stmt.limit(limit)
-            return list(self.db.scalars(stmt).all())
+            try:
+                stmt = select(Product).order_by(Product.rating.desc())
+                if max_price is not None:
+                    stmt = stmt.where(Product.price <= max_price)
+                stmt = stmt.limit(limit)
+                return list(self.db.scalars(stmt).all())
+            except Exception as e:
+                self.db.rollback()
+                print(f"Notice in CatalogService.search: {e}")
+                return []
 
         resolved = resolve_products(q, db=self.db, limit=limit)
         products = resolved.products
@@ -42,9 +47,13 @@ class CatalogService:
         self,
         product_ids: list[int]
     ) -> list[Product]:
-
-        return list(
-            self.db.scalars(
-                select(Product).where(Product.id.in_(product_ids))
-            ).all()
-        )
+        try:
+            return list(
+                self.db.scalars(
+                    select(Product).where(Product.id.in_(product_ids))
+                ).all()
+            )
+        except Exception as e:
+            self.db.rollback()
+            print(f"Notice in CatalogService.get_many: {e}")
+            return []
