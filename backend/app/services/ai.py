@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import time
 from sqlalchemy.orm import Session
 from ollama import Client
 from openai import OpenAI
@@ -543,7 +544,26 @@ class AIOrchestrator:
                     clean_messages.append({"role": str(turn["role"]), "content": str(turn["content"])})
         clean_messages.append({"role": "user", "content": user})
 
+        # ── 20-second wall-clock budget across the entire provider chain ──────
+        # Prevents sequential timeouts from stacking (e.g. 15s × 3 models = 45s).
+        # Each provider block checks this before starting; on expiry we return None
+        # immediately so the caller can fall back to a catalog-only response.
+        _BUDGET_SECS = 20.0
+        _deadline = time.monotonic() + _BUDGET_SECS
+
+        def _budget_ok(label: str = "") -> bool:
+            remaining = _deadline - time.monotonic()
+            if remaining <= 0:
+                logger.warning(
+                    "_chat_with_tools: 20s budget exhausted%s — returning None",
+                    f" before {label}" if label else "",
+                )
+                return False
+            return True
+
         # --- OpenAI / Groq (native tool support) ---
+        if not _budget_ok("OpenAI/Groq"):
+            return None
         if self.provider in ("openai", "groq") and self.client:
             candidate_models = (
                 [self.model, "gpt-4o-mini", "gpt-4o"] if self.provider == "openai"
@@ -590,21 +610,33 @@ class AIOrchestrator:
                     continue
 
         # --- Gemini (native tool support via REST) ---
+        if not _budget_ok("Gemini"):
+            return None
         if self.provider == "gemini" and getattr(self, "gemini_api_key", None):
+            import httpx as _httpx
             gemini_contents = _build_gemini_contents(user, history)
             models_to_try = getattr(self, "active_gemini_models", None) or ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+            # Tighter per-attempt timeout: connect 5s, read 10s (a single completion
+            # shouldn't need more; if it does that's worth knowing via a distinct log).
+            _gemini_timeout = _httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=2.0)
             for model_name in models_to_try:
+                if not _budget_ok(f"Gemini/{model_name}"):
+                    break
+                _attempt_start = time.monotonic()
                 try:
-                    import httpx
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_api_key}"
                     payload = {
                         "system_instruction": {"parts": [{"text": system}]},
                         "contents": gemini_contents,
                         "tools": GEMINI_TOOL_DECLARATIONS
                     }
-                    with httpx.Client(timeout=15) as client:
+                    with _httpx.Client(timeout=_gemini_timeout) as client:
                         resp = client.post(url, json=payload)
                         if resp.status_code != 200:
+                            logger.warning(
+                                "Gemini non-200 on '%s': status=%s body=%.120s",
+                                model_name, resp.status_code, resp.text,
+                            )
                             continue
                         data = resp.json()
                         candidates = data.get("candidates", [])
@@ -646,10 +678,19 @@ class AIOrchestrator:
                         text_parts = [p["text"] for p in parts if "text" in p]
                         if text_parts:
                             return "\n".join(text_parts)
+                except _httpx.TimeoutException as err:
+                    # Distinct log so Render logs show TIMEOUT vs. other failures at a glance
+                    logger.warning(
+                        "Gemini TIMEOUT on '%s' (%.1fs elapsed): %s",
+                        model_name, time.monotonic() - _attempt_start, err,
+                    )
+                    continue
                 except Exception as err:
-                    logger.warning("Gemini tool-calling error with '%s': %s", model_name, err)
-
+                    logger.warning("Gemini tool-calling error on '%s': %s", model_name, err)
+                    continue
         # --- HuggingFace fallback (prompt-based tool instructions) ---
+        if not _budget_ok("HuggingFace"):
+            return None
         if self.hf_token or self.provider == "huggingface":
             tool_prompt = (
                 f"{system}\n\n"

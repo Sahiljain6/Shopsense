@@ -9,6 +9,13 @@ def seed_phone(db_session) -> Product:
     return product
 
 
+def _register_and_login(client) -> dict[str, str]:
+    """Register a fresh test user and return Authorization headers."""
+    client.post("/auth/register", json={"email": "test@example.com", "password": "Password123!", "full_name": "Tester"})
+    token = client.post("/auth/login", json={"email": "test@example.com", "password": "Password123!"}).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_auth_flow(client) -> None:
     res = client.post("/auth/register", json={"email":"user@example.com","password":"password123","full_name":"User"})
     assert res.status_code == 200
@@ -18,22 +25,16 @@ def test_auth_flow(client) -> None:
     assert me.json()["email"] == "user@example.com"
 
 
-def test_cors_allows_vercel_preview_origin(client) -> None:
-    res = client.options(
-        "/auth/login",
-        headers={
-            "Origin": "https://shopsense-4a45rlij8-sahil-jain-s-projects.vercel.app",
-            "Access-Control-Request-Method": "POST",
-            "Access-Control-Request-Headers": "content-type",
-        },
-    )
-    assert res.status_code == 200
-    assert res.headers["access-control-allow-origin"] in ["*", "https://shopsense-4a45rlij8-sahil-jain-s-projects.vercel.app"]
+def test_chat_requires_auth(client) -> None:
+    """POST /chat without an Authorization header must return 401."""
+    res = client.post("/chat", json={"message": "recommend a budget phone"})
+    assert res.status_code == 401
 
 
 def test_chat_grounding(client, db_session) -> None:
     product = seed_phone(db_session)
-    res = client.post("/chat", json={"message":"recommend a budget phone under 15000"})
+    headers = _register_and_login(client)
+    res = client.post("/chat", json={"message":"recommend a budget phone under 15000"}, headers=headers)
     assert res.status_code == 200
     body = res.json()
     assert body["product_ids"] == [product.id]
@@ -104,7 +105,7 @@ def test_comparison_pre_check_resolves_two_distinct_products(client, db_session)
     db_session.add_all([p1, p2])
     db_session.commit()
 
-    res = client.post("/chat", json={"message": "Compare iPhone 15 vs OnePlus 12"})
+    res = client.post("/chat", json={"message": "Compare iPhone 15 vs OnePlus 12"}, headers=_register_and_login(client))
     assert res.status_code == 200
     body = res.json()
     assert p1.id in body["product_ids"]

@@ -103,7 +103,12 @@ def products(q: str | None = None, limit: int = 10, db: Session = Depends(get_db
 
 @router.post("/chat", response_model=ChatResponse)
 @limiter.limit("30/minute")
-def chat(request: Request, payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+def chat(
+    request: Request,
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ChatResponse:
     history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
     try:
         response = AIOrchestrator(db).answer_via_agents(payload.message, payload.mode, history, cart=payload.cart)
@@ -116,7 +121,7 @@ def chat(request: Request, payload: ChatRequest, db: Session = Depends(get_db)) 
 
     # Save chat history in an isolated transaction so history logging never crashes the response
     try:
-        db.add(ChatHistory(user_id=None, message=payload.message, response=response.model_dump()))
+        db.add(ChatHistory(user_id=user.id, message=payload.message, response=response.model_dump()))
         db.commit()
     except Exception as err:
         db.rollback()

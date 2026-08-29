@@ -36,7 +36,7 @@ export default function App() {
         {!authed ? (
           <AuthCard onLogin={handleLogin} onError={handleError} />
         ) : (
-          <ChatPanel onError={handleError} onClearError={handleClearError} />
+          <ChatPanel onError={handleError} onClearError={handleClearError} isLoggedIn={authed} />
         )}
       </section>
     </main>

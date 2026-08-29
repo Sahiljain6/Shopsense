@@ -34,7 +34,7 @@ function buildCartResponse() {
   return msg;
 }
 
-export default function ChatPanel({ onError, onClearError }) {
+export default function ChatPanel({ onError, onClearError, isLoggedIn = false }) {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -259,19 +259,31 @@ export default function ChatPanel({ onError, onClearError }) {
       {/* Composer */}
       <form className="chatbot-composer" onSubmit={handleSubmit}>
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => setAttachedFile(e.target.files[0] || null)} />
-        <button type="button" className="composer-icon-btn" onClick={() => attachedFile ? removeAttachment() : fileInputRef.current?.click()}>
+        <button
+          type="button"
+          className="composer-icon-btn"
+          onClick={() => attachedFile ? removeAttachment() : fileInputRef.current?.click()}
+          disabled={!isLoggedIn}
+          aria-label={isLoggedIn ? "Attach image" : "Log in to attach images"}
+        >
           {attachedFile ? "✓" : "📎"}
         </button>
         <input
           className="composer-text-input"
           type="text"
-          placeholder="Ask about products, compare prices, check your cart..."
+          placeholder={isLoggedIn ? "Ask about products, compare prices, check your cart..." : "Please log in to chat"}
           autoComplete="off"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          disabled={Boolean(attachedFile)}
+          disabled={!isLoggedIn || Boolean(attachedFile)}
+          aria-label={isLoggedIn ? "Chat input" : "Log in to use chat"}
         />
-        <button type="submit" className="composer-send-circle-btn" disabled={loading || !hasContent}>
+        <button
+          type="submit"
+          className="composer-send-circle-btn"
+          disabled={!isLoggedIn || loading || !hasContent}
+          aria-label={isLoggedIn ? "Send message" : "Log in to send messages"}
+        >
           {loading ? "..." : "➤"}
         </button>
       </form>
