@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+import Logo from "./Logo";
+
 const CART_KEY = "shopsense_cart";
 
 function getCart() {
@@ -66,13 +68,7 @@ export default function Hero({ authed, onLogout }) {
       <header className="shopsense-navbar">
         <div className="navbar-left">
           <div className="navbar-brand">
-            <div className="brand-icon-box">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M4 7H20L18.5 17H5.5L4 7Z" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M9 7V5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V7" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <span className="brand-text">ShopSense</span>
+            <Logo size={36} showWordmark={true} textColor="#ffffff" />
           </div>
         </div>
 

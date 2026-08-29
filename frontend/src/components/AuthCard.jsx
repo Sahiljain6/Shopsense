@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { login, register, googleLogin, setToken, friendlyError } from "../api";
+import logoMarkUrl from "../assets/logo-mark.png";
 
 const FIREFLIES = [
   { id: 1, x: "28%", y: "30%", size: 4, duration: 4.6, delay: 0 },
@@ -20,9 +21,18 @@ export default function AuthCard({ onLogin, onError }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // Lamp animation states: "idle" | "loading" | "success" | "error"
+  // Separate lampOn boolean: controls lamp illumination & card presence
+  const [lampOn, setLampOn] = useState(false);
+  // Real form feedback state: "idle" | "loading" | "success" | "error"
   const [lampState, setLampState] = useState("idle");
   const [isCordPulled, setIsCordPulled] = useState(false);
+
+  // Respect user's reduced motion preferences by turning lamp on immediately
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setLampOn(true);
+    }
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -75,30 +85,40 @@ export default function AuthCard({ onLogin, onError }) {
   }
 
   function handleCordClick() {
+    if (loading) return; // Disallow toggling off mid-submission
     setIsCordPulled(true);
     setTimeout(() => setIsCordPulled(false), 350);
-    if (lampState === "idle") {
-      setLampState("loading");
-      setTimeout(() => setLampState("idle"), 900);
-    }
+
+    setLampOn((prev) => {
+      const next = !prev;
+      if (!next) {
+        setLampState("idle");
+      }
+      return next;
+    });
   }
 
-  // Light cone animation variants based on real form state
+  // Light cone animation variants based on lampOn + form state
   const coneVariants = {
-    idle: {
-      opacity: [0.45, 0.52, 0.46],
+    off: {
+      opacity: 0.02,
+      scale: 0.96,
+      transition: { duration: 0.35, ease: "easeOut" },
+    },
+    on: {
+      opacity: [0.55, 0.68, 0.58],
       scale: 1,
       transition: { duration: 4.5, repeat: Infinity, ease: "easeInOut" },
     },
     loading: {
-      opacity: [0.7, 0.95, 0.8],
-      scale: [1, 1.04, 1.02],
-      transition: { duration: 1.2, repeat: Infinity, ease: "easeInOut" },
+      opacity: [0.78, 1.0, 0.88],
+      scale: [1, 1.05, 1.02],
+      transition: { duration: 1.1, repeat: Infinity, ease: "easeInOut" },
     },
     success: {
       opacity: 1,
       scale: 1.08,
-      filter: "drop-shadow(0 0 45px rgba(251, 191, 36, 0.6))",
+      filter: "drop-shadow(0 0 50px rgba(251, 191, 36, 0.7))",
       transition: { duration: 0.35 },
     },
     error: {
@@ -108,19 +128,34 @@ export default function AuthCard({ onLogin, onError }) {
   };
 
   const bulbGlowVariants = {
-    idle: {
-      boxShadow: "0 0 35px 10px rgba(251, 191, 36, 0.4), 0 0 70px 25px rgba(245, 158, 11, 0.2)",
+    off: {
+      boxShadow: "0 0 0px 0px rgba(251, 191, 36, 0)",
+      opacity: 0.08,
+      transition: { duration: 0.35 },
+    },
+    on: {
+      boxShadow: "0 0 35px 10px rgba(251, 191, 36, 0.45), 0 0 70px 25px rgba(245, 158, 11, 0.25)",
+      opacity: 1,
+      transition: { duration: 0.4 },
     },
     loading: {
-      boxShadow: "0 0 55px 22px rgba(251, 191, 36, 0.75), 0 0 110px 45px rgba(245, 158, 11, 0.45)",
+      boxShadow: "0 0 60px 24px rgba(251, 191, 36, 0.85), 0 0 120px 50px rgba(245, 158, 11, 0.5)",
+      opacity: 1,
+      transition: { duration: 0.3 },
     },
     success: {
-      boxShadow: "0 0 80px 30px rgba(251, 191, 36, 0.95), 0 0 140px 60px rgba(245, 158, 11, 0.6)",
+      boxShadow: "0 0 85px 35px rgba(251, 191, 36, 1), 0 0 150px 70px rgba(245, 158, 11, 0.7)",
+      opacity: 1,
+      transition: { duration: 0.3 },
     },
     error: {
       boxShadow: "0 0 15px 4px rgba(239, 68, 68, 0.3), 0 0 30px 8px rgba(245, 158, 11, 0.15)",
+      opacity: 0.8,
+      transition: { duration: 0.2 },
     },
   };
+
+  const currentVariant = !lampOn ? "off" : (lampState === "idle" ? "on" : lampState);
 
   return (
     <div className="lamp-auth-viewport">
@@ -192,7 +227,7 @@ export default function AuthCard({ onLogin, onError }) {
               points="168,132 232,158 360,420 80,420"
               fill="url(#coneGrad)"
               variants={coneVariants}
-              animate={lampState}
+              animate={currentVariant}
               className="lamp-light-cone"
             />
 
@@ -266,54 +301,139 @@ export default function AuthCard({ onLogin, onError }) {
 
           {/* Interactive Hanging Pull-Cord */}
           <motion.div
-            className="lamp-pull-cord"
-            title="Click to pull cord"
+            className={`lamp-pull-cord ${!lampOn ? "lamp-cord-off" : "lamp-cord-on"}`}
+            title={lampOn ? "Click pull-cord to turn off lamp" : "Click pull-cord to turn on lamp"}
             onClick={handleCordClick}
+            role="button"
+            tabIndex={0}
+            aria-label={lampOn ? "Turn off lamp" : "Turn on lamp"}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleCordClick();
+              }
+            }}
             animate={{
-              y: isCordPulled ? 14 : 0,
+              y: isCordPulled ? 16 : 0,
             }}
             transition={{
               type: "spring",
-              stiffness: 400,
-              damping: 15,
+              stiffness: 450,
+              damping: 14,
             }}
           >
             <div className="cord-string" />
-            <div className="cord-bead" />
+            <motion.div
+              className="cord-bead"
+              animate={
+                !lampOn
+                  ? {
+                      scale: [1, 1.3, 1],
+                      boxShadow: [
+                        "0 0 8px rgba(251, 191, 36, 0.6)",
+                        "0 0 20px rgba(251, 191, 36, 1)",
+                        "0 0 8px rgba(251, 191, 36, 0.6)",
+                      ],
+                    }
+                  : { scale: 1 }
+              }
+              transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+            />
           </motion.div>
 
           {/* Dynamic Bulb Glow Halo positioned right at the shade mouth */}
           <motion.div
             className="lamp-bulb-glow"
             variants={bulbGlowVariants}
-            animate={lampState}
+            animate={currentVariant}
             transition={{ duration: 0.4 }}
           />
         </div>
 
-        {/* Glassmorphic Auth Card */}
-        <motion.div
-          className="clean-auth-card lamp-glass-card"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: "easeOut" }}
-        >
-          {/* Brand Header */}
-          <div className="auth-card-header">
-            <div className="auth-copilot-pill">
-              <span className="auth-pill-glow">💡</span>
-              <span className="auth-pill-text">AI Shopping Copilot</span>
-            </div>
+        {/* Screen-reader & keyboard navigation accessibility button */}
+        {!lampOn && (
+          <button
+            type="button"
+            className="sr-only-focusable"
+            onClick={() => setLampOn(true)}
+          >
+            Show sign-in form
+          </button>
+        )}
 
-            <h1 className="auth-title">
-              {isRegister ? "Create Account" : "Welcome Back"}
-            </h1>
-            <p className="auth-subtitle">
-              {isRegister
-                ? "Join ShopSense for real-time deals and AI advice"
-                : "Sign in to access your wishlist, cart & personal assistant"}
-            </p>
-          </div>
+        {/* Glassmorphic Auth Card or Off Hint */}
+        <AnimatePresence mode="wait">
+          {lampOn ? (
+            <motion.div
+              key="auth-glass-card"
+              className="clean-auth-card lamp-glass-card"
+              initial={{ opacity: 0, y: 26, scale: 0.98 }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                scale: 1,
+                transition: {
+                  delay: 0.22, // ~220ms stagger after the lamp starts brightening
+                  duration: 0.45,
+                  ease: [0.22, 1, 0.36, 1],
+                },
+              }}
+              exit={{
+                opacity: 0,
+                y: 18,
+                scale: 0.98,
+                transition: {
+                  duration: 0.24,
+                  ease: "easeIn",
+                },
+              }}
+            >
+              {/* Card top toolbar with toggle affordance */}
+              <div className="auth-card-topbar">
+                <button
+                  type="button"
+                  className="lamp-switch-toggle"
+                  onClick={handleCordClick}
+                  disabled={loading}
+                  title="Switch lamp off"
+                >
+                  <span className="lamp-switch-icon">🌙</span>
+                  <span className="lamp-switch-label">Turn off lamp</span>
+                </button>
+              </div>
+
+              {/* Brand Header with New Logo */}
+              <div className="auth-card-header">
+                <div className="auth-copilot-pill">
+                  <img
+                    src={logoMarkUrl}
+                    alt="ShopSense Mark"
+                    width="22"
+                    height="22"
+                    style={{
+                      height: "22px",
+                      width: "auto",
+                      objectFit: "contain",
+                      filter: "drop-shadow(0 0 8px rgba(6, 182, 212, 0.7))",
+                    }}
+                  />
+                  <span className="auth-pill-text">
+                    <span style={{ fontWeight: 500 }}>shop</span>
+                    <span style={{ fontWeight: 800 }}>sense</span>
+                    <span style={{ color: "#06b6d4", fontWeight: 900 }}>•</span>
+                    <span style={{ opacity: 0.75, marginLeft: "4px", fontSize: "11px", letterSpacing: "0.05em" }}>COPILOT</span>
+                  </span>
+                </div>
+
+                <h1 className="auth-title">
+                  {isRegister ? "Create Account" : "Welcome Back"}
+                </h1>
+                <p className="auth-subtitle">
+                  {isRegister
+                    ? "Join shopsense• for real-time deals and AI advice"
+                    : "Sign in to access your wishlist, cart & personal assistant"}
+                </p>
+              </div>
 
           {/* Google One-Click Login */}
           <div className="social-buttons-group">
@@ -426,6 +546,33 @@ export default function AuthCard({ onLogin, onError }) {
             </button>
           </div>
         </motion.div>
+          ) : (
+            <motion.div
+              key="auth-off-hint"
+              className="lamp-off-hint"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{
+                opacity: 1,
+                scale: 1,
+                transition: { duration: 0.4, delay: 0.15 },
+              }}
+              exit={{
+                opacity: 0,
+                scale: 0.95,
+                transition: { duration: 0.2 },
+              }}
+            >
+              <button
+                type="button"
+                className="lamp-cord-cta-btn"
+                onClick={handleCordClick}
+              >
+                <span className="cta-sparkle">💡</span>
+                <span>Pull the cord to switch on & sign in</span>
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
