@@ -113,6 +113,43 @@ def parse_budget(text: str) -> float | None:
     return extract_budget(text)
 
 
+class GenericProductRef:
+    """Represents a product reference that may be from catalog or live search."""
+    def __init__(
+        self,
+        name: str,
+        brand: str = "",
+        price: float = 0.0,
+        id: int | None = None,
+        url: str | None = None,
+        category: str = "Tech",
+        description: str = ""
+    ):
+        self.name = name
+        self.brand = brand or (name.split()[0] if name else "Tech")
+        self.price = price
+        self.id = id
+        self.url = url
+        self.category = category
+        self.description = description
+
+    def __repr__(self) -> str:
+        return f"<GenericProductRef name='{self.name}' brand='{self.brand}' price={self.price} id={self.id}>"
+
+
+CONVERSATIONAL_MAP: dict[str, str] = {
+    "hi": "Hello! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
+    "hello": "Hello! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
+    "hey": "Hey! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
+    "how are you": "I'm doing great! 🛍️ Ready to help you discover products, compare specs, or find the best deals in India. What are you looking for today?",
+    "how are you doing": "I'm doing awesome! 🛍️ Ready to help you shop smart and save money. What product or budget are you considering today?",
+    "who are you": "I'm **ShopSense**, your AI shopping copilot! 🛍️ I help you discover products, compare models side-by-side, analyze live deals across Amazon India, Flipkart & Croma, and track prices in ₹.",
+    "what can you do": "I can help you:\n• 🔍 Search & recommend products by category or budget\n• ⚖️ Benchmark specs side-by-side\n• 💰 Track prices & live deals across Amazon India, Flipkart & Croma\n• 🏷️ Check ongoing bank offers & coupon codes",
+    "thank you": "You're very welcome! 😊 Let me know if you need any more product recommendations or price comparisons!",
+    "thanks": "Happy to help! 😊 Feel free to ask if you want to compare other models or check deals!",
+}
+
+
 def _build_gemini_contents(user: str, history: list[dict[str, str]] | None = None) -> list[dict[str, object]]:
     contents = []
     if history:
@@ -724,18 +761,12 @@ class AIOrchestrator:
     def _check_small_talk(self, message: str) -> str | None:
         """Return a small-talk response if applicable, else None."""
         clean_msg = message.strip().lower()
-        conversational_map = {
-            "hi": "Hello! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
-            "hello": "Hello! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
-            "hey": "Hey! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
-            "how are you": "I'm doing great! 🛍️ Ready to help you discover products, compare specs, or find the best deals in India. What are you looking for today?",
-            "how are you doing": "I'm doing awesome! 🛍️ Ready to help you shop smart and save money. What product or budget are you considering today?",
-            "who are you": "I'm **ShopSense**, your AI shopping copilot! 🛍️ I help you discover products, compare models side-by-side, analyze live deals across Amazon India, Flipkart & Croma, and track prices in ₹.",
-            "what can you do": "I can help you:\n• 🔍 Search & recommend products by category or budget\n• ⚖️ Benchmark specs side-by-side\n• 💰 Track prices & live deals across Amazon India, Flipkart & Croma\n• 🏷️ Check ongoing bank offers & coupon codes",
-            "thank you": "You're very welcome! 😊 Let me know if you need any more product recommendations or price comparisons!",
-            "thanks": "Happy to help! 😊 Feel free to ask if you want to compare other models or check deals!",
-        }
-        return conversational_map.get(clean_msg)
+        if clean_msg in CONVERSATIONAL_MAP:
+            return CONVERSATIONAL_MAP[clean_msg]
+        clean_nopunct = re.sub(r'[^\w\s]', '', clean_msg).strip()
+        if clean_nopunct in CONVERSATIONAL_MAP:
+            return CONVERSATIONAL_MAP[clean_nopunct]
+        return None
 
     # ---------- Tool-Calling Answer ----------
 
@@ -774,6 +805,12 @@ class AIOrchestrator:
                 self._tool_products = comp_products
 
         cart_summary = self._get_cart_summary_text(cart)
+        last_prod = self._find_last_product(history, cart)
+        context_prod_clause = (
+            f"8. PREVIOUSLY DISCUSSED ITEM: {last_prod.name} (Brand: {last_prod.brand}). "
+            "If the user refers to 'this', 'it', or asks for deals, specs, or accessories on the previous item, they mean this product.\n"
+            if last_prod else ""
+        )
 
         system_prompt = (
             "You are ShopSense, an expert AI shopping copilot for Indian consumers.\n"
@@ -792,6 +829,7 @@ class AIOrchestrator:
             "5. Keep responses concise and practical for Indian buyers.\n"
             f"6. {cart_summary}\n"
             "7. Only reference the user's cart when directly relevant to their request.\n"
+            f"{context_prod_clause}"
         )
 
         answer = self._chat_with_tools(system_prompt, message, history)
@@ -855,7 +893,7 @@ class AIOrchestrator:
         self,
         history: list[dict[str, str]] | None,
         cart: list[dict[str, object]] | None = None
-    ) -> Product | None:
+    ) -> Product | GenericProductRef | None:
         catalog_products = self.catalog.search("", limit=50)
         if history:
             for turn in reversed(history[-6:]):
@@ -865,6 +903,40 @@ class AIOrchestrator:
                     model_words = [w for w in p.name.lower().split() if len(w) > 2 and w not in ["phone", "5g", "ram", "storage", "black", "blue"]]
                     if p.name.lower() in content or (len(model_words) >= 2 and all(mw in content for mw in model_words[:2])):
                         return p
+
+        # If no catalog product matched, extract live-search products from assistant history
+        if history:
+            for turn in reversed(history[-6:]):
+                raw_content = turn.get("content") or ""
+                # Match live deal markdown links: [Store] [Title](URL) or • [Store] Title: URL
+                deal_link_match = re.search(r'\[(?:[A-Za-z\s]+)\]\s*\[([^\]]+)\]\((https?://[^\)]+)\)', raw_content)
+                if not deal_link_match:
+                    deal_link_match = re.search(r'\[([^\]]+)\]\((https?://(?:www\.)?(?:amazon|flipkart|croma|myntra)[^\)]+)\)', raw_content, re.IGNORECASE)
+
+                if deal_link_match:
+                    title = deal_link_match.group(1).strip()
+                    url = deal_link_match.group(2).strip()
+                    price_match = re.search(r'₹\s*([\d,]+)', raw_content)
+                    price = float(price_match.group(1).replace(",", "")) if price_match else 0.0
+                    brand = title.split()[0] if title else "Tech"
+                    return GenericProductRef(name=title, brand=brand, price=price, url=url, id=None)
+
+                # Match bold product names in assistant bullets: **Brand Model** (₹Price)
+                bold_matches = re.findall(r'\*\*([A-Za-z0-9][A-Za-z0-9\s\+\-\.]{3,45})\*\*', raw_content)
+                for candidate in bold_matches:
+                    candidate_clean = candidate.strip()
+                    if candidate_clean.lower() in [
+                        "bank discount", "no-cost emi", "exchange bonus", "coupon code",
+                        "where to buy", "ongoing offers", "best time to buy", "analysis",
+                        "model", "price", "rating", "category", "subtotal", "total due",
+                        "shopsense", "fast charging", "amazon india", "flipkart", "croma"
+                    ]:
+                        continue
+                    brand = candidate_clean.split()[0]
+                    price_match = re.search(rf'\*\*{re.escape(candidate)}\*\*\s*\(₹\s*([\d,]+)\)', raw_content)
+                    price = float(price_match.group(1).replace(",", "")) if price_match else 0.0
+                    return GenericProductRef(name=candidate_clean, brand=brand, price=price, id=None)
+
         if cart:
             for item in reversed(cart):
                 item_name = (item.get("name") or "").lower()
@@ -872,6 +944,12 @@ class AIOrchestrator:
                     matches = self.catalog.search(item_name, limit=1)
                     if matches:
                         return matches[0]
+                    return GenericProductRef(
+                        name=item.get("name", "Product"),
+                        brand=item.get("brand") or item.get("name", "").split()[0],
+                        price=float(item.get("price", 0.0)),
+                        id=item.get("id")
+                    )
         return None
 
     def answer(
@@ -951,6 +1029,7 @@ class AIOrchestrator:
         if any(kw in lowered_msg for kw in followup_kws):
             last_prod = self._find_last_product(history, cart)
             if last_prod:
+                p_ids = [last_prod.id] if getattr(last_prod, "id", None) is not None else []
                 if any(okw in lowered_msg for okw in ["offer", "offers", "discount", "discounts", "coupon", "coupons", "cashback", "emi"]):
                     return ChatResponse(
                         answer=(
@@ -961,7 +1040,7 @@ class AIOrchestrator:
                             f"• **Coupon Code**: Apply `SHOPSENSE1000` at checkout for ₹1,000 extra savings.\n\n"
                             f"*(Verified live offers across Amazon India & Flipkart)*"
                         ),
-                        product_ids=[last_prod.id]
+                        product_ids=p_ids
                     )
                 return ChatResponse(
                     answer=(
@@ -970,7 +1049,7 @@ class AIOrchestrator:
                         f"• **9H Curved Tempered Glass Screen Guard** (₹299) — Full-screen scratch & drop protection.\n"
                         f"• **Fast Charging Wall Adapter & USB Cable** (₹1,299) — Official fast charging support for {last_prod.brand}."
                     ),
-                    product_ids=[last_prod.id]
+                    product_ids=p_ids
                 )
 
         # 7. PRIMARY PATH: Tool-calling — let the LLM decide what to do
@@ -1133,24 +1212,12 @@ RESPONSE RULES:
         cart: list[dict[str, object]] | None = None
     ) -> ChatResponse:
 
-        # Conversational / Small Talk Intercepts (No web search, no random links)
+        # 1. Conversational / Small Talk Intercept using single shared implementation
+        small_talk = self._check_small_talk(message)
+        if small_talk:
+            return ChatResponse(answer=small_talk)
+
         clean_msg = message.strip().lower()
-
-        conversational_map = {
-            "hi": "Hello! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
-            "hello": "Hello! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
-            "hey": "Hey! 👋 I'm ShopSense, your AI shopping copilot. What products or deals are you looking for today?",
-            "how are you": "I'm doing great! 🛍️ Ready to help you discover products, compare specs, or find the best deals in India. What are you looking for today?",
-            "how are you doing": "I'm doing awesome! 🛍️ Ready to help you shop smart and save money. What product or budget are you considering today?",
-            "who are you": "I'm **ShopSense**, your AI shopping copilot! 🛍️ I help you discover products, compare models side-by-side, analyze live deals across Amazon India, Flipkart & Croma, and track prices in ₹.",
-            "what can you do": "I can help you:\n• 🔍 Search & recommend products by category or budget\n• ⚖️ Benchmark specs side-by-side\n• 💰 Track prices & live deals across Amazon India, Flipkart & Croma\n• 🏷️ Check ongoing bank offers & coupon codes",
-            "thank you": "You're very welcome! 😊 Let me know if you need any more product recommendations or price comparisons!",
-            "thanks": "Happy to help! 😊 Feel free to ask if you want to compare other models or check deals!",
-        }
-
-        for phrase, reply in conversational_map.items():
-            if phrase in clean_msg:
-                return ChatResponse(answer=reply)
 
         # Generic Smartphone Comparison Request (e.g. "compare two best smartphone")
         if any(p in clean_msg for p in ["compare two best smartphone", "compare smartphone", "compare phone", "compare two best phone"]):
@@ -1256,6 +1323,7 @@ RESPONSE RULES:
             if any(w in lowered for w in ["offer", "offers", "deal", "deals", "discount", "discounts", "coupon", "coupons", "flipkart", "amazon", "croma"]):
                 last_prod = self._find_last_product(history, cart)
                 if last_prod:
+                    p_ids = [last_prod.id] if getattr(last_prod, "id", None) is not None else []
                     return ChatResponse(
                         answer=(
                             f"### 🏷️ Ongoing Deals & Offers for **{last_prod.name}**\n\n"
@@ -1265,7 +1333,7 @@ RESPONSE RULES:
                             f"• **Coupon Code**: Apply `SHOPSENSE1000` at checkout for ₹1,000 extra savings.\n\n"
                             f"*(Verified live offers across Amazon India & Flipkart)*"
                         ),
-                        product_ids=[last_prod.id]
+                        product_ids=p_ids
                     )
                 return ChatResponse(
                     answer=(
@@ -1284,7 +1352,10 @@ RESPONSE RULES:
             )
 
         return ChatResponse(
-            answer=answer or "Hello! 👋 I'm ShopSense, your AI shopping copilot. I can help you find products, compare options, check prices, or find top deals under a budget. What are you looking for today?"
+            answer=answer or (
+                "I couldn't quite tell what product or category you're shopping for from that request — could you specify what you're looking for?\n\n"
+                "For example: *\"phones under ₹15,000\"*, *\"best wireless earbuds\"*, or *\"mechanical gaming keyboard\"*."
+            )
         )
 
     def _structured_response(

@@ -178,3 +178,47 @@ def test_tool_calling_search_catalog(monkeypatch, db_session) -> None:
     assert "phone" in response.answer.lower()
     assert len(response.product_ids) > 0
     assert all(pid in response.reasons for pid in [str(p) for p in response.product_ids])
+
+
+def test_find_last_product_resolves_live_search_item(db_session) -> None:
+    """Test that follow-ups reference live-search-sourced items not in the catalog."""
+    from app.services.ai import AIOrchestrator, GenericProductRef
+
+    orchestrator = AIOrchestrator(db_session)
+
+    # History where assistant recommended a live-search deal from Amazon (not in static DB)
+    history = [
+        {"role": "user", "content": "find live deals on oneplus"},
+        {
+            "role": "assistant",
+            "content": "• **[Amazon India]** [OnePlus Nord CE4 Lite 5G](https://amazon.in/dp/B0D1XYZ) — **₹19,999**\nSuper AMOLED, 5500mAh battery."
+        }
+    ]
+
+    last_prod = orchestrator._find_last_product(history)
+    assert last_prod is not None
+    assert isinstance(last_prod, GenericProductRef)
+    assert "OnePlus Nord CE4" in last_prod.name
+    assert last_prod.brand == "OnePlus"
+    assert last_prod.price == 19999.0
+    assert last_prod.id is None
+
+    # Follow-up asking for offers on this product must resolve to the live-search item
+    followup_resp = orchestrator.answer("what are the bank offers on this?", history=history)
+    assert followup_resp is not None
+    assert "OnePlus Nord CE4" in followup_resp.answer
+    assert "Bank Discount" in followup_resp.answer
+    # product_ids should not contain None
+    assert None not in followup_resp.product_ids
+
+
+def test_small_talk_consolidation(db_session) -> None:
+    """Test that small-talk queries resolve consistently across methods."""
+    from app.services.ai import AIOrchestrator
+
+    orchestrator = AIOrchestrator(db_session)
+    res_direct = orchestrator.answer("how are you doing")
+    assert "awesome" in res_direct.answer.lower()
+
+    res_punct = orchestrator.answer("Hello!")
+    assert "copilot" in res_punct.answer.lower()
