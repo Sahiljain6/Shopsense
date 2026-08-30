@@ -42,10 +42,77 @@ def select_modifiers(message: str, requested_mode: str | None = None) -> list[st
     return selected
 
 
+INJECTION_DELIMITERS = [
+    "<|im_start|>",
+    "<|im_end|>",
+    "[system]",
+    "[/system]",
+    "[assistant]",
+    "[/assistant]",
+    "### human:",
+    "### assistant:",
+    "### system:",
+    "<<sys>>",
+    "<</sys>>",
+    "[inst]",
+    "[/inst]",
+    "<s>[inst]",
+]
+
+INJECTION_PATTERNS = [
+    r"ignore\s+(all\s+|any\s+|prior\s+|previous\s+)?(instructions|prompts|directives|rules|guidelines)",
+    r"disregard\s+(all\s+|any\s+|prior\s+|previous\s+)?(instructions|prompts|directives|rules|guidelines)",
+    r"forget\s+(all\s+|any\s+|prior\s+|previous\s+)?(instructions|prompts|directives|rules)",
+    r"(system\s+prompt|reveal\s+(your\s+)?instructions|print\s+(your\s+)?instructions|output\s+(your\s+)?(system\s+)?prompt)",
+    r"(act\s+as\s+(an?\s+)?admin|act\s+as\s+root|sudo\s+mode|developer\s+mode|jailbreak|unfiltered\s+mode|dan\s+mode|do\s+anything\s+now)",
+    r"bypass\s+(content\s+filter|guardrail|safety\s+filter)",
+    r"!\[.*?\]\(https?://[^\s)]+\)",
+    r"\[.*?\]\(https?://[^\s)]+\?data=",
+]
+
+
+def normalize_injection_text(text: str) -> str:
+    cleaned = re.sub(r"[\u200B-\u200D\uFEFF]", "", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).lower()
+    table = str.maketrans({
+        "@": "a",
+        "0": "o",
+        "1": "i",
+        "!": "i",
+        "3": "e",
+        "$": "s",
+        "5": "s",
+        "7": "t",
+    })
+    return cleaned.translate(table)
+
+
+def is_direct_prompt_injection(text: str) -> bool:
+    if not text or not isinstance(text, str):
+        return False
+    lowered = text.lower().strip()
+    norm = normalize_injection_text(text)
+
+    # 1. Delimiters
+    for delim in INJECTION_DELIMITERS:
+        if delim in lowered or delim in norm:
+            return True
+
+    # 2. Regex patterns
+    for pat in INJECTION_PATTERNS:
+        if re.search(pat, lowered) or re.search(pat, norm):
+            return True
+
+    return False
+
+
 def check_shopping_guardrail(message: str) -> str | None:
     """Check if the user request is strictly out-of-scope (e.g. coding, programming, non-shopping essays).
     Returns a polite refusal string if out-of-scope, or None if it's a shopping query.
     """
+    if is_direct_prompt_injection(message):
+        return "I am ShopSense, an AI shopping copilot! 🛍️ I can only assist with shopping, products, pricing, and buying advice."
+
     lowered = message.lower().strip()
 
     # Exclude common legitimate e-commerce code terms first
@@ -57,10 +124,6 @@ def check_shopping_guardrail(message: str) -> str | None:
             "product code", "sku code", "gift card code", "referral code"
         ]
     )
-
-    # Prompt injection patterns
-    if any(pat in lowered for pat in ["ignore previous", "act as admin", "ignore system", "system prompt"]):
-        return "I am ShopSense, an AI shopping copilot! 🛍️ I can only assist with shopping, products, pricing, and buying advice."
 
     # 1. Coding / Programming / Software Development requests
     coding_patterns = [
