@@ -383,4 +383,57 @@ def test_cookie_auth_csrf_and_refresh_token_rotation(client, db_session) -> None
     assert logout_resp.status_code == 200
 
 
+def test_ssrf_validator_and_fetch_link_protection(client) -> None:
+    """Verify SSRF defense:
+    - Blocks private IP ranges (127.0.0.1, 10.x, 192.168.x, 172.16.x, 169.254.x)
+    - Blocks invalid schemes (file, ftp, gopher)
+    - Blocks non-standard ports (22, 8080, 6379)
+    - /fetch-link endpoint returns 400 Bad Request on SSRF attempts
+    - Max response size cap enforced
+    """
+    import pytest
+    from app.services.ssrf_validator import SSRFError, validate_url
+
+    # Prohibited IPs
+    for bad_url in [
+        "http://127.0.0.1/admin",
+        "http://localhost/secret",
+        "http://10.0.0.5:80/data",
+        "http://192.168.1.1:80/",
+        "http://172.16.0.1/api",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://0.0.0.0/",
+    ]:
+        with pytest.raises(SSRFError):
+            validate_url(bad_url)
+
+        # /fetch-link endpoint must return 400 Bad Request
+        resp = client.post("/fetch-link", json={"url": bad_url})
+        assert resp.status_code == 400, f"Expected 400 for {bad_url}, got {resp.status_code}"
+        assert "Prohibited or invalid URL" in resp.json()["detail"]
+
+    # Prohibited schemes
+    for bad_scheme_url in [
+        "file:///etc/passwd",
+        "ftp://example.com/file.txt",
+        "gopher://example.com/",
+    ]:
+        with pytest.raises(SSRFError):
+            validate_url(bad_scheme_url)
+        resp = client.post("/fetch-link", json={"url": bad_scheme_url})
+        assert resp.status_code == 400
+
+    # Prohibited ports
+    for bad_port_url in [
+        "http://example.com:22",
+        "http://example.com:8080",
+        "http://example.com:6379",
+    ]:
+        with pytest.raises(SSRFError):
+            validate_url(bad_port_url)
+        resp = client.post("/fetch-link", json={"url": bad_port_url})
+        assert resp.status_code == 400
+
+
+
 

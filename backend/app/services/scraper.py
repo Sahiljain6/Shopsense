@@ -6,6 +6,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.core.config import get_settings
+from app.services.ssrf_validator import SSRFError, safe_fetch_url, validate_url
 
 HEADERS = {
     "User-Agent": (
@@ -45,23 +46,25 @@ def fetch_with_scraperapi(
         return None
 
 
-def fetch_html(url: str) -> str | None:
+def fetch_html(url: str) -> tuple[str, str | None]:
+    """Safely fetch HTML with SSRF validation, size capping, and redirect checks."""
     try:
-        with httpx.Client(
-            headers=HEADERS,
-            timeout=10,
-            follow_redirects=True
-        ) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            return response.text
-    except httpx.HTTPError:
+        final_url, html = safe_fetch_url(url, timeout=10)
+        return final_url, html
+    except SSRFError as exc:
+        print(f"SSRF validation blocked URL '{url}': {exc}")
+        return url, None
+    except Exception:
         pass
 
-    return fetch_with_scraperapi(url)
+    try:
+        validate_url(url)
+        return url, fetch_with_scraperapi(url)
+    except Exception:
+        return url, None
 
 
-def _fetch_html(url: str) -> str | None:
+def _fetch_html(url: str) -> tuple[str, str | None]:
     return fetch_html(url)
 
 
@@ -109,16 +112,13 @@ def scrape_product(url: str) -> dict | None:
     """Fetch a product page and extract name/price/image/brand.
     Supports Amazon shortlinks (amzn.in), schema.org JSON-LD, OpenGraph,
     and 100% free web search fallback if site blocks scrapers."""
-
-    final_url = url
     try:
-        with httpx.Client(timeout=8, follow_redirects=True) as client:
-            resp = client.head(url)
-            final_url = str(resp.url)
-    except Exception:
-        pass
+        validate_url(url)
+    except SSRFError as exc:
+        print(f"SSRF validation blocked product scrape for '{url}': {exc}")
+        return None
 
-    html = _fetch_html(final_url)
+    final_url, html = fetch_html(url)
 
     if html:
         soup = BeautifulSoup(html, "html.parser")

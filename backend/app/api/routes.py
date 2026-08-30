@@ -17,6 +17,7 @@ from app.services.catalog import CatalogService
 from app.services.currency import convert_price
 from app.services.deal_hunter import fetch_gaming_deals
 from app.services.scraper import scrape_product
+from app.services.ssrf_validator import SSRFError, validate_url
 from app.services.vision import identify_image
 
 router = APIRouter()
@@ -227,6 +228,14 @@ def chat(
 
 @router.post("/fetch-link", response_model=FetchLinkResponse)
 def fetch_link(payload: FetchLinkRequest, db: Session = Depends(get_db)) -> FetchLinkResponse:
+    try:
+        validate_url(payload.url)
+    except SSRFError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Prohibited or invalid URL: {exc}"
+        )
+
     scraped = scrape_product(payload.url)
     if scraped is None:
         raise HTTPException(
