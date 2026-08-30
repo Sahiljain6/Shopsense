@@ -222,3 +222,51 @@ def test_small_talk_consolidation(db_session) -> None:
 
     res_punct = orchestrator.answer("Hello!")
     assert "copilot" in res_punct.answer.lower()
+
+
+def test_seed_products_attributes_audit(db_session) -> None:
+    """Ensure all seeded products have rich attributes JSON (best_for, specs, and store_prices)."""
+    from app.main import auto_seed_catalog
+    from app.models.entities import Product
+    auto_seed_catalog(db_session)
+
+    products = db_session.query(Product).all()
+    assert len(products) >= 19
+
+    for p in products:
+        attrs = p.attributes or {}
+        assert "best_for" in attrs, f"Product {p.name} missing 'best_for' attribute"
+        assert "store_prices" in attrs, f"Product {p.name} missing 'store_prices' attribute"
+        assert isinstance(attrs["store_prices"], dict)
+        assert len(attrs["store_prices"]) >= 2, f"Product {p.name} store_prices has < 2 stores"
+
+
+def test_structured_synthesis_shopping_answer_quality(db_session) -> None:
+    """Ensure 'smartphone under 15000' produces a ChatGPT-style synthesized response:
+    1. Intent/budget summary line
+    2. Top picks by use case with bullets citing grounded attributes
+    3. 'What to Know' synthesis section
+    """
+    from app.main import auto_seed_catalog
+    from app.services.ai import AIOrchestrator
+    auto_seed_catalog(db_session)
+
+    orchestrator = AIOrchestrator(db_session)
+    response = orchestrator.answer("smartphone under 15000")
+
+    assert response is not None
+    assert len(response.product_ids) >= 3
+
+    # Section 1: One-line intent / budget summary
+    assert "budget is" in response.answer.lower() or "under ₹15,000" in response.answer or "strongest" in response.answer.lower()
+
+    # Section 2: Top picks by use case
+    assert "Top Picks by Use Case" in response.answer or "• **Best" in response.answer
+    assert "• **" in response.answer
+
+    # Verify specs are grounded in real catalog fields (not hallucinations)
+    assert any(tech in response.answer for tech in ["Snapdragon", "Dimensity", "AMOLED", "5000mAh", "6000mAh"])
+
+    # Section 3: What to Know paragraph
+    assert "What to Know" in response.answer
+

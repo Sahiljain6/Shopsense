@@ -832,12 +832,20 @@ class AIOrchestrator:
             "RESPONSE RULES:\n"
             "1. Recommend ONLY products returned by your tools. Never invent names, prices, or specs.\n"
             "2. Respect the user's budget if mentioned.\n"
-            "3. For each product, include: name, price in ₹ (INR), key specs, and where to buy links.\n"
-            "4. Use ₹ for all prices, formatted in Indian numbering.\n"
-            "5. Keep responses concise and practical for Indian buyers.\n"
-            f"6. {cart_summary}\n"
-            "7. Only reference the user's cart when directly relevant to their request.\n"
-            f"{context_prod_clause}"
+            "3. Use ₹ for all prices, formatted in Indian numbering.\n"
+            "4. Keep responses concise and practical for Indian buyers.\n"
+            f"5. {cart_summary}\n"
+            "6. Only reference the user's cart when directly relevant to their request.\n"
+            f"{context_prod_clause}\n"
+            "STRUCTURED SYNTHESIS RULES (ChatGPT Shopping Quality):\n"
+            "When search_catalog returns 3+ products for a category or budget query, structure your answer into three clear sections:\n"
+            "1. One-line Intent / Budget Summary at the very top: Open with a direct, single-line summary (e.g. 'If your budget is ₹15,000, here are the strongest smartphone options available in our verified catalog:').\n"
+            "2. '### 🏆 Top Picks by Use Case': Provide 2 to 4 bullet points categorizing the best options using their real 'best_for' and technical specs from the product's attributes JSON (processor, camera, battery, display):\n"
+            "   • **Best overall**: [Product Name] (₹Price) — <1-2 sentences explaining why, highlighting real processor and display specs>\n"
+            "   • **Best camera**: [Product Name] (₹Price) — <1-2 sentences highlighting sensor and camera capabilities>\n"
+            "   • **Best battery / value**: [Product Name] (₹Price) — <1-2 sentences highlighting battery capacity (mAh) and charging speed>\n"
+            "   (If store_prices are provided in attributes, mention retailer pricing such as 'Available on Flipkart & Amazon').\n"
+            "3. '### 💡 What to Know': Write a concise 2-3 sentence paragraph synthesizing the top pick's real-world strengths, tradeoffs, and buying guidance based on its actual description and verified pros/cons.\n"
         )
 
         answer = self._chat_with_tools(system_prompt, message, history)
@@ -1366,6 +1374,76 @@ RESPONSE RULES:
             )
         )
 
+    def _synthesize_catalog_answer(self, products: list[Product]) -> str:
+        """Synthesize a structured ChatGPT-quality shopping response from catalog products."""
+        if not products:
+            return "No matching verified products found in our catalog."
+
+        cat_name = products[0].category.name if getattr(products[0], "category", None) else "product"
+        cat_term = "smartphone" if "phone" in cat_name.lower() else ("laptop" if "laptop" in cat_name.lower() else cat_name.lower())
+        max_price = max(p.price for p in products)
+        min_price = min(p.price for p in products)
+
+        # 1. One-line intent/budget summary at top
+        if min_price == max_price:
+            header = f"If you're exploring verified options around ₹{max_price:,.0f}, here are the strongest {cat_term} options in our catalog:"
+        else:
+            header = f"If your budget is ₹{max_price:,.0f}, here are the strongest {cat_term} options:"
+
+        # 2. Top picks by use case (2-4 short bullets)
+        bullets = []
+        for idx, p in enumerate(products[:4]):
+            attrs = p.attributes or {}
+            best_for = attrs.get("best_for")
+            if not best_for:
+                if idx == 0:
+                    best_for = "Best overall"
+                elif idx == 1:
+                    best_for = "Best value & display"
+                elif idx == 2:
+                    best_for = "Best battery life"
+                else:
+                    best_for = "Best budget pick"
+
+            role_label = best_for if best_for.startswith("Best") else f"Best for {best_for}"
+
+            spec_reason = f"powered by {attrs.get('processor')}" if attrs.get("processor") else (p.description[:80] if p.description else "verified catalog pick")
+            if attrs.get("display") and attrs.get("battery"):
+                spec_reason = f"{attrs.get('processor') or p.brand}, featuring {attrs.get('display')} and {attrs.get('battery')}"
+
+            store_str = ""
+            if attrs.get("store_prices") and isinstance(attrs["store_prices"], dict):
+                st_items = [f"{s} (₹{pr:,.0f})" for s, pr in list(attrs["store_prices"].items())[:2]]
+                store_str = f" *[Available on {', '.join(st_items)}]*"
+
+            bullets.append(f"• **{role_label}**: **{p.name}** (₹{p.price:,.0f}){store_str} — {spec_reason}.")
+
+        picks_section = "\n".join(bullets)
+
+        # 3. What to know paragraph (2-3 sentences)
+        top_pick = products[0]
+        top_attrs = top_pick.attributes or {}
+        primary_store = "Flipkart"
+        if top_attrs.get("store_prices") and isinstance(top_attrs["store_prices"], dict):
+            primary_store = list(top_attrs["store_prices"].keys())[0]
+
+        p_pros, p_cons = generate_trust_pros_cons(
+            rating=top_pick.rating or 0.0,
+            price=top_pick.price or 0.0,
+            brand=top_pick.brand or "",
+            store_name=primary_store
+        )
+        pro_snippet = p_pros[0] if p_pros else "proven reliability"
+        con_snippet = p_cons[0] if p_cons else "standard manufacturer warranty applies"
+
+        what_to_know = (
+            f"### 💡 What to Know\n"
+            f"The **{top_pick.name}** is the strongest all-around pick in this range ({pro_snippet}), balancing responsive daily speed with solid battery backup. "
+            f"If you prioritize specific hardware like high fast-charging or a dedicated camera sensor, compare the key specs above to match your personal use case ({con_snippet})."
+        )
+
+        return f"{header}\n\n### 🏆 Top Picks by Use Case\n{picks_section}\n\n{what_to_know}"
+
     def _structured_response(
         self,
         products: list[Product],
@@ -1385,18 +1463,29 @@ RESPONSE RULES:
 
         for product in products:
             pid_str = str(product.id)
+            prod_store = "Flipkart"
+            if product.attributes and isinstance(product.attributes, dict) and product.attributes.get("store_prices"):
+                prod_store = list(product.attributes["store_prices"].keys())[0]
+
             p_pros, p_cons = generate_trust_pros_cons(
                 rating=product.rating or 0.0,
                 price=product.price or 0.0,
                 brand=product.brand or "",
-                store_name="ShopSense Catalog"
+                store_name=prod_store
             )
             pros_map[pid_str] = p_pros
             cons_map[pid_str] = p_cons
             reasons_map[pid_str] = f"Trusted catalog match with {product.rating:.1f}/5★ rating."
 
+        if answer_override:
+            answer = answer_override
+        elif len(products) >= 2:
+            answer = self._synthesize_catalog_answer(products)
+        else:
+            answer = f"Here are top verified options: {names}."
+
         return ChatResponse(
-            answer=answer_override or f"Here are top verified options: {names}.",
+            answer=answer,
             product_ids=ids,
             reasons=reasons_map,
             pros=pros_map,
