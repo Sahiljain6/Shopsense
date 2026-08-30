@@ -195,7 +195,7 @@ def test_alembic_self_healing_orphaned_revision(db_session) -> None:
 
     # Verify that alembic healed to the actual head
     current = db_session.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0003_add_google_id_nullable_password"
+    assert current == "0003_google_auth"
 
 
 def test_jwt_secret_validation_in_production_and_dev(monkeypatch) -> None:

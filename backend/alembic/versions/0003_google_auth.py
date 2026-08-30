@@ -1,6 +1,6 @@
 """add google_id, nullable password
-
-Revision ID: 8d97f4f38bae
+ 
+Revision ID: 0003_google_auth
 Revises: 0002_dedupe_and_unique_sku
 Create Date: 2026-08-30 21:07:26.028358
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '0003_add_google_id_nullable_password'
+revision: str = '0003_google_auth'
 down_revision: Union[str, None] = '0002_dedupe_and_unique_sku'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
