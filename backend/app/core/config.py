@@ -39,17 +39,19 @@ class Settings(BaseSettings):
     cors_origins: str = (
         "http://localhost:3000,"
         "http://127.0.0.1:3000,"
+        "https://shopsense-nv1k3jgjm-sahil-jain-s-projects.vercel.app,"
         "https://shopsense-gmeelq7ml-sahil-jain-s-projects.vercel.app"
     )
 
-    cors_origin_regex: str = r"https://.*\.vercel\.app"
+    cors_origin_regex: str = r"^https://.*-sahil-jain-s-projects\.vercel\.app$"
 
     @property
     def cors_origins_list(self) -> list[str]:
+        # Never allow wildcard '*' with credentials
         return [
             o.strip()
             for o in self.cors_origins.split(",")
-            if o.strip()
+            if o.strip() and o.strip() != "*"
         ]
 
     @model_validator(mode="after")

@@ -435,5 +435,20 @@ def test_ssrf_validator_and_fetch_link_protection(client) -> None:
         assert resp.status_code == 400
 
 
+def test_security_headers_middleware(client) -> None:
+    """Ensure essential security headers (HSTS, X-Content-Type-Options,
+    X-Frame-Options, Referrer-Policy, and CSP) are returned on all responses."""
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    headers = resp.headers
+    assert headers.get("Strict-Transport-Security") == "max-age=31536000; includeSubDomains"
+    assert headers.get("X-Content-Type-Options") == "nosniff"
+    assert headers.get("X-Frame-Options") == "DENY"
+    assert headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+    assert "Content-Security-Policy" in headers
+    assert "default-src 'self'" in headers["Content-Security-Policy"]
+
+
+
 
 
