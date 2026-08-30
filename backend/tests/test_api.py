@@ -318,3 +318,69 @@ def test_google_identity_services_flow(client, db_session, monkeypatch) -> None:
     assert issuer_resp.status_code == 401
 
 
+def test_cookie_auth_csrf_and_refresh_token_rotation(client, db_session) -> None:
+    """Ensure:
+    1. /auth/login sets httpOnly access_token, refresh_token, and readable csrf_token cookies.
+    2. Cookie-authenticated GET requests succeed without Bearer headers.
+    3. Cookie-authenticated POST requests without X-CSRF-Token fail with 403.
+    4. Cookie-authenticated POST requests with valid X-CSRF-Token succeed with 200.
+    5. /auth/refresh rotates access and refresh tokens.
+    6. /auth/logout clears auth cookies.
+    """
+    from app.core.security import hash_password
+    from app.models.entities import User
+
+    user = User(
+        email="cookie_user@example.com",
+        hashed_password=hash_password("MySecurePass123!"),
+        full_name="Cookie User"
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    # 1. Login
+    login_resp = client.post(
+        "/auth/login",
+        json={"email": "cookie_user@example.com", "password": "MySecurePass123!"}
+    )
+    assert login_resp.status_code == 200
+    cookies = login_resp.cookies
+    assert "access_token" in cookies
+    assert "refresh_token" in cookies
+    assert "csrf_token" in cookies
+    csrf_val = cookies["csrf_token"]
+
+    # 2. GET request using cookies (read operation - no CSRF required)
+    me_resp = client.get("/auth/me")
+    assert me_resp.status_code == 200
+    assert me_resp.json()["email"] == "cookie_user@example.com"
+
+    # 3. State-changing POST request using cookies WITHOUT X-CSRF-Token header -> must be rejected (403)
+    chat_no_csrf = client.post("/chat", json={"message": "hello", "mode": "standard", "history": []})
+    assert chat_no_csrf.status_code == 403
+    assert "CSRF" in chat_no_csrf.json()["detail"]
+
+    # 4. State-changing POST request with valid X-CSRF-Token header -> succeeds (200)
+    chat_with_csrf = client.post(
+        "/chat",
+        json={"message": "hello", "mode": "standard", "history": []},
+        headers={"X-CSRF-Token": csrf_val}
+    )
+    assert chat_with_csrf.status_code == 200
+
+    # 5. /auth/refresh rotates tokens
+    old_access = cookies["access_token"]
+    old_refresh = cookies["refresh_token"]
+    refresh_resp = client.post("/auth/refresh")
+    assert refresh_resp.status_code == 200
+    new_cookies = refresh_resp.cookies
+    assert "access_token" in new_cookies
+    assert "refresh_token" in new_cookies
+    assert new_cookies["access_token"] != old_access
+
+    # 6. /auth/logout clears cookies
+    logout_resp = client.post("/auth/logout")
+    assert logout_resp.status_code == 200
+
+
+

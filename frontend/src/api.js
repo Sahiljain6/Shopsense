@@ -48,6 +48,12 @@ async function responseMessage(response) {
   }
 }
 
+function getCsrfToken() {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export async function apiFetch(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const headers = {
@@ -57,6 +63,13 @@ export async function apiFetch(path, options = {}) {
   const token = getToken();
   if (token && PROTECTED_PATHS.some((p) => path.startsWith(p))) {
     headers.Authorization = `Bearer ${token}`;
+  }
+
+  const method = (options.method || "GET").toUpperCase();
+  const isStateChanging = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
+  const csrfToken = getCsrfToken();
+  if (isStateChanging && csrfToken) {
+    headers["X-CSRF-Token"] = csrfToken;
   }
 
   const maxRetries = options.retries ?? 1;
@@ -75,6 +88,7 @@ export async function apiFetch(path, options = {}) {
       }
       const response = await fetch(`${API_URL}${path}`, {
         ...options,
+        credentials: "include",
         headers,
         signal: controller.signal,
       });
@@ -168,3 +182,9 @@ export const identifyImage = (file) => {
 
 export const getProducts = (q = "", limit = 8) =>
   apiFetch(`/products?q=${encodeURIComponent(q)}&limit=${limit}`);
+
+export const logout = () =>
+  apiFetch("/auth/logout", { method: "POST" });
+
+export const refreshToken = () =>
+  apiFetch("/auth/refresh", { method: "POST" });

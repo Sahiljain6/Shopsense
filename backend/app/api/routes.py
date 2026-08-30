@@ -1,5 +1,5 @@
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from slowapi import Limiter
@@ -7,10 +7,10 @@ from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.core.config import get_settings
-from app.core.security import create_access_token, get_current_user, hash_password, require_admin, verify_password
+from app.core.security import clear_auth_cookies, create_access_token, create_refresh_token, decode_refresh_token, get_current_user, hash_password, require_admin, set_auth_cookies, verify_password
 from app.db.session import get_db
 from app.models.entities import ChatHistory, Order, Product, Review, SeedVersion, User, Wishlist
-from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, GoogleAuthRequest, PriceHistoryResponse, ProductCreate, ProductRead, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
+from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, GoogleAuthRequest, PriceHistoryResponse, ProductCreate, ProductRead, RefreshTokenRequest, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
 from app.services.ai import AIOrchestrator
 from app.services.barcode_lookup import lookup_barcode
 from app.services.catalog import CatalogService
@@ -50,18 +50,54 @@ def register(request: Request, payload: UserCreate, db: Session = Depends(get_db
 
 @router.post("/auth/login", response_model=Token)
 @limiter.limit("10/minute")
-def login(request: Request, payload: UserLogin, db: Session = Depends(get_db)) -> Token:
+def login(request: Request, response: Response, payload: UserLogin, db: Session = Depends(get_db)) -> Token:
     try:
         user = db.scalar(select(User).where(User.email == payload.email))
-        if user is None or not verify_password(payload.password, user.hashed_password):
+        if user is None or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        return Token(access_token=create_access_token(user.email))
+        access_token = create_access_token(user.email)
+        refresh_token = create_refresh_token(user.email)
+        csrf = set_auth_cookies(response, access_token, refresh_token)
+        return Token(access_token=access_token, refresh_token=refresh_token, csrf_token=csrf)
     except HTTPException:
         db.rollback()
         raise
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Login failed. Please try again.")
+
+
+@router.post("/auth/refresh", response_model=Token)
+def refresh_auth(
+    request: Request,
+    response: Response,
+    payload: RefreshTokenRequest | None = None,
+    db: Session = Depends(get_db)
+) -> Token:
+    """Refresh access token using httpOnly cookie or payload refresh token."""
+    raw_refresh = request.cookies.get("refresh_token")
+    if not raw_refresh and payload and payload.refresh_token:
+        raw_refresh = payload.refresh_token
+
+    if not raw_refresh:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token missing")
+
+    email = decode_refresh_token(raw_refresh)
+    user = db.scalar(select(User).where(User.email == email))
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    new_access = create_access_token(user.email)
+    new_refresh = create_refresh_token(user.email)
+    csrf = set_auth_cookies(response, new_access, new_refresh)
+    return Token(access_token=new_access, refresh_token=new_refresh, csrf_token=csrf)
+
+
+@router.post("/auth/logout")
+def logout(response: Response) -> dict[str, str]:
+    """Clear authentication cookies."""
+    clear_auth_cookies(response)
+    return {"message": "Logged out successfully"}
 
 
 @router.get("/auth/me", response_model=UserRead)
@@ -73,6 +109,7 @@ def me(user: User = Depends(get_current_user)) -> User:
 @limiter.limit("15/minute")
 def google_auth(
     request: Request,
+    response: Response,
     payload: GoogleAuthRequest,
     db: Session = Depends(get_db)
 ) -> Token:
@@ -141,7 +178,10 @@ def google_auth(
             db.commit()
             db.refresh(user)
 
-        return Token(access_token=create_access_token(user.email))
+        access_token = create_access_token(user.email)
+        refresh_token = create_refresh_token(user.email)
+        csrf = set_auth_cookies(response, access_token, refresh_token)
+        return Token(access_token=access_token, refresh_token=refresh_token, csrf_token=csrf)
     except Exception as err:
         db.rollback()
         raise HTTPException(status_code=500, detail="Google authentication failed.") from err
