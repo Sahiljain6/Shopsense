@@ -2,7 +2,7 @@
 
 > **AI Shopping Copilot for India** — grounded catalog search, live retailer comparison, and cart-aware recommendations powered by Gemini / Groq / OpenAI.
 
-[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](shopsense-1y8hy0xfy-sahil-jain-s-projects.vercel.app)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](shopsense-theta.vercel.app)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.116-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
