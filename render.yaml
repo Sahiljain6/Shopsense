@@ -6,7 +6,6 @@ services:
     dockerContext: .
     plan: free
     healthCheckPath: /health
-    preDeployCommand: alembic upgrade head
     envVars:
       - key: OPENAI_API_KEY
         sync: false
