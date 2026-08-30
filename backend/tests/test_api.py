@@ -144,6 +144,16 @@ def test_cors_restricted_origins(client) -> None:
     )
     assert res.headers.get("access-control-allow-origin") != "https://malicious-phishing-site.com"
 
+    res_valid = client.options(
+        "/auth/login",
+        headers={
+            "Origin": "https://shopsense-theta.vercel.app",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert res_valid.headers.get("access-control-allow-origin") == "https://shopsense-theta.vercel.app"
+
 
 def test_rate_limiting_flood_returns_429(client) -> None:
     """Ensure flooding /auth/register triggers 429 Too Many Requests."""

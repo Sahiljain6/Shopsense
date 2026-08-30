@@ -39,11 +39,15 @@ class Settings(BaseSettings):
     cors_origins: str = (
         "http://localhost:3000,"
         "http://127.0.0.1:3000,"
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173,"
+        "https://shopsense-theta.vercel.app,"
+        "https://shopsense.vercel.app,"
         "https://shopsense-nv1k3jgjm-sahil-jain-s-projects.vercel.app,"
         "https://shopsense-gmeelq7ml-sahil-jain-s-projects.vercel.app"
     )
 
-    cors_origin_regex: str = r"^https://.*-sahil-jain-s-projects\.vercel\.app$"
+    cors_origin_regex: str = r"^https://shopsense.*\.vercel\.app$"
 
     @property
     def cors_origins_list(self) -> list[str]:
