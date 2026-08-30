@@ -19,3 +19,5 @@ ollama
 beautifulsoup4==4.12.3
 duckduckgo-search
 slowapi==0.1.10
+google-auth==2.35.0
+

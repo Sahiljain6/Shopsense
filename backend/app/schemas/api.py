@@ -17,6 +17,10 @@ class UserLogin(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
+
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

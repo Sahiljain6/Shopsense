@@ -1,4 +1,6 @@
+import secrets
 from functools import lru_cache
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,10 +22,11 @@ class Settings(BaseSettings):
 
     scraperapi_key: str = ""
     google_vision_api_key: str = ""
+    google_client_id: str = ""
 
     database_url: str = "sqlite:///./shopsense.db"
 
-    jwt_secret: str = "shopsense-hackathon-secure-secret-key-2026-production"
+    jwt_secret: str = ""
     pinecone_api_key: str = ""
 
     enable_multi_agent: bool = False
@@ -31,6 +34,7 @@ class Settings(BaseSettings):
 
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60 * 24
+    refresh_token_days: int = 7
 
     cors_origins: str = (
         "http://localhost:3000,"
@@ -47,6 +51,17 @@ class Settings(BaseSettings):
             for o in self.cors_origins.split(",")
             if o.strip()
         ]
+
+    @model_validator(mode="after")
+    def validate_jwt_secret(self) -> "Settings":
+        env = (self.environment or "").lower()
+        dummy = "shopsense-hackathon-secure-secret-key-2026-production"
+        if env == "production":
+            if not self.jwt_secret or self.jwt_secret == dummy:
+                raise RuntimeError("CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be set in production.")
+        elif not self.jwt_secret:
+            self.jwt_secret = secrets.token_urlsafe(32)
+        return self
 
     model_config = SettingsConfigDict(
         env_file="backend/.env",

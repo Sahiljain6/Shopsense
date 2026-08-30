@@ -1,5 +1,7 @@
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func, select
@@ -8,7 +10,7 @@ from app.core.config import get_settings
 from app.core.security import create_access_token, get_current_user, hash_password, require_admin, verify_password
 from app.db.session import get_db
 from app.models.entities import ChatHistory, Order, Product, Review, SeedVersion, User, Wishlist
-from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, PriceHistoryResponse, ProductCreate, ProductRead, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
+from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, GoogleAuthRequest, PriceHistoryResponse, ProductCreate, ProductRead, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
 from app.services.ai import AIOrchestrator
 from app.services.barcode_lookup import lookup_barcode
 from app.services.catalog import CatalogService
@@ -69,27 +71,80 @@ def me(user: User = Depends(get_current_user)) -> User:
 
 @router.post("/auth/google", response_model=Token)
 @limiter.limit("15/minute")
-def google_auth(request: Request, db: Session = Depends(get_db)) -> Token:
-    """One-click Google-style authentication.
-    Auto-creates a demo account and returns a JWT token.
-    """
-    demo_email = "shopper@shopsense.in"
-    demo_password = "ShopSense2026!"
+def google_auth(
+    request: Request,
+    payload: GoogleAuthRequest,
+    db: Session = Depends(get_db)
+) -> Token:
+    """Verify Google Identity Services (GIS) ID token and authenticate or register user."""
+    settings = get_settings()
     try:
-        user = db.scalar(select(User).where(User.email == demo_email))
-        if not user:
+        audience = settings.google_client_id if settings.google_client_id else None
+        id_info = id_token.verify_oauth2_token(
+            payload.credential,
+            google_requests.Request(),
+            audience=audience
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Google ID token: {exc}"
+        )
+
+    # Verify issuer
+    if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google token issuer"
+        )
+
+    # Verify email verified
+    if not id_info.get("email_verified"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google email not verified"
+        )
+
+    google_id = id_info.get("sub")
+    email = id_info.get("email")
+    full_name = id_info.get("name", "")
+
+    if not google_id or not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incomplete Google user profile"
+        )
+
+    try:
+        # 1. Match by google_id
+        user = db.scalar(select(User).where(User.google_id == google_id))
+
+        # 2. Fall back to matching by email (link existing password account)
+        if user is None:
+            user = db.scalar(select(User).where(User.email == email))
+            if user:
+                user.google_id = google_id
+                if not user.full_name and full_name:
+                    user.full_name = full_name
+                db.commit()
+                db.refresh(user)
+
+        # 3. Create new user if not found
+        if user is None:
             user = User(
-                email=demo_email,
-                full_name="ShopSense Shopper",
-                hashed_password=hash_password(demo_password),
+                email=email,
+                google_id=google_id,
+                full_name=full_name,
+                hashed_password=None,
             )
             db.add(user)
             db.commit()
             db.refresh(user)
+
         return Token(access_token=create_access_token(user.email))
-    except Exception:
+    except Exception as err:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Google authentication failed. Please try again.")
+        raise HTTPException(status_code=500, detail="Google authentication failed.") from err
 
 
 @router.get("/products", response_model=list[ProductRead])

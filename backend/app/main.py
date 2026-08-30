@@ -18,12 +18,20 @@ def ensure_schema_upgrades() -> None:
             if engine.dialect.name == "postgresql":
                 conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS sku VARCHAR(120);"))
                 conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_products_sku ON products (sku);"))
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);"))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id);"))
+                conn.execute(text("ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL;"))
                 conn.commit()
             elif engine.dialect.name == "sqlite":
                 cols = [r[1] for r in conn.execute(text("PRAGMA table_info(products);")).fetchall()]
                 if cols and "sku" not in cols:
                     conn.execute(text("ALTER TABLE products ADD COLUMN sku VARCHAR(120);"))
                     conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_products_sku ON products (sku);"))
+                    conn.commit()
+                u_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(users);")).fetchall()]
+                if u_cols and "google_id" not in u_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN google_id VARCHAR(255);"))
+                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id);"))
                     conn.commit()
     except Exception as err:
         print(f"Notice during schema upgrade check: {err}")

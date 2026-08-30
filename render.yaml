@@ -12,6 +12,8 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       - key: CORS_ORIGINS
         value: "http://localhost:3000"
       - key: ENABLE_MULTI_AGENT

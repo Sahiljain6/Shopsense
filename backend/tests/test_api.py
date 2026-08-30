@@ -195,4 +195,126 @@ def test_alembic_self_healing_orphaned_revision(db_session) -> None:
 
     # Verify that alembic healed to the actual head
     current = db_session.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    assert current == "0002_dedupe_and_unique_sku"
+    assert current == "0003_add_google_id_nullable_password"
+
+
+def test_jwt_secret_validation_in_production_and_dev(monkeypatch) -> None:
+    """Ensure Settings raises a RuntimeError if JWT_SECRET is not set in production,
+    and generates a random-per-run secret in development."""
+    import pytest
+    from app.core.config import Settings
+
+    # In production without JWT_SECRET: must raise RuntimeError
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+    with pytest.raises(RuntimeError, match="CRITICAL SECURITY ERROR: JWT_SECRET"):
+        Settings(environment="production", jwt_secret="")
+
+    # In production with dummy secret: must raise RuntimeError
+    with pytest.raises(RuntimeError, match="CRITICAL SECURITY ERROR: JWT_SECRET"):
+        Settings(environment="production", jwt_secret="shopsense-hackathon-secure-secret-key-2026-production")
+
+    # In development without JWT_SECRET: must generate a non-empty random secret
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    s_dev = Settings(environment="development", jwt_secret="")
+    assert s_dev.jwt_secret
+    assert len(s_dev.jwt_secret) >= 32
+
+
+def test_google_identity_services_flow(client, db_session, monkeypatch) -> None:
+    """Test real Google Identity Services (GIS) auth:
+    1. New Google user creation (google_id set, hashed_password is None)
+    2. Google-authenticated user can immediately access /chat and /auth/me
+    3. Existing email/password user links google_id on Google login
+    4. Rejection of unverified email or invalid issuer
+    """
+    from google.oauth2 import id_token
+    from app.models.entities import User
+
+    # 1. New user registration via Google ID token
+    mock_payload_new = {
+        "sub": "gid-123456789",
+        "email": "test_gis_user@gmail.com",
+        "email_verified": True,
+        "name": "GIS Test User",
+        "iss": "https://accounts.google.com"
+    }
+    monkeypatch.setattr(id_token, "verify_oauth2_token", lambda *args, **kwargs: mock_payload_new)
+
+    resp = client.post("/auth/google", json={"credential": "mock-valid-google-id-token"})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    token_data = resp.json()
+    assert "access_token" in token_data
+    access_token = token_data["access_token"]
+
+    # Verify user in database has google_id and null hashed_password
+    user = db_session.query(User).filter(User.email == "test_gis_user@gmail.com").first()
+    assert user is not None
+    assert user.google_id == "gid-123456789"
+    assert user.hashed_password is None
+    assert user.full_name == "GIS Test User"
+
+    # Verify user can immediately access protected /auth/me and /chat
+    me_resp = client.get("/auth/me", headers={"Authorization": f"Bearer {access_token}"})
+    assert me_resp.status_code == 200
+    assert me_resp.json()["email"] == "test_gis_user@gmail.com"
+
+    chat_resp = client.post(
+        "/chat",
+        json={"message": "hello", "mode": "standard", "history": []},
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert chat_resp.status_code == 200
+
+    # 2. Existing password user links Google account
+    # Pre-populate existing user directly in DB
+    existing = User(
+        email="existing_user@gmail.com",
+        full_name="Original Name",
+        hashed_password="hashed_pw_secret"
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    mock_payload_existing = {
+        "sub": "gid-999999999",
+        "email": "existing_user@gmail.com",
+        "email_verified": True,
+        "name": "Original Name",
+        "iss": "accounts.google.com"
+    }
+    monkeypatch.setattr(id_token, "verify_oauth2_token", lambda *args, **kwargs: mock_payload_existing)
+
+    link_resp = client.post("/auth/google", json={"credential": "mock-valid-link-token"})
+    assert link_resp.status_code == 200
+
+    # Must be linked to the same account without duplicate creation
+    users_with_email = db_session.query(User).filter(User.email == "existing_user@gmail.com").all()
+    assert len(users_with_email) == 1
+    linked_user = users_with_email[0]
+    assert linked_user.google_id == "gid-999999999"
+    assert linked_user.hashed_password is not None  # Original password preserved
+
+    # 3. Unverified email rejection
+    mock_unverified = {
+        "sub": "gid-0000",
+        "email": "unverified@gmail.com",
+        "email_verified": False,
+        "iss": "https://accounts.google.com"
+    }
+    monkeypatch.setattr(id_token, "verify_oauth2_token", lambda *args, **kwargs: mock_unverified)
+    unverified_resp = client.post("/auth/google", json={"credential": "mock-unverified-token"})
+    assert unverified_resp.status_code == 400
+
+    # 4. Invalid issuer rejection
+    mock_bad_issuer = {
+        "sub": "gid-0000",
+        "email": "bad_issuer@gmail.com",
+        "email_verified": True,
+        "iss": "https://attacker-domain.com"
+    }
+    monkeypatch.setattr(id_token, "verify_oauth2_token", lambda *args, **kwargs: mock_bad_issuer)
+    issuer_resp = client.post("/auth/google", json={"credential": "mock-bad-issuer-token"})
+    assert issuer_resp.status_code == 401
+
+
