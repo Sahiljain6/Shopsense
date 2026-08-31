@@ -270,3 +270,44 @@ def test_structured_synthesis_shopping_answer_quality(db_session) -> None:
     # Section 3: What to Know paragraph
     assert "What to Know" in response.answer
 
+
+def test_claude_style_comparison_synthesis(db_session) -> None:
+    """Ensure product comparison produces a human-optimal, Claude-quality structured response:
+    1. Clean headings and product profile cards
+    2. 'Best For', 'Standout Strengths', and 'Trade-off to Keep in Mind'
+    3. 'The Bottom Line' verdict
+    4. A thoughtful, non-blocking follow-up question
+    5. Absolutely NO raw pipe tables (|:---|) and NO truncated '...' strings
+    """
+    from app.main import auto_seed_catalog
+    from app.services.ai import AIOrchestrator
+    auto_seed_catalog(db_session)
+
+    orchestrator = AIOrchestrator(db_session)
+    response = orchestrator.answer("Compare iPhone 15 vs OnePlus 12")
+
+    assert response is not None
+    assert len(response.product_ids) == 2
+    ans = response.answer
+
+    # 1. Human-first headings
+    assert "Side-by-Side Comparison" in ans
+    assert "Apple iPhone 15" in ans
+    assert "OnePlus 12" in ans
+
+    # 2. Claude-style sections
+    assert "Best For" in ans
+    assert "Standout Strengths" in ans
+    assert "Trade-off to Keep in Mind" in ans
+    assert "The Bottom Line" in ans
+
+    # 3. Thoughtful follow-up question
+    assert "A quick question to help you decide" in ans
+    assert "?" in ans
+
+    # 4. Anti-regression: NO broken raw pipe tables or trailing ellipsis
+    assert "|:---|" not in ans
+    assert "| Feature |" not in ans
+    assert not ans.endswith("...")
+
+

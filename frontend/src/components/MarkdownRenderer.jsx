@@ -1,8 +1,10 @@
 import React from "react";
 
 /**
- * Custom Rich Markdown & Deal Link Renderer
+ * Custom Rich Markdown, Table & Deal Link Renderer
  * Formats:
+ * - Headings: ### Title, #### Title
+ * - Tables: | Header | Header | -> Responsive styled <table>
  * - **[Store]** [Title](url) -> Interactive Store Badge + Link Card
  * - [Title](url) -> Clickable Pill Link with External Arrow
  * - **Bold Text** -> <strong>
@@ -12,78 +14,188 @@ import React from "react";
 export default function MarkdownRenderer({ content }) {
   if (!content) return null;
 
-  const lines = content.split("\n");
+  const rawLines = content.split("\n");
+  const blocks = [];
+  let currentTable = null;
 
-  const renderLine = (line, lineIndex) => {
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
     const trimmed = line.trim();
-    if (!trimmed) return <div key={lineIndex} className="markdown-spacer" />;
 
-    // Detect Bullet Points
-    const isBullet = /^([•\-\*]|\d+\.)\s+/.test(trimmed);
-    const cleanLine = isBullet ? trimmed.replace(/^([•\-\*]|\d+\.)\s+/, "") : line;
+    // Check if line is a table row (starts and ends with | or contains multiple |)
+    const isTableRow = trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.includes("|");
 
-    // Pattern for Store + Link combo: **[Store Name]** [Product Title](URL) or [Store] [Title](URL)
-    const storeLinkRegex = /(\*{0,2}\[([a-zA-Z0-9\s&'-]+)\]\*{0,2}\s*)?\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
-
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = storeLinkRegex.exec(cleanLine)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(parseFormatting(cleanLine.substring(lastIndex, match.index), `${lineIndex}-${lastIndex}`));
+    if (isTableRow) {
+      if (!currentTable) {
+        currentTable = [];
       }
+      currentTable.push(trimmed);
+      continue;
+    } else {
+      if (currentTable) {
+        blocks.push({ type: "table", rows: currentTable, index: i - currentTable.length });
+        currentTable = null;
+      }
+      blocks.push({ type: "line", content: line, index: i });
+    }
+  }
 
-      const storeName = match[2];
-      const linkTitle = match[3];
-      const url = match[4];
+  if (currentTable) {
+    blocks.push({ type: "table", rows: currentTable, index: rawLines.length - currentTable.length });
+  }
 
-      parts.push(
-        <a
-          key={`link-${lineIndex}-${match.index}`}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rich-deal-link"
-          title={`Open ${linkTitle}`}
-        >
-          {storeName && <span className="deal-store-badge">🏪 {storeName}</span>}
-          <span className="deal-title">{linkTitle}</span>
-          <span className="deal-arrow">↗</span>
-        </a>
-      );
+  return (
+    <div className="rich-markdown-container">
+      {blocks.map((block) => {
+        if (block.type === "table") {
+          return renderTable(block.rows, block.index);
+        }
+        return renderLine(block.content, block.index);
+      })}
+    </div>
+  );
+}
 
-      lastIndex = match.index + match[0].length;
+function renderTable(rows, tableIndex) {
+  if (rows.length < 2) return null;
+
+  // Filter out separator row like |:---|:---|
+  const dataRows = [];
+  let headerRow = null;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const cells = row
+      .split("|")
+      .slice(1, -1)
+      .map((c) => c.trim());
+
+    // Check if this is separator row
+    const isSeparator = cells.every((c) => /^:?-+:?$/.test(c));
+    if (isSeparator) {
+      continue;
     }
 
-    if (lastIndex < cleanLine.length) {
-      parts.push(parseFormatting(cleanLine.substring(lastIndex), `${lineIndex}-${lastIndex}`));
+    if (!headerRow) {
+      headerRow = cells;
+    } else {
+      dataRows.push(cells);
     }
+  }
 
-    if (isBullet) {
-      return (
-        <div key={lineIndex} className="markdown-bullet-row">
-          <span className="bullet-dot">✦</span>
-          <div className="bullet-content">{parts}</div>
-        </div>
-      );
-    }
+  if (!headerRow) return null;
 
+  return (
+    <div key={`tbl-wrap-${tableIndex}`} className="markdown-table-wrapper">
+      <table className="markdown-table">
+        <thead>
+          <tr>
+            {headerRow.map((cell, idx) => (
+              <th key={`th-${tableIndex}-${idx}`}>{parseFormatting(cell, `th-${idx}`)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {dataRows.map((row, rIdx) => (
+            <tr key={`tr-${tableIndex}-${rIdx}`}>
+              {row.map((cell, cIdx) => (
+                <td key={`td-${tableIndex}-${rIdx}-${cIdx}`}>
+                  {parseFormatting(cell, `td-${rIdx}-${cIdx}`)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function renderLine(line, lineIndex) {
+  const trimmed = line.trim();
+  if (!trimmed) return <div key={`spacer-${lineIndex}`} className="markdown-spacer" />;
+
+  // Headings
+  if (trimmed.startsWith("#### ")) {
+    const text = trimmed.replace(/^####\s+/, "");
     return (
-      <p key={lineIndex} className="markdown-paragraph">
-        {parts}
-      </p>
+      <h4 key={`h4-${lineIndex}`} className="markdown-h4">
+        {parseFormatting(text, `h4-${lineIndex}`)}
+      </h4>
     );
-  };
+  }
 
-  return <div className="rich-markdown-container">{lines.map(renderLine)}</div>;
+  if (trimmed.startsWith("### ")) {
+    const text = trimmed.replace(/^###\s+/, "");
+    return (
+      <h3 key={`h3-${lineIndex}`} className="markdown-h3">
+        {parseFormatting(text, `h3-${lineIndex}`)}
+      </h3>
+    );
+  }
+
+  // Bullet Points
+  const isBullet = /^([•\-\*]|\d+\.)\s+/.test(trimmed);
+  const cleanLine = isBullet ? trimmed.replace(/^([•\-\*]|\d+\.)\s+/, "") : line;
+
+  // Pattern for Store + Link combo: **[Store Name]** [Product Title](URL) or [Store] [Title](URL)
+  const storeLinkRegex = /(\*{0,2}\[([a-zA-Z0-9\s&'-]+)\]\*{0,2}\s*)?\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
+
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = storeLinkRegex.exec(cleanLine)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(parseFormatting(cleanLine.substring(lastIndex, match.index), `${lineIndex}-${lastIndex}`));
+    }
+
+    const storeName = match[2];
+    const linkTitle = match[3];
+    const url = match[4];
+
+    parts.push(
+      <a
+        key={`link-${lineIndex}-${match.index}`}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="rich-deal-link"
+        title={`Open ${linkTitle}`}
+      >
+        {storeName && <span className="deal-store-badge">🏪 {storeName}</span>}
+        <span className="deal-title">{linkTitle}</span>
+        <span className="deal-arrow">↗</span>
+      </a>
+    );
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < cleanLine.length) {
+    parts.push(parseFormatting(cleanLine.substring(lastIndex), `${lineIndex}-${lastIndex}`));
+  }
+
+  if (isBullet) {
+    return (
+      <div key={`bullet-${lineIndex}`} className="markdown-bullet-row">
+        <span className="bullet-dot">✦</span>
+        <div className="bullet-content">{parts}</div>
+      </div>
+    );
+  }
+
+  return (
+    <p key={`p-${lineIndex}`} className="markdown-paragraph">
+      {parts}
+    </p>
+  );
 }
 
 // Sub-parser for **bold**, *italic*, and `code`
 function parseFormatting(text, keyPrefix) {
   if (!text) return null;
 
-  // Split by bold (**text**), italic (*text*), and code (`text`)
   const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
   const tokens = text.split(regex);
 

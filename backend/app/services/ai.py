@@ -1042,15 +1042,17 @@ class AIOrchestrator:
             f"5. {cart_summary}\n"
             "6. Only reference the user's cart when directly relevant to their request.\n"
             f"{context_prod_clause}\n"
-            "STRUCTURED SYNTHESIS RULES (ChatGPT Shopping Quality):\n"
-            "When search_catalog returns 3+ products for a category or budget query, structure your answer into three clear sections:\n"
-            "1. One-line Intent / Budget Summary at the very top: Open with a direct, single-line summary (e.g. 'If your budget is ₹15,000, here are the strongest smartphone options available in our verified catalog:').\n"
-            "2. '### 🏆 Top Picks by Use Case': Provide 2 to 4 bullet points categorizing the best options using their real 'best_for' and technical specs from the product's attributes JSON (processor, camera, battery, display):\n"
-            "   • **Best overall**: [Product Name] (₹Price) — <1-2 sentences explaining why, highlighting real processor and display specs>\n"
-            "   • **Best camera**: [Product Name] (₹Price) — <1-2 sentences highlighting sensor and camera capabilities>\n"
-            "   • **Best battery / value**: [Product Name] (₹Price) — <1-2 sentences highlighting battery capacity (mAh) and charging speed>\n"
-            "   (If store_prices are provided in attributes, mention retailer pricing such as 'Available on Flipkart & Amazon').\n"
-            "3. '### 💡 What to Know': Write a concise 2-3 sentence paragraph synthesizing the top pick's real-world strengths, tradeoffs, and buying guidance based on its actual description and verified pros/cons.\n"
+            "STRUCTURED SYNTHESIS RULES (Claude Shopping Quality):\n"
+            "Format your answer for optimal human reading and decision-making:\n"
+            "1. NEVER output raw pipe tables (|:---|) or cut off descriptions with '...'. Use clean headings, bold product names with prices in ₹, and clear bullet points.\n"
+            "2. When recommending products:\n"
+            "   - One-line Intent / Budget Summary at the top.\n"
+            "   - '### 🏆 Top Picks by Use Case': Bullet points highlighting who each pick is best for (using real attributes: processor, camera, battery, display).\n"
+            "   - '### 💡 What to Know': Synthesize real strengths and honest trade-offs.\n"
+            "3. When comparing products ('X vs Y'):\n"
+            "   - Give each product its own section with 'Best For', 'Standout Strengths', and 'Trade-off to Keep in Mind'.\n"
+            "   - Provide '### 🎯 The Bottom Line' with clear decision criteria.\n"
+            "4. Follow-Up Question: End with a single, thoughtful follow-up question (e.g., asking what they value most between battery, camera, or specific ecosystem) only if helpful to narrow down their choice.\n"
         )
 
         answer = self._chat_with_tools(system_prompt, message, history)
@@ -1058,17 +1060,7 @@ class AIOrchestrator:
         if answer is None:
             if getattr(self, "_tool_products", None) and len(self._tool_products) >= 2:
                 p1, p2 = self._tool_products[0], self._tool_products[1]
-                comp_answer = (
-                    f"### ⚖️ Side-by-Side Comparison: **{p1.name}** vs **{p2.name}**\n\n"
-                    f"| Feature | **{p1.brand}** | **{p2.brand}** |\n"
-                    f"| :--- | :--- | :--- |\n"
-                    f"| **Model** | {p1.name} | {p2.name} |\n"
-                    f"| **Price** | ₹{p1.price:,.0f} | ₹{p2.price:,.0f} |\n"
-                    f"| **Rating** | {p1.rating:.1f}/5★ | {p2.rating:.1f}/5★ |\n"
-                    f"| **Category** | {p1.category.name if p1.category else 'Tech'} | {p2.category.name if p2.category else 'Tech'} |\n\n"
-                    f"**Analysis**: Both are standout choices. **{p1.name}** offers {p1.description[:80]}... "
-                    f"while **{p2.name}** offers {p2.description[:80]}..."
-                )
+                comp_answer = self._synthesize_comparison_answer(p1, p2)
                 return self._structured_response(self._tool_products, answer_override=comp_answer)
 
             # LLM is offline / no API key configured — resolve catalog products before generic fallback
@@ -1762,8 +1754,82 @@ RESPONSE RULES:
             f"The **{top_pick.name}** is the strongest all-around pick in this range ({pro_snippet}), balancing responsive daily speed with solid battery backup. "
             f"If you prioritize specific hardware like high fast-charging or a dedicated camera sensor, compare the key specs above to match your personal use case ({con_snippet})."
         )
+        follow_up_note = "\n\n💬 **Looking to narrow this down?** Tell me what you prioritize most (e.g. maximum battery, camera clarity, or budget), and I'll pinpoint your ideal match!"
 
-        return f"{header}\n\n### 🏆 Top Picks by Use Case\n{picks_section}\n\n{what_to_know}"
+        return f"{header}\n\n### 🏆 Top Picks by Use Case\n{picks_section}\n\n{what_to_know}{follow_up_note}"
+
+    def _synthesize_comparison_answer(self, p1: Product, p2: Product) -> str:
+        """Synthesize a human-optimal, Claude-quality comparison between two products."""
+        p1_store = "Flipkart"
+        if p1.attributes and isinstance(p1.attributes, dict) and p1.attributes.get("store_prices"):
+            p1_store = list(p1.attributes["store_prices"].keys())[0]
+
+        p2_store = "Flipkart"
+        if p2.attributes and isinstance(p2.attributes, dict) and p2.attributes.get("store_prices"):
+            p2_store = list(p2.attributes["store_prices"].keys())[0]
+
+        p1_pros, p1_cons = generate_trust_pros_cons(p1.rating or 0.0, p1.price or 0.0, p1.brand or "", p1_store)
+        p2_pros, p2_cons = generate_trust_pros_cons(p2.rating or 0.0, p2.price or 0.0, p2.brand or "", p2_store)
+
+        p1_pro = p1_pros[0] if p1_pros else "Proven reliability and strong build quality"
+        p1_con = p1_cons[0] if p1_cons else "Higher entry cost in this tier"
+        p2_pro = p2_pros[0] if p2_pros else "High performance-to-price ratio"
+        p2_con = p2_cons[0] if p2_cons else "Ecosystem considerations apply"
+
+        price_diff = abs(p1.price - p2.price)
+
+        def extract_focus(p: Product, pros: list[str]) -> str:
+            name_lower = p.name.lower()
+            if "iphone" in name_lower or "apple" in name_lower:
+                return "iOS ecosystem integration, video creator workflow, and long-term resale value"
+            elif "oneplus" in name_lower:
+                return "Power users, mobile gamers, and anyone who wants ultra-fast charging and top hardware value"
+            elif "samsung" in name_lower or "galaxy" in name_lower:
+                return "Vibrant AMOLED display lovers, multitasking productivity, and zoom camera versatility"
+            elif "macbook" in name_lower:
+                return "All-day silent battery life, trackpad precision, and seamless macOS workflow"
+            elif "sony" in name_lower or "bose" in name_lower:
+                return "Frequent travelers, office commuters, and audiophiles needing best-in-class noise cancellation"
+            else:
+                return f"Buyers looking for {pros[0].lower() if pros else 'reliable daily performance'}"
+
+        p1_for = extract_focus(p1, p1_pros)
+        p2_for = extract_focus(p2, p2_pros)
+
+        # Contextual follow-up question (Claude-style)
+        cat_name = (p1.category.name if p1.category else "").lower()
+        if "phone" in cat_name or "phone" in p1.name.lower() or "iphone" in p1.name.lower():
+            follow_up = "What matters most to you in your next phone — are you leaning towards the iOS vs. Android ecosystem, or is camera consistency vs. battery charging speed your main priority?"
+        elif "laptop" in cat_name or "macbook" in p1.name.lower():
+            follow_up = "What will be your primary workflow — are you doing software development/creative editing, or looking for an ultraportable everyday machine?"
+        elif "audio" in cat_name or "earbuds" in p1.name.lower() or "headphone" in p1.name.lower():
+            follow_up = "Will you be using these mostly for workouts, noisy commutes, or long office calls?"
+        else:
+            follow_up = "Which of these two aligns better with your everyday use, or is there a specific feature you'd like to dive deeper into?"
+
+        # Extract cleaner summary of description (first full sentence, no raw cuts)
+        p1_desc = p1.description.split(".")[0].strip() if p1.description else p1.name
+        p2_desc = p2.description.split(".")[0].strip() if p2.description else p2.name
+
+        lines = [
+            f"### ⚖️ Side-by-Side Comparison: **{p1.name}** vs **{p2.name}**\n",
+            f"Both are standout choices in the **₹{min(p1.price, p2.price):,.0f} – ₹{max(p1.price, p2.price):,.0f}** bracket ({p1.rating:.1f}★ vs {p2.rating:.1f}★), but they cater to very different user priorities.\n",
+            f"#### 1. {p1.name} — ₹{p1.price:,.0f}",
+            f"• **Best For**: {p1_for}.",
+            f"• **Standout Strengths**: {p1_pro}. {p1_desc}.",
+            f"• **Trade-off to Keep in Mind**: {p1_con}.\n",
+            f"#### 2. {p2.name} — ₹{p2.price:,.0f}",
+            f"• **Best For**: {p2_for}.",
+            f"• **Standout Strengths**: {p2_pro}. {p2_desc}.",
+            f"• **Trade-off to Keep in Mind**: {p2_con}.\n",
+            "### 🎯 The Bottom Line",
+            f"• **Choose the {p1.name}** if you value {p1_pro.lower()}.",
+            f"• **Choose the {p2.name}** if you want {p2_pro.lower()}" + (f" and want to save ₹{price_diff:,.0f}." if price_diff > 1000 else "."),
+            f"\n💬 **A quick question to help you decide**: {follow_up}"
+        ]
+
+        return "\n".join(lines)
+
 
     def _structured_response(
         self,
