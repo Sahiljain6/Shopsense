@@ -372,6 +372,23 @@ TOOL_DEFINITIONS = [
                 "required": ["location"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "compare_import_cost",
+            "description": "Compare product cost bought internationally (US, Dubai/UAE, Europe, Singapore) against Indian retail price (₹), calculating currency conversion, import duties, and warranty coverage differences.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_name": {"type": "string", "description": "Name of the gadget or product (e.g. 'iPhone 16 Pro', 'MacBook Air M3')"},
+                    "foreign_amount": {"type": "number", "description": "Price in foreign currency"},
+                    "foreign_currency": {"type": "string", "default": "USD", "description": "Currency code (USD, AED, EUR, GBP, SGD)"},
+                    "india_mrp": {"type": "number", "description": "Optional Indian retail reference price in INR (₹)"}
+                },
+                "required": ["product_name", "foreign_amount"]
+            }
+        }
     }
 ]
 
@@ -612,6 +629,13 @@ class AIOrchestrator:
             elif tool_name == "get_weather_shopping_context":
                 location = str(arguments.get("location", "Mumbai"))
                 return self._execute_weather_context(location)
+            elif tool_name == "compare_import_cost":
+                return self._execute_compare_import_cost(
+                    product_name=str(arguments.get("product_name", "Gadget")),
+                    foreign_amount=float(arguments.get("foreign_amount", 0)),
+                    foreign_currency=str(arguments.get("foreign_currency", "USD")),
+                    india_mrp=float(arguments["india_mrp"]) if arguments.get("india_mrp") else None
+                )
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
         except Exception as err:
@@ -705,6 +729,18 @@ class AIOrchestrator:
         from app.services.weather_context import get_weather_shopping_advice
         advice = get_weather_shopping_advice(location)
         return json.dumps(advice, ensure_ascii=False)
+
+    def _execute_compare_import_cost(
+        self,
+        product_name: str,
+        foreign_amount: float,
+        foreign_currency: str = "USD",
+        india_mrp: float | None = None
+    ) -> str:
+        """Compare foreign vs Indian landed tech costs and return as JSON string."""
+        from app.services.currency import calculate_import_comparison
+        comp = calculate_import_comparison(product_name, foreign_amount, foreign_currency, india_mrp)
+        return json.dumps(comp, ensure_ascii=False)
 
     # ---------- Tool-Calling Chat ----------
 
@@ -1224,7 +1260,33 @@ class AIOrchestrator:
                 except Exception as err:
                     logger.warning("Weather pre-check notice: %s", err)
 
-        # 8. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
+        # 8. International Import & Dubai/US Price Comparison Trigger
+        import_match = re.search(r'\b(?:dubai|usa?|us|abroad|import)\b.*?(?:aed|\$|usd|eur|gbp)\s*(\d{3,6})\b', message, re.IGNORECASE)
+        if not import_match:
+            import_match = re.search(r'\b(?:aed|\$|usd|eur|gbp)\s*(\d{3,6})\b.*?\b(?:dubai|usa?|us|abroad|import|india)\b', message, re.IGNORECASE)
+        if import_match:
+            foreign_amt = float(import_match.group(1))
+            currency_code = "AED" if "aed" in message.lower() else ("USD" if ("$" in message or "usd" in message.lower()) else "USD")
+            prod_name = "Tech Product"
+            for kw in ["iphone", "macbook", "ipad", "airpods", "playstation", "ps5", "galaxy", "pixel"]:
+                if kw in message.lower():
+                    prod_name = kw.title()
+                    break
+            try:
+                from app.services.currency import calculate_import_comparison
+                comp = calculate_import_comparison(prod_name, foreign_amt, currency_code)
+                lines = [f"### ✈️ Global Tech Import Analysis: {comp['product']}\n"]
+                lines.append(f"• **Foreign Retail Price**: **{comp['foreign_price']}**")
+                lines.append(f"• **Converted Base Value**: **₹{comp['converted_base_inr']:,.0f}**")
+                lines.append(f"• **Personal Carry-on Baggage**: **₹{comp['personal_baggage_landed_inr']:,.0f}** *(Duty-free allowance applies)*")
+                lines.append(f"• **Courier Shipped (DHL/FedEx)**: **₹{comp['courier_shipped_landed_inr']:,.0f}** *(incl. estimated ~33% Customs + IGST)*\n")
+                lines.append(f"🛡️ **Warranty Notice**: {comp['warranty_advice']}\n")
+                lines.append(f"💡 **Verdict**: {comp['verdict']}")
+                return ChatResponse(answer="\n".join(lines))
+            except Exception as err:
+                logger.warning("Import comparison notice: %s", err)
+
+        # 9. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
         url_match = re.search(r'https?://[^\s]+', message)
         if url_match:
             target_url = url_match.group(0)
