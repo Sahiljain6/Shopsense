@@ -1,3 +1,4 @@
+import logging
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from google.auth.transport import requests as google_requests
@@ -20,6 +21,7 @@ from app.services.scraper import scrape_product
 from app.services.ssrf_validator import SSRFError, validate_url
 from app.services.vision import identify_image
 
+logger = logging.getLogger("shopsense.api")
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
@@ -263,37 +265,16 @@ def price_history(product_id: int, db: Session = Depends(get_db)) -> PriceHistor
 
 @router.post("/identify-image", response_model=ChatResponse)
 async def identify_image_route(file: UploadFile = File(...), db: Session = Depends(get_db)) -> ChatResponse:
-    settings = get_settings()
     image_bytes = await file.read()
+    if not image_bytes:
+        return ChatResponse(answer="Empty image uploaded. Please upload a valid product photo.")
 
     try:
-        labels = identify_image(image_bytes, settings.google_vision_api_key)
-    except httpx.HTTPError:
-        labels = identify_image(image_bytes, None)
-
-    if not labels:
-        return ChatResponse(answer="I couldn't identify anything specific in that image. Try a clearer or closer photo.")
-
-    top_labels = labels[:5]
-    query = " ".join(top_labels)
-    products = CatalogService(db).search(query, limit=6)
-
-    detected = ", ".join(top_labels)
-
-    if not products:
-        return ChatResponse(answer=f"I detected: {detected}. No close matches in the catalog yet — try pasting a product link instead.")
-
-    ids = [product.id for product in products]
-    names = ", ".join(f"{product.name} ({product.currency} {product.price:.0f})" for product in products)
-
-    return ChatResponse(
-        answer=f"I detected: {detected}. Closest catalog matches: {names}.",
-        product_ids=ids,
-        reasons={
-            str(product.id): f"Matched from image labels: {', '.join(top_labels[:3])}"
-            for product in products
-        }
-    )
+        from app.services.agents.photo_deal_agent import resolve_photo_mismatch_and_find_deals
+        return resolve_photo_mismatch_and_find_deals(image_bytes, db)
+    except Exception as err:
+        logger.exception("Error in multi-agent photo deal finder: %s", err)
+        return ChatResponse(answer="I couldn't process that photo properly. Please try another image or search by text.")
 
 
 @router.post("/compare", response_model=ChatResponse)

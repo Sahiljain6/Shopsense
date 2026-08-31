@@ -28,7 +28,9 @@ def orchestrator_node(state: ShopSenseState) -> ShopSenseState:
         return state
 
     message = state["message"].lower()
-    if needs_clarification(message):
+    if state.get("image_bytes") or any(w in message for w in ["photo mismatch", "image mismatch", "picture mismatch", "mismatch in photo"]):
+        state["intent"] = "photo_deal"
+    elif needs_clarification(message):
         state["intent"] = "clarify"
     elif "compare" in message:
         state["intent"] = "compare"
@@ -97,3 +99,31 @@ def guardrail_node(state: ShopSenseState) -> ShopSenseState:
 
     state["response"] = response
     return state
+
+
+def photo_inspector_node(state: ShopSenseState) -> ShopSenseState:
+    """Agent 1: Visual Inspector examines image_bytes and flags potential mismatch."""
+    if state.get("intent") == "refuse":
+        return state
+
+    image_bytes = state.get("image_bytes") or b"mock_photo_bytes"
+
+    from app.services.agents.photo_deal_agent import VisualInspectorAgent
+    from app.core.config import get_settings
+    agent_1 = VisualInspectorAgent(api_key=get_settings().google_vision_api_key)
+    state["visual_data"] = agent_1.inspect(image_bytes, state["db"])
+    return state
+
+
+def deal_specialist_node(state: ShopSenseState) -> ShopSenseState:
+    """Agent 2: Deal & Offer Specialist resolves mismatch, finds optimal option, and attaches deals."""
+    if state.get("intent") == "refuse":
+        return state
+
+    from app.services.agents.photo_deal_agent import resolve_photo_mismatch_and_find_deals
+    image_bytes = state.get("image_bytes") or b"mock_photo_bytes"
+    resp = resolve_photo_mismatch_and_find_deals(image_bytes, state["db"])
+    state["response"] = resp
+    state["product_ids"] = resp.product_ids or []
+    return state
+

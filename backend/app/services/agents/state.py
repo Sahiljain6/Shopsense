@@ -13,3 +13,6 @@ class ShopSenseState(TypedDict, total=False):
     response: ChatResponse
     error: str
     catalog: list[dict[str, Any]]
+    image_bytes: bytes | None
+    visual_data: dict[str, Any]
+    deal_data: dict[str, Any]
