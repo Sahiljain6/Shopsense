@@ -389,6 +389,22 @@ TOOL_DEFINITIONS = [
                 "required": ["product_name", "foreign_amount"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_deal_timing",
+            "description": "Analyze upcoming Indian e-commerce sales (Great Indian Festival, Big Billion Days, Prime Day, Republic Day Sale) and price volatility to advise whether a user should Buy Now or Wait for an upcoming sale.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_name": {"type": "string", "description": "Product or brand name"},
+                    "current_price": {"type": "number", "description": "Current item price in INR (₹)"},
+                    "category": {"type": "string", "enum": ["phones", "audio", "laptops", "peripherals", "general"], "description": "Category for discount range"}
+                },
+                "required": ["product_name"]
+            }
+        }
     }
 ]
 
@@ -636,6 +652,12 @@ class AIOrchestrator:
                     foreign_currency=str(arguments.get("foreign_currency", "USD")),
                     india_mrp=float(arguments["india_mrp"]) if arguments.get("india_mrp") else None
                 )
+            elif tool_name == "check_deal_timing":
+                return self._execute_check_deal_timing(
+                    product_name=str(arguments.get("product_name", "Product")),
+                    current_price=float(arguments["current_price"]) if arguments.get("current_price") else None,
+                    category=str(arguments.get("category", "general"))
+                )
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
         except Exception as err:
@@ -741,6 +763,17 @@ class AIOrchestrator:
         from app.services.currency import calculate_import_comparison
         comp = calculate_import_comparison(product_name, foreign_amount, foreign_currency, india_mrp)
         return json.dumps(comp, ensure_ascii=False)
+
+    def _execute_check_deal_timing(
+        self,
+        product_name: str,
+        current_price: float | None = None,
+        category: str = "general"
+    ) -> str:
+        """Analyze Indian e-commerce sales cycles and price trends as JSON string."""
+        from app.services.deal_timing import analyze_deal_timing
+        res = analyze_deal_timing(product_name, current_price, category)
+        return json.dumps(res, ensure_ascii=False)
 
     # ---------- Tool-Calling Chat ----------
 
@@ -1286,7 +1319,31 @@ class AIOrchestrator:
             except Exception as err:
                 logger.warning("Import comparison notice: %s", err)
 
-        # 9. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
+        # 9. Deal Timing & Indian Sales Cycle Trigger (specific pattern — keep as pre-check)
+        if any(phrase in message.lower() for phrase in ["buy now or wait", "wait for sale", "upcoming sale", "next sale", "good time to buy", "should i wait", "diwali sale"]):
+            prod_name = "Product"
+            for kw in ["phone", "laptop", "macbook", "ipad", "iphone", "earbuds", "headphones", "tv", "monitor"]:
+                if kw in message.lower():
+                    prod_name = kw.title()
+                    break
+            cat = "phones" if "phone" in prod_name.lower() or "iphone" in prod_name.lower() else ("laptops" if "laptop" in prod_name.lower() or "macbook" in prod_name.lower() else "general")
+            price_match = re.search(r'(?:₹|rs\.?|inr)?\s*(\d{4,7})\b', message, re.IGNORECASE)
+            cur_price = float(price_match.group(1)) if price_match else None
+            try:
+                from app.services.deal_timing import analyze_deal_timing
+                dt_res = analyze_deal_timing(prod_name, cur_price, cat)
+                lines = [f"### ⏳ Deal Timing & Sales Cycle Advice ({dt_res['product']})\n"]
+                lines.append(f"• **Recommendation**: **{dt_res['recommendation']}**")
+                lines.append(f"• **Detailed Verdict**: {dt_res['verdict']}")
+                lines.append(f"• **Next Major Festival Sale**: **{dt_res['next_sale_event']}** (~{dt_res['approx_days_to_sale']} days away)")
+                lines.append(f"• **Category Expected Discount**: **{dt_res['potential_savings_range']}**")
+                if dt_res["estimated_all_time_low"]:
+                    lines.append(f"• **Estimated All-Time Low**: ~**₹{dt_res['estimated_all_time_low']:,}** (Potential savings: ₹{dt_res['estimated_sale_savings_inr']:,})")
+                return ChatResponse(answer="\n".join(lines))
+            except Exception as err:
+                logger.warning("Deal timing pre-check notice: %s", err)
+
+        # 10. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
         url_match = re.search(r'https?://[^\s]+', message)
         if url_match:
             target_url = url_match.group(0)
