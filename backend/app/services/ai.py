@@ -343,6 +343,21 @@ TOOL_DEFINITIONS = [
                 "required": ["pincode"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate_emi_and_offers",
+            "description": "Calculate monthly No-Cost EMI, standard EMI plans, and bank discount offers for an item price in India (₹). Use this when a user asks about EMI, monthly installment options, or card discounts for a product price.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "amount": {"type": "number", "description": "Purchase amount in INR (₹)"},
+                    "bank": {"type": "string", "description": "Optional bank name (e.g. 'HDFC', 'ICICI', 'SBI')"}
+                },
+                "required": ["amount"]
+            }
+        }
     }
 ]
 
@@ -575,6 +590,11 @@ class AIOrchestrator:
                 return self._execute_check_delivery_pincode(
                     pincode=str(arguments.get("pincode", ""))
                 )
+            elif tool_name == "calculate_emi_and_offers":
+                return self._execute_calculate_emi(
+                    amount=float(arguments.get("amount", 0)),
+                    bank=arguments.get("bank")
+                )
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
         except Exception as err:
@@ -656,6 +676,12 @@ class AIOrchestrator:
         from app.services.logistics import lookup_pincode
         info = lookup_pincode(pincode)
         return json.dumps(info, ensure_ascii=False)
+
+    def _execute_calculate_emi(self, amount: float, bank: str | None = None) -> str:
+        """Calculate Indian banking EMI options and return as JSON string."""
+        from app.services.finance import calculate_emi_options
+        plans = calculate_emi_options(amount, bank)
+        return json.dumps(plans, ensure_ascii=False)
 
     # ---------- Tool-Calling Chat ----------
 
@@ -1131,7 +1157,32 @@ class AIOrchestrator:
             except Exception as err:
                 logger.warning("Pincode pre-check notice: %s", err)
 
-        # 6. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
+        # 6. EMI & Bank Financing Trigger (specific pattern — keep as pre-check)
+        emi_match = re.search(r'\b(?:emi|monthly installment|no cost emi|finance options?)\b.*?(?:₹|rs\.?|inr)?\s*(\d{4,7})\b', message, re.IGNORECASE)
+        if not emi_match:
+            emi_match = re.search(r'\b(?:₹|rs\.?|inr)?\s*(\d{4,7})\b.*?\b(?:emi|installment)\b', message, re.IGNORECASE)
+        if emi_match:
+            amt = float(emi_match.group(1))
+            try:
+                from app.services.finance import calculate_emi_options
+                emi_res = calculate_emi_options(amt)
+                if emi_res.get("eligible"):
+                    lines = [f"### 💳 EMI & Financing Breakdown for ₹{amt:,.0f}\n"]
+                    lines.append(f"**⚡ {emi_res['summary']}**\n")
+                    lines.append("#### 🟢 No-Cost EMI Plans (0% Extra Interest):")
+                    for p in emi_res["no_cost_plans"]:
+                        lines.append(f"• **{p['tenure_months']} Months**: **₹{p['monthly_amount']:,}/mo** (Total: ₹{p['total_payable']:,})")
+                    lines.append("\n#### 🏦 Standard EMI Plans (14.5% p.a.):")
+                    for p in emi_res["standard_plans"][:3]:
+                        lines.append(f"• **{p['tenure_months']} Months**: **₹{p['monthly_amount']:,}/mo** (Interest: ₹{p['interest_charged']:,})")
+                    lines.append("\n#### 🎁 Active Bank Offers:")
+                    for off in emi_res["bank_offers"]:
+                        lines.append(f"✓ {off}")
+                    return ChatResponse(answer="\n".join(lines))
+            except Exception as err:
+                logger.warning("EMI pre-check notice: %s", err)
+
+        # 7. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
         url_match = re.search(r'https?://[^\s]+', message)
         if url_match:
             target_url = url_match.group(0)
