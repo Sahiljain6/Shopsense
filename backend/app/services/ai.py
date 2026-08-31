@@ -358,6 +358,20 @@ TOOL_DEFINITIONS = [
                 "required": ["amount"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather_shopping_context",
+            "description": "Fetch live weather and temperature for an Indian city to recommend weather-appropriate products (e.g. cooling pads/fans in heat, waterproof gear in rain, room heaters in winter).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string", "description": "Indian city name (e.g. 'Mumbai', 'Delhi', 'Bengaluru')"}
+                },
+                "required": ["location"]
+            }
+        }
     }
 ]
 
@@ -595,6 +609,9 @@ class AIOrchestrator:
                     amount=float(arguments.get("amount", 0)),
                     bank=arguments.get("bank")
                 )
+            elif tool_name == "get_weather_shopping_context":
+                location = str(arguments.get("location", "Mumbai"))
+                return self._execute_weather_context(location)
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
         except Exception as err:
@@ -682,6 +699,12 @@ class AIOrchestrator:
         from app.services.finance import calculate_emi_options
         plans = calculate_emi_options(amount, bank)
         return json.dumps(plans, ensure_ascii=False)
+
+    def _execute_weather_context(self, location: str = "Mumbai") -> str:
+        """Fetch Open-Meteo weather and climate shopping advice as JSON string."""
+        from app.services.weather_context import get_weather_shopping_advice
+        advice = get_weather_shopping_advice(location)
+        return json.dumps(advice, ensure_ascii=False)
 
     # ---------- Tool-Calling Chat ----------
 
@@ -1182,7 +1205,26 @@ class AIOrchestrator:
             except Exception as err:
                 logger.warning("EMI pre-check notice: %s", err)
 
-        # 7. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
+        # 7. Weather & Climate Shopping Trigger (specific pattern — keep as pre-check)
+        weather_match = re.search(r'\b(?:weather in|weather at|climate in|temperature in|monsoon in|rain in|hot in|heatwave in)\s+([a-zA-Z\s]+)\b', message, re.IGNORECASE)
+        if weather_match:
+            loc = weather_match.group(1).strip()
+            loc = re.split(r'\b(?:and|what|how|\?)\b', loc, flags=re.IGNORECASE)[0].strip()
+            if loc:
+                try:
+                    from app.services.weather_context import get_weather_shopping_advice
+                    w_res = get_weather_shopping_advice(loc)
+                    lines = [f"### 🌦️ Weather & Shopping Advice for {w_res['location']}\n"]
+                    lines.append(f"• **Current Conditions**: **{w_res['temperature_celsius']}°C** ({w_res['condition']}, {w_res['humidity_percent']}% humidity)")
+                    lines.append(f"• **Shopping Insight**: {w_res['summary']}\n")
+                    lines.append("#### 🛍️ Climate-Smart Recommendations:")
+                    for prod in w_res["recommended_products"]:
+                        lines.append(f"✓ **{prod}**")
+                    return ChatResponse(answer="\n".join(lines))
+                except Exception as err:
+                    logger.warning("Weather pre-check notice: %s", err)
+
+        # 8. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
         url_match = re.search(r'https?://[^\s]+', message)
         if url_match:
             target_url = url_match.group(0)
