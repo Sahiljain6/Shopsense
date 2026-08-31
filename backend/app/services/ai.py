@@ -329,6 +329,20 @@ TOOL_DEFINITIONS = [
                 "required": ["amount"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_delivery_pincode",
+            "description": "Check delivery feasibility, state, district, and estimated shipping timeline for an Indian 6-digit PIN code. Use this when a user asks about delivery timeline, shipping to a pincode, or whether an item can be delivered to their area.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pincode": {"type": "string", "description": "6-digit Indian postal PIN code (e.g., '400071', '110001')"}
+                },
+                "required": ["pincode"]
+            }
+        }
     }
 ]
 
@@ -557,6 +571,10 @@ class AIOrchestrator:
                     from_c=arguments.get("from_currency", "USD"),
                     to_c=arguments.get("to_currency", "INR")
                 )
+            elif tool_name == "check_delivery_pincode":
+                return self._execute_check_delivery_pincode(
+                    pincode=str(arguments.get("pincode", ""))
+                )
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
         except Exception as err:
@@ -632,6 +650,12 @@ class AIOrchestrator:
         from app.services.currency import convert_price
         converted = convert_price(amount, from_c.upper(), to_c.upper())
         return json.dumps({"amount": amount, "from": from_c.upper(), "to": to_c.upper(), "converted": converted})
+
+    def _execute_check_delivery_pincode(self, pincode: str) -> str:
+        """Lookup Indian postal pincode delivery status and return as JSON string."""
+        from app.services.logistics import lookup_pincode
+        info = lookup_pincode(pincode)
+        return json.dumps(info, ensure_ascii=False)
 
     # ---------- Tool-Calling Chat ----------
 
@@ -1085,7 +1109,29 @@ class AIOrchestrator:
             except Exception as err:
                 print(f"CheapShark deal lookup notice: {err}")
 
-        # 5. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
+        # 5. Pincode & Delivery Feasibility API Trigger (specific pattern — keep as pre-check)
+        pincode_match = re.search(r'\b(?:pincode|pin code|delivery to|shipping to|pincode is|pin is)\s*[:#-]?\s*([1-9][0-9]{5})\b', message, re.IGNORECASE)
+        if pincode_match:
+            code = pincode_match.group(1)
+            try:
+                from app.services.logistics import lookup_pincode
+                res = lookup_pincode(code)
+                if res.get("valid"):
+                    zone_label = "⚡ **Metro Express Zone**" if res["is_metro"] else "📦 **Standard Regional Zone**"
+                    return ChatResponse(
+                        answer=(
+                            f"### 🚚 Delivery & Shipping Status (PIN: {res['pincode']})\n\n"
+                            f"• **Location**: {res['post_office']}, {res['district']}, {res['state']}\n"
+                            f"• **Delivery Status**: `{res['delivery_status']}`\n"
+                            f"• **Estimated Timeline**: **{res['estimated_days']}** ({zone_label})\n"
+                            f"• **Courier Partners**: {res['courier_partners']}\n\n"
+                            f"✓ Standard dispatch within 24 hours. Cash on Delivery (COD) and Prepaid options supported."
+                        )
+                    )
+            except Exception as err:
+                logger.warning("Pincode pre-check notice: %s", err)
+
+        # 6. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
         url_match = re.search(r'https?://[^\s]+', message)
         if url_match:
             target_url = url_match.group(0)
