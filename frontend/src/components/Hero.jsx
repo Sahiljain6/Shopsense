@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useCart } from "../hooks/useCart";
 import CartDrawer from "./CartDrawer";
+import HeaderBrandMark from "./HeaderBrandMark";
 
 export default function Hero({ authed, onLogout, ambientMode = false, onToggleAmbient }) {
   const { cartItems, cartCount, cartTotal, removeFromCart, updateQty, clearCart } = useCart();
@@ -35,17 +36,7 @@ export default function Hero({ authed, onLogout, ambientMode = false, onToggleAm
       <header className="shopsense-navbar fastshot-navbar">
         <div className="navbar-left">
           <div className="navbar-brand">
-            <div className="fastshot-nav-brand">
-              <svg className="fastshot-brand-mark" width="30" height="30" viewBox="0 0 34 34">
-                <circle cx="17" cy="17" r="17" fill="#9C86CE"/>
-                <circle cx="17" cy="17" r="8.6" fill="#FFFFFF"/>
-                <circle cx="17" cy="17" r="3.7" fill="#151519"/>
-              </svg>
-              <div className="fastshot-brand-labels">
-                <span className="fastshot-brand-title">ShopSense</span>
-                <span className="fastshot-brand-sub">Fastshot AI Engine</span>
-              </div>
-            </div>
+            <HeaderBrandMark size={30} />
           </div>
         </div>
 
