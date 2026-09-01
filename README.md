@@ -1,4 +1,4 @@
-﻿# ShopSense 🛍️
+# ShopSense 🛍️
 
 > **AI Shopping Copilot for India** — grounded catalog search, live retailer comparison, and cart-aware recommendations powered by Gemini / Groq / OpenAI.
 
@@ -16,13 +16,16 @@ ShopSense is a full-stack AI shopping assistant purpose-built for Indian e-comme
 
 | Feature | Details |
 |---|---|
+| **Fastshot Glassmorphic UI** | Full-viewport cinematic ambient stage with background video toggle, floating glass composer dock, and quick actions toolbar |
+| **Multi-Agent Persona Switcher** | Dynamic runtime engine selection (`Sonnet 4.5` for deep comparisons, `Gemini Flash` for live web prices, `Deal Specialist` for logistics and visual inspection) |
 | **Grounded catalog search** | Vector-like ranked search across 40+ curated products; budget + category filters applied before the LLM sees results |
-| **Live web search** | Fetches real-time retailer pages (Amazon IN, Flipkart, Croma) and surface price snippets alongside catalog cards |
+| **Live web search** | Fetches real-time retailer pages (Amazon IN, Flipkart, Croma) and surfaces benchmark deal pricing snippets |
 | **Comparison engine** | `"X vs Y"` queries pre-check and resolve both products independently, then hand a structured diff to the AI |
-| **Cart-aware context** | Previous turns + cart contents are injected into every request so follow-ups ("does it come in another colour?") work |
-| **LangGraph multi-agent** | Optional pipeline: Planner → Retriever → Validator → Responder; falls back to single-call path on graph errors |
-| **Lamp login UI** | Pull-cord desk-lamp animation; card reveals only when the cord is pulled — no lamp state needed by JS on load |
-| **Razorpay checkout** | Add to cart, review totals, and pay via Razorpay test/live credentials |
+| **Financing & EMI Planner** | Month-by-month reducing-balance amortization schedules, No-Cost EMI eligibility check, and Razorpay IFSC validation |
+| **Pincode Delivery Estimator** | Indian postal PIN validation with metro express vs regional delivery turnaround SLAs |
+| **Cart-aware context** | Previous turns + cart contents are injected into every request so follow-ups work naturally |
+| **Lamp login UI** | Interactive pull-cord desk-lamp animation; card reveals only when the cord is pulled |
+| **Razorpay checkout** | Add to cart, review totals, and simulate Razorpay sandbox payments |
 
 > **Cold-start notice:** The first request after the backend has been idle can take up to 60 s on the free Render tier. Please wait — do not refresh.
 
