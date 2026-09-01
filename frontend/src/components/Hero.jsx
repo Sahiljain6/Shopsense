@@ -3,6 +3,7 @@ import { useCart } from "../hooks/useCart";
 import CartDrawer from "./CartDrawer";
 import HeaderBrandMark from "./HeaderBrandMark";
 import FeaturePillBadges from "./FeaturePillBadges";
+import UserProfileMenu from "./UserProfileMenu";
 
 export default function Hero({ authed, onLogout, ambientMode = false, onToggleAmbient }) {
   const { cartItems, cartCount, cartTotal, removeFromCart, updateQty, clearCart } = useCart();
@@ -71,11 +72,7 @@ export default function Hero({ authed, onLogout, ambientMode = false, onToggleAm
             </button>
           )}
 
-          {authed && (
-            <button className="navbar-logout-btn fastshot-logout-btn" type="button" onClick={onLogout}>
-              Log out
-            </button>
-          )}
+          <UserProfileMenu authed={authed} onLogout={onLogout} />
         </div>
       </header>
 
