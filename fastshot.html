@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Fastshot — Describe an app. We'll build it.</title>
+  <meta name="description" content="Fastshot turns a written description into a working app.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&display=block" rel="stylesheet">
+  <script>document.documentElement.classList.add('anim');</script>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    button, input, textarea {
+      font: inherit;
+      color: inherit;
+      background: none;
+      border: 0;
+    }
+    img, svg {
+      display: block;
+    }
+    :focus-visible {
+      outline: 2px solid #F8B285;
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+
+    :root {
+      --u: min(0.06410256vw, 0.12400794vh);
+      --vu: 0.09920635vh;
+      --inset-top: 41;
+      --inset-bottom: 106;
+
+      /* Nav */
+      --brand-x: 225;
+      --brand-y: 45;
+      --mark: 34;
+      --brand-gap: 12;
+      --brand-fs: 18.49;
+      --links-y: 50.5;
+      --links-gap: 50;
+      --links-fs: 21.69;
+      --cta-x: 1195;
+      --cta-y: 42;
+      --cta-w: 140;
+      --cta-h: 43;
+      --cta-r: 12;
+      --cta-fs: 15.70;
+      --cta-dy: 2;
+
+      /* Hero */
+      --hero-gap: 51;
+      --h1-y: 323;
+      --h1-fs: 36.25;
+      --display-ls: 0.0018em;
+      --nav-ls: -0.0115em;
+      --brand-ls: -0.0154em;
+      --cta-ls: -0.0127em;
+      --body-ls: 0.007em;
+      --label-ls: normal;
+      --model-ls: normal;
+      --proof-ls: 0.0065em;
+
+      --w-regular: 400;
+      --w-display-wght: 410;
+      --w-medium: 500;
+      --w-semibold: 600;
+      --w-display: var(--w-display-wght);
+      --w-nav: 400;
+      --w-brand: 500;
+      --w-cta: 520;
+      --w-body: var(--w-regular);
+      --w-label: var(--w-medium);
+      --w-model: var(--w-regular);
+      --w-proof: 480;
+
+      /* Composer */
+      --card-x: 425;
+      --card-y: 413;
+      --card-w: 708;
+      --card-h: 143;
+      --card-r: 26;
+      --ph-x: 452;
+      --ph-y: 446;
+      --ph-fs: 9.97;
+      --chips-x: 444;
+      --chips-y: 505;
+      --chip-h: 30;
+      --chip-r: 9;
+      --chip-fs: 9.0;
+      --chip-gap: 5.5;
+      --son-fs: 10.4;
+      --son-top: 15.5;
+      --chev-gap: 6.2;
+      --chev-x: 1013.5;
+      --chev-y: 522.3;
+      --att-x: 1043.2;
+      --att-y: 515.1;
+      --send-x: 1084;
+      --send-y: 507;
+      --send-d: 35;
+
+      /* Footer */
+      --by-y: 799;
+      --by-fs: 14.01;
+      --logo-y: 867;
+      --logo-gap: 62;
+
+      /* Fonts & Curves */
+      --font-text: Inter, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-display: Inter, var(--font-text);
+      --e-primary: cubic-bezier(.16, 1, .3, 1);
+      --e-soft: cubic-bezier(.22, 1, .36, 1);
+    }
+
+    @supports (height: 100dvh) {
+      :root {
+        --u: min(0.06410256vw, 0.12400794dvh);
+        --vu: 0.09920635dvh;
+      }
+    }
+
+    @media (min-width: 1561px) {
+      :root {
+        --inset-top: 27;
+        --inset-bottom: 74;
+      }
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: #0a0d12;
+      color: #ffffff;
+      font-family: var(--font-text);
+      font-synthesis: none;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: geometricPrecision;
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: #0a0d12;
+    }
+
+    .stage-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .frame {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      padding: calc(var(--inset-top) * var(--vu)) calc(225 * var(--u)) calc(var(--inset-bottom) * var(--vu));
+    }
+
+    /* NAV */
+    header.nav {
+      position: relative;
+      height: calc(43 * var(--u));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex: none;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: calc(var(--brand-gap) * var(--u));
+      text-decoration: none;
+      color: #ffffff;
+    }
+
+    .brand .mark {
+      width: calc(var(--mark) * var(--u));
+      height: calc(var(--mark) * var(--u));
+      flex-shrink: 0;
+    }
+
+    .brand-text {
+      font-family: var(--font-display);
+      font-size: calc(var(--brand-fs) * var(--u));
+      font-weight: var(--w-brand);
+      letter-spacing: var(--brand-ls);
+      transform: translateY(calc(1 * var(--u)));
+      font-variation-settings: "opsz" 32;
+      text-shadow: 0 calc(1 * var(--u)) calc(10 * var(--u)) rgba(0,0,0,.30);
+    }
+
+    nav.links {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      top: calc((50.5 - 41) * var(--u));
+      display: flex;
+      align-items: center;
+      gap: calc(var(--links-gap) * var(--u));
+    }
+
+    .nav-link {
+      font-size: calc(var(--links-fs) * var(--u));
+      font-weight: var(--w-nav);
+      letter-spacing: var(--nav-ls);
+      line-height: 1.2;
+      color: #ffffff;
+      text-decoration: none;
+      text-shadow: 0 calc(1 * var(--u)) calc(12 * var(--u)) rgba(0,0,0,.32);
+      transition: opacity 0.18s ease;
+    }
+
+    .nav-link:hover {
+      opacity: 0.72;
+    }
+
+    .nav .cta {
+      width: calc(var(--cta-w) * var(--u));
+      height: calc(var(--cta-h) * var(--u));
+      border-radius: calc(var(--cta-r) * var(--u));
+      font-size: calc(var(--cta-fs) * var(--u));
+      font-weight: var(--w-cta);
+      letter-spacing: var(--cta-ls);
+      align-self: flex-start;
+      margin-top: calc((42 - 41) * var(--u));
+      background: linear-gradient(180deg, #3d3d3f 0%, #1d1d20 100%);
+      box-shadow: inset 0 calc(1 * var(--u)) 0 rgba(255,255,255,.10), 0 calc(2 * var(--u)) calc(14 * var(--u)) rgba(0,0,0,.28);
+      color: #ffffff;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: filter 0.15s ease, transform 0.1s ease;
+    }
+
+    .nav .cta span {
+      transform: translateY(calc(var(--cta-dy) * var(--u)));
+    }
+
+    .nav .cta:hover {
+      filter: brightness(1.16);
+    }
+
+    .nav .cta:active {
+      transform: translateY(1px);
+    }
+
+    .burger, .sheet {
+      display: none;
+    }
+
+    /* HERO */
+    main.hero {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: calc(var(--hero-gap) * var(--vu));
+      padding-bottom: calc(4 * var(--vu));
+    }
+
+    h1.h1 {
+      font-family: var(--font-display);
+      font-size: calc(var(--h1-fs) * var(--u));
+      font-weight: var(--w-display);
+      line-height: 1.10;
+      letter-spacing: var(--display-ls);
+      color: #ffffff;
+      font-variation-settings: "opsz" 32;
+      text-shadow: 0 calc(2 * var(--u)) calc(22 * var(--u)) rgba(0,0,0,.30);
+      text-align: center;
+    }
+
+    /* COMPOSER CARD */
+    form.card {
+      width: calc(var(--card-w) * var(--u));
+      height: calc(var(--card-h) * var(--u));
+      border-radius: calc(var(--card-r) * var(--u));
+      margin-right: calc(3 * var(--u));
+      background: rgba(41, 41, 43, 0.955);
+      backdrop-filter: blur(calc(26 * var(--u))) saturate(112%);
+      -webkit-backdrop-filter: blur(calc(26 * var(--u))) saturate(112%);
+      box-shadow: inset 0 0 0 1px rgba(214,228,255,.14), 0 calc(22 * var(--u)) calc(60 * var(--u)) rgba(0,0,0,.30);
+      position: relative;
+    }
+
+    p.ph {
+      position: absolute;
+      left: calc(27 * var(--u));
+      top: calc(33 * var(--u));
+      right: calc(24 * var(--u));
+      color: #8B8C8E;
+      font-size: calc(var(--ph-fs) * var(--u));
+      font-weight: var(--w-regular);
+      line-height: 1.35;
+      letter-spacing: var(--body-ls);
+      white-space: nowrap;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* TOOLBAR */
+    .tools {
+      position: absolute;
+      left: calc(19 * var(--u));
+      top: calc(92 * var(--u));
+      height: calc(30 * var(--u));
+      right: calc(-1 * var(--u));
+    }
+
+    .chips {
+      display: flex;
+      align-items: center;
+      gap: calc(var(--chip-gap) * var(--u));
+      height: 100%;
+    }
+
+    .chip {
+      height: calc(var(--chip-h) * var(--u));
+      border-radius: calc(var(--chip-r) * var(--u));
+      font-size: calc(var(--chip-fs) * var(--u));
+      font-weight: var(--w-label);
+      color: #909093;
+      line-height: 1;
+      width: calc(var(--cw) * var(--u));
+      padding-left: calc(var(--pl) * var(--u));
+      gap: calc(var(--ig) * var(--u));
+      background: linear-gradient(180deg, rgba(255,255,255,.088) 0%, rgba(255,255,255,.050) 45%, rgba(255,255,255,.038) 100%);
+      border: 1px solid rgba(255,255,255,.05);
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .chip:hover {
+      background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.07));
+      color: #c8c8cb;
+    }
+
+    .chip span {
+      transform: translateY(calc(2 * var(--u)));
+      white-space: nowrap;
+    }
+
+    /* RIGHT CLUSTER */
+    .right {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .right > * {
+      position: absolute;
+      pointer-events: auto;
+    }
+
+    .model {
+      left: calc(510.2 * var(--u));
+      top: calc(var(--son-top) * var(--u));
+      font-size: calc(var(--son-fs) * var(--u));
+      font-weight: var(--w-model);
+      color: #98999C;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      gap: calc(var(--chev-gap) * var(--u));
+      cursor: pointer;
+      background: none;
+      border: 0;
+      padding: 0;
+    }
+
+    .model .chevron {
+      width: calc(6.8 * var(--u));
+      height: auto;
+    }
+
+    .attach {
+      left: calc(599.15 * var(--u));
+      top: calc(10.14 * var(--u));
+      color: #A9AAAD;
+      cursor: pointer;
+      background: none;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      display: block;
+      transition: color 0.15s ease;
+    }
+
+    .attach svg {
+      width: calc(19.79 * var(--u));
+      height: auto;
+    }
+
+    .attach:hover {
+      color: #ffffff;
+    }
+
+    .send {
+      left: calc(640 * var(--u));
+      top: calc(2 * var(--u));
+      width: calc(var(--send-d) * var(--u));
+      height: calc(var(--send-d) * var(--u));
+      border-radius: 50%;
+      background: linear-gradient(163deg, #FBBC94 0%, #F49D70 46%, #E88654 100%);
+      box-shadow: 0 calc(3 * var(--u)) calc(12 * var(--u)) rgba(210,110,60,.34);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: 0;
+      padding: 0;
+      transition: filter 0.15s ease, transform 0.1s ease;
+    }
+
+    .send svg {
+      width: calc(11.66 * var(--u));
+      height: auto;
+      fill: #ffffff;
+    }
+
+    .send:hover {
+      filter: brightness(1.07);
+    }
+
+    .send:active {
+      transform: scale(0.95);
+    }
+
+    /* FOOTER */
+    footer.proof {
+      flex: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(52.3 * var(--vu));
+    }
+
+    .proof-caption {
+      font-family: var(--font-display);
+      font-size: calc(var(--by-fs) * var(--u));
+      font-weight: var(--w-proof);
+      letter-spacing: var(--proof-ls);
+      color: rgba(255,255,255,.95);
+      font-variation-settings: "opsz" 32;
+      text-shadow: 0 calc(1 * var(--u)) calc(12 * var(--u)) rgba(0,0,0,.35);
+    }
+
+    .logos {
+      display: flex;
+      align-items: center;
+      gap: calc(var(--logo-gap) * var(--u));
+    }
+
+    .logo {
+      fill: currentColor;
+      color: #ffffff;
+      filter: drop-shadow(0 calc(1 * var(--u)) calc(10 * var(--u)) rgba(0,0,0,.30));
+    }
+
+    .logo-google {
+      width: calc(96.84 * var(--u));
+    }
+
+    .logo-cisco {
+      width: calc(67.29 * var(--u));
+    }
+
+    .logo-adobe {
+      width: calc(88.68 * var(--u));
+    }
+
+    /* ENTRANCE ANIMATIONS */
+    @keyframes e-settle-down {
+      from { opacity: 0; transform: translateY(calc(-5 * var(--u))); }
+      to { opacity: 1; transform: none; }
+    }
+    @keyframes e-settle-up {
+      from { opacity: 0; transform: translateY(calc(6 * var(--u))); }
+      to { opacity: 1; transform: none; }
+    }
+    @keyframes e-mark {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: none; }
+    }
+    @keyframes e-focus {
+      from { opacity: 0; transform: translateY(calc(14 * var(--u))); filter: blur(calc(6 * var(--u))); }
+      to { opacity: 1; transform: none; filter: blur(0); }
+    }
+    @keyframes e-panel {
+      from { opacity: 0; transform: translateY(calc(18 * var(--u))) scale(0.985); }
+      to { opacity: 1; transform: none; }
+    }
+    @keyframes e-populate {
+      from { opacity: 0; transform: translateY(calc(4 * var(--u))); }
+      to { opacity: 1; transform: none; }
+    }
+    @keyframes e-send {
+      from { opacity: 0; transform: scale(0.82); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      html.anim .brand-text {
+        animation: e-settle-down 0.58s var(--e-soft) 0.06s both;
+      }
+      html.anim .brand .mark {
+        animation: e-mark 0.62s var(--e-primary) 0.06s both;
+      }
+      html.anim .links .nav-link:nth-child(1) {
+        animation: e-settle-down 0.50s var(--e-soft) 0.16s both;
+      }
+      html.anim .links .nav-link:nth-child(2) {
+        animation: e-settle-down 0.50s var(--e-soft) 0.21s both;
+      }
+      html.anim .links .nav-link:nth-child(3) {
+        animation: e-settle-down 0.50s var(--e-soft) 0.26s both;
+      }
+      html.anim .links .nav-link:nth-child(4) {
+        animation: e-settle-down 0.50s var(--e-soft) 0.31s both;
+      }
+      html.anim .nav .cta {
+        animation: e-settle-down 0.55s var(--e-soft) 0.34s both;
+      }
+      html.anim .h1 {
+        animation: e-focus 1.00s var(--e-primary) 0.30s both;
+        will-change: transform, opacity;
+      }
+      html.anim .card {
+        animation: e-panel 0.90s var(--e-primary) 0.62s both;
+        will-change: transform, opacity;
+      }
+      html.anim .ph {
+        animation: e-populate 0.50s var(--e-soft) 0.88s both;
+      }
+      html.anim .chips {
+        animation: e-populate 0.50s var(--e-soft) 0.94s both;
+      }
+      html.anim .right {
+        animation: e-populate 0.50s var(--e-soft) 1.00s both;
+      }
+      html.anim .send {
+        animation: e-send 0.50s var(--e-primary) 1.00s both;
+      }
+      html.anim .proof-caption {
+        animation: e-settle-up 0.55s var(--e-soft) 1.08s both;
+      }
+      html.anim .logo:nth-child(1) {
+        animation: e-settle-up 0.55s var(--e-soft) 1.16s both;
+      }
+      html.anim .logo:nth-child(2) {
+        animation: e-settle-up 0.55s var(--e-soft) 1.22s both;
+      }
+      html.anim .logo:nth-child(3) {
+        animation: e-settle-up 0.55s var(--e-soft) 1.28s both;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* 2) TABLET: 600–1180 wide AND height >= 600 */
+    @media (min-width: 600px) and (max-width: 1180px) and (min-height: 600px) {
+      :root {
+        --u: 1px;
+      }
+      .frame {
+        padding: clamp(24px, 3.4vh, 44px) clamp(28px, 4.2vw, 60px) clamp(26px, 4.4vh, 56px);
+      }
+      nav.links {
+        display: flex;
+        position: static;
+        transform: none;
+        gap: clamp(20px, 2.5vw, 40px);
+      }
+      .nav .cta {
+        display: inline-flex;
+        width: auto;
+        padding: 0 18px;
+      }
+      .burger, .sheet {
+        display: none !important;
+      }
+      h1.h1 {
+        font-size: clamp(27px, 4.3vw, 44px);
+        line-height: 1.12;
+      }
+      form.card {
+        width: min(100%, clamp(516px, 74vw, 760px));
+        height: auto;
+        margin-right: 0;
+        padding: clamp(15px, 1.9vw, 24px);
+        border-radius: clamp(17px, 2.1vw, 26px);
+        display: flex;
+        flex-direction: column;
+        gap: clamp(20px, 3.2vh, 44px);
+      }
+      p.ph {
+        position: static;
+        white-space: normal;
+        font-size: clamp(11px, 1.35vw, 14px);
+        line-height: 1.4;
+      }
+      .tools {
+        position: static;
+        height: auto;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: clamp(10px, 1.4vw, 18px);
+        right: auto;
+        left: auto;
+        top: auto;
+      }
+      .chips {
+        white-space: nowrap;
+        gap: clamp(6px, 0.85vw, 10px);
+      }
+      .chip {
+        width: auto;
+        height: clamp(29px, 3.4vh, 34px);
+        padding: 0 clamp(7px, 1vw, 13px);
+        font-size: clamp(9.6px, 1.12vw, 12.5px);
+      }
+      .model {
+        font-size: clamp(9.8px, 1.12vw, 12.5px);
+      }
+      footer.proof {
+        gap: clamp(15px, 2.5vh, 30px);
+      }
+      /* TABLET flex right cluster */
+      .right {
+        position: static;
+        display: flex;
+        align-items: center;
+        margin-left: auto;
+        gap: 0;
+        pointer-events: auto;
+        inset: auto;
+      }
+      .right > * {
+        position: static;
+      }
+      .attach {
+        margin-left: clamp(9px, 1.4vw, 20px);
+      }
+      .send {
+        margin-left: clamp(9px, 1.3vw, 18px);
+        width: clamp(32px, 3.5vw, 38px);
+        height: clamp(32px, 3.5vw, 38px);
+      }
+    }
+
+    /* 3) COMPACT: max-width 599px, or max-height < 600px with width <= 1180px */
+    @media (max-width: 599px), (max-height: 599px) and (max-width: 1180px) {
+      :root {
+        --u: 1px;
+      }
+      .frame {
+        padding: max(18px, env(safe-area-inset-top))
+                 max(clamp(18px, 5.2vw, 40px), env(safe-area-inset-right))
+                 max(20px, env(safe-area-inset-bottom))
+                 max(clamp(18px, 5.2vw, 40px), env(safe-area-inset-left));
+      }
+      nav.links, .nav .cta {
+        display: none;
+      }
+      .burger {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+        background: rgba(255,255,255,.10);
+        border: 1px solid rgba(255,255,255,.14);
+        cursor: pointer;
+        color: #ffffff;
+      }
+      .brand .mark {
+        width: 30px;
+        height: 30px;
+      }
+      .brand-text {
+        font-size: 16px;
+      }
+      .sheet {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 0.32s cubic-bezier(.4, 0, .2, 1);
+        width: 100%;
+        margin-top: 10px;
+      }
+      #menu:checked ~ .sheet {
+        grid-template-rows: 1fr;
+      }
+      .sheet-panel {
+        overflow: hidden;
+        background: rgba(24, 24, 27, 0.86);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,.09);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px;
+      }
+      .sheet-link {
+        font-size: 15px;
+        color: #ffffff;
+        text-decoration: none;
+        padding: 6px 0;
+      }
+      .sheet-cta {
+        height: 40px;
+        border-radius: 11px;
+        background: linear-gradient(180deg, #3d3d3f 0%, #1d1d20 100%);
+        color: #ffffff;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        font-weight: 520;
+        margin-top: 6px;
+      }
+
+      h1.h1 {
+        width: 100%;
+        max-width: 15ch;
+        font-size: clamp(29px, 7.6vw, 50px);
+        line-height: 1.14;
+        letter-spacing: -0.012em;
+      }
+      form.card {
+        width: 100%;
+        max-width: 600px;
+        height: auto;
+        display: flex;
+        flex-direction: column;
+        gap: clamp(16px, 4.6vh, 34px);
+        padding: clamp(13px, 3.4vw, 18px);
+        margin-right: 0;
+      }
+      p.ph {
+        position: static;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: clamp(9.4px, 2.95vw, 14px);
+      }
+      .tools {
+        position: static;
+        height: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        left: auto;
+        top: auto;
+        right: auto;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        height: auto;
+      }
+      .chip {
+        width: auto;
+        height: 30px;
+        padding: 0 10px;
+        font-size: 10px;
+      }
+      .right {
+        position: static;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        pointer-events: auto;
+        inset: auto;
+        width: 100%;
+      }
+      .right > * {
+        position: static;
+      }
+      .attach {
+        margin-left: auto;
+      }
+      .send {
+        margin-left: 14px;
+        width: 40px;
+        height: 40px;
+      }
+    }
+
+    /* Extra short viewport */
+    @media (max-width: 1180px) and (max-height: 560px) {
+      main.hero {
+        gap: 16px;
+      }
+      h1.h1 {
+        font-size: clamp(24px, 5.4vh, 34px);
+      }
+      footer.proof {
+        gap: 10px;
+      }
+      .frame {
+        padding-top: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <video class="stage-video" autoplay muted loop playsinline>
+      <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260826_124724_bc041163-d651-425f-aea3-2acc1efc2c96.mp4" type="video/mp4">
+    </video>
+
+    <div class="frame">
+      <input type="checkbox" id="menu" aria-label="Toggle navigation" hidden>
+
+      <header class="nav">
+        <a href="#" class="brand" aria-label="Fastshot home">
+          <svg class="mark" viewBox="0 0 34 34">
+            <circle cx="17" cy="17" r="17" fill="#9C86CE"/>
+            <circle cx="17" cy="17" r="8.6" fill="#FFFFFF"/>
+            <circle cx="17" cy="17" r="3.7" fill="#151519"/>
+          </svg>
+          <span class="brand-text">Fastshot</span>
+        </a>
+
+        <nav class="links">
+          <a href="#" class="nav-link">Features</a>
+          <a href="#" class="nav-link">Examples</a>
+          <a href="#" class="nav-link">Pricing</a>
+          <a href="#" class="nav-link">Docs</a>
+        </nav>
+
+        <a href="#" class="cta">
+          <span>Get Started</span>
+        </a>
+
+        <label for="menu" class="burger" aria-label="Open menu">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="none">
+            <rect y="1" width="17" height="2" rx="1" fill="currentColor"/>
+            <rect y="9" width="17" height="2" rx="1" fill="currentColor"/>
+          </svg>
+        </label>
+      </header>
+
+      <div class="sheet">
+        <div class="sheet-panel">
+          <a href="#" class="sheet-link">Features</a>
+          <a href="#" class="sheet-link">Examples</a>
+          <a href="#" class="sheet-link">Pricing</a>
+          <a href="#" class="sheet-link">Docs</a>
+          <a href="#" class="sheet-cta">Get Started</a>
+        </div>
+      </div>
+
+      <main class="hero">
+        <h1 class="h1">Describe an app. We'll build it.</h1>
+
+        <form class="card" onsubmit="return false">
+          <p class="ph">Build a fintech tracking app with bank level privacy and...</p>
+
+          <div class="tools">
+            <div class="chips">
+              <button type="button" class="chip" style="--cw:107;--pl:12;--ig:3.7">
+                <svg style="width: calc(15.06 * var(--u)); height: calc(15.06 * var(--u)); flex-shrink: 0;" viewBox="0 0 16 16" fill="currentColor">
+                  <rect x="1" y="2" width="9" height="11" rx="1.5"/>
+                  <rect x="6" y="5" width="9" height="11" rx="1.5" fill-opacity="0.6"/>
+                </svg>
+                <span>Attach Screens</span>
+              </button>
+
+              <button type="button" class="chip" style="--cw:108;--pl:16;--ig:3.9">
+                <svg style="width: calc(11.8 * var(--u)); height: calc(17.7 * var(--u)); flex-shrink: 0;" viewBox="0 0 24 36" fill="currentColor">
+                  <path d="M12 0H6a6 6 0 000 12h6V0z"/>
+                  <path d="M12 0h6a6 6 0 010 12h-6V0z"/>
+                  <path d="M12 12H6a6 6 0 000 12h6V12z"/>
+                  <path d="M12 12h6a6 6 0 010 12h-6V12z"/>
+                  <path d="M6 24a6 6 0 006 6v6a6 6 0 01-6-6v-6z"/>
+                </svg>
+                <span>Attach a Figma</span>
+              </button>
+
+              <button type="button" class="chip" style="--cw:107;--pl:15.8;--ig:2.9">
+                <svg style="width: calc(12.13 * var(--u)); height: calc(12.13 * var(--u)); flex-shrink: 0;" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M8 0c-.2 3.5-1.5 5.5-4.5 6.5 3 .9 4.3 3 4.5 6.5.2-3.5 1.5-5.6 4.5-6.5-3-.9-4.3-3-4.5-6.5z"/>
+                  <path d="M13 10.5c-.1 1.5-.7 2.3-2 2.7 1.3.4 1.9 1.2 2 2.7.1-1.5.7-2.3 2-2.7-1.3-.4-1.9-1.2-2-2.7z"/>
+                </svg>
+                <span>Today's Theme</span>
+              </button>
+            </div>
+
+            <div class="right">
+              <button type="button" class="model">
+                <span>Sonnet 4.5</span>
+                <svg class="chevron" viewBox="0 0 7 5" fill="none">
+                  <path d="M1 1.5L3.5 3.5L6 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+
+              <button type="button" class="attach" aria-label="Attach file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                </svg>
+              </button>
+
+              <button type="submit" class="send" aria-label="Build it">
+                <svg viewBox="0 0 14 14" fill="currentColor">
+                  <path d="M7 1.5L12.5 7L11.2 8.3L7.9 5V12.5H6.1V5L2.8 8.3L1.5 7L7 1.5Z"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </form>
+      </main>
+
+      <footer class="proof">
+        <p class="proof-caption">Built by engineers from</p>
+        <div class="logos">
+          <!-- Google -->
+          <svg class="logo logo-google" viewBox="0 0 97 32">
+            <path d="M12.8 14.6v3.4h8.3c-.3 2.1-2.5 6.1-8.3 6.1-5 0-9.1-4.1-9.1-9.2s4.1-9.2 9.1-9.2c2.9 0 4.8 1.2 5.9 2.2l2.7-2.6C19.7 3.6 16.6 2 12.8 2 5.7 2 0 7.7 0 14.8s5.7 12.8 12.8 12.8c7.4 0 12.3-5.2 12.3-12.5 0-.8-.1-1.5-.3-2.1H12.8v1.6zm21.3 2.7c-4.4 0-7.8 3.4-7.8 7.7 0 4.2 3.4 7.7 7.8 7.7 4.3 0 7.8-3.4 7.8-7.7 0-4.3-3.4-7.7-7.8-7.7zm0 12.3c-2.4 0-4.5-2-4.5-4.6 0-2.7 2.1-4.6 4.5-4.6s4.5 2 4.5 4.6c0 2.7-2.1 4.6-4.5 4.6zm17.3-12.3c-4.4 0-7.8 3.4-7.8 7.7 0 4.2 3.4 7.7 7.8 7.7 4.3 0 7.8-3.4 7.8-7.7 0-4.3-3.5-7.7-7.8-7.7zm0 12.3c-2.4 0-4.5-2-4.5-4.6 0-2.7 2.1-4.6 4.5-4.6s4.5 2 4.5 4.6c0 2.7-2.1 4.6-4.5 4.6zm16.9-12.1v1.2h-.1c-.8-1-2.3-1.9-4.2-1.9-4 0-7.5 3.5-7.5 7.7s3.5 7.7 7.5 7.7c1.9 0 3.4-.9 4.2-2h.1v1.2c0 2.9-1.6 4.5-4.1 4.5-2.1 0-3.3-1.5-3.8-2.7l-2.9 1.2c.8 2 3.1 4.5 6.7 4.5 3.9 0 7.2-2.3 7.2-8V17.5h-3.1v-.2zm-3.9 12.1c-2.4 0-4.3-2-4.3-4.6s1.9-4.6 4.3-4.6 4.2 2 4.2 4.6c0 2.5-1.8 4.6-4.2 4.6zm11.9-16.7h3.3v21.5h-3.3V12.9zm13.4 12.4c-2.2 0-3.7-1-4.7-2.9l12.8-5.3-.4-1.1c-.8-2.1-3.2-5.4-7.9-5.4-4.6 0-8.4 3.6-8.4 7.7 0 4.2 3.8 7.7 8.6 7.7 3.9 0 6.1-2.4 7-3.7l-2.6-1.7c-.8 1.2-2 2-3.8 2zm-.2-9.5c1.5 0 2.8.8 3.3 1.9l-7.7 3.2c0-3.7 2.6-5.1 4.4-5.1z"/>
+          </svg>
+          <!-- Cisco -->
+          <svg class="logo logo-cisco" viewBox="0 0 68 32">
+            <path d="M4 11.5c.8 0 1.5-.7 1.5-1.5V6c0-.8-.7-1.5-1.5-1.5S2.5 5.2 2.5 6v4c0 .8.7 1.5 1.5 1.5zm8 3c.8 0 1.5-.7 1.5-1.5V3c0-.8-.7-1.5-1.5-1.5S10.5 2.2 10.5 3v10c0 .8.7 1.5 1.5 1.5zm8-3c.8 0 1.5-.7 1.5-1.5V6c0-.8-.7-1.5-1.5-1.5S18.5 5.2 18.5 6v4c0 .8.7 1.5 1.5 1.5zm8 6c.8 0 1.5-.7 1.5-1.5V0c0-.8-.7-1.5-1.5-1.5S26.5-.8 26.5 0v16c0 .8.7 1.5 1.5 1.5zm8-6c.8 0 1.5-.7 1.5-1.5V6c0-.8-.7-1.5-1.5-1.5S34.5 5.2 34.5 6v4c0 .8.7 1.5 1.5 1.5zm8 3c.8 0 1.5-.7 1.5-1.5V3c0-.8-.7-1.5-1.5-1.5S42.5 2.2 42.5 3v10c0 .8.7 1.5 1.5 1.5zm8-3c.8 0 1.5-.7 1.5-1.5V6c0-.8-.7-1.5-1.5-1.5S50.5 5.2 50.5 6v4c0 .8.7 1.5 1.5 1.5zm8 6c.8 0 1.5-.7 1.5-1.5V0c0-.8-.7-1.5-1.5-1.5S58.5-.8 58.5 0v16c0 .8.7 1.5 1.5 1.5zM6.5 25.8c-2.3 0-3.9 1.6-3.9 4 0 2.4 1.6 4 3.9 4 1.7 0 2.9-.9 3.5-2.2l-1.9-1c-.3.7-.9 1.2-1.6 1.2-1.2 0-1.9-.9-1.9-2s.7-2 1.9-2c.7 0 1.3.5 1.6 1.2l1.9-1c-.6-1.3-1.8-2.2-3.5-2.2zm7.6.2h2v7.8h-2V26zm1-2.2c.7 0 1.3-.6 1.3-1.3s-.6-1.3-1.3-1.3-1.3.6-1.3 1.3.6 1.3 1.3 1.3zm6.3 7.4c.9.5 2 .8 3.1.8 1.1 0 1.7-.4 1.7-1 0-.6-.5-.9-1.8-1.2-2.1-.5-3.3-1.2-3.3-2.7 0-1.7 1.4-2.9 3.6-2.9 1.2 0 2.3.3 3.1.8l-.7 1.7c-.8-.4-1.6-.6-2.4-.6-1.1 0-1.6.4-1.6.9 0 .6.5.8 1.8 1.1 2.2.5 3.3 1.3 3.3 2.8 0 1.8-1.4 3-3.8 3-1.4 0-2.7-.4-3.7-1l.7-1.7zm13.8-5.4c-2.3 0-3.9 1.6-3.9 4 0 2.4 1.6 4 3.9 4 1.7 0 2.9-.9 3.5-2.2l-1.9-1c-.3.7-.9 1.2-1.6 1.2-1.2 0-1.9-.9-1.9-2s.7-2 1.9-2c.7 0 1.3.5 1.6 1.2l1.9-1c-.6-1.3-1.8-2.2-3.5-2.2zm11.7 0c-2.4 0-4.1 1.7-4.1 4s1.7 4 4.1 4 4.1-1.7 4.1-4-1.7-4-4.1-4zm0 6c-1.2 0-2-.9-2-2s.8-2 2-2 2 .9 2 2-.8 2-2 2z"/>
+          </svg>
+          <!-- Adobe -->
+          <svg class="logo logo-adobe" viewBox="0 0 89 28">
+            <path d="M14.5 2.5L23.4 25H18l-3-7.8h-4.8L8 22.3l-2.6-5.8 9.1-14zm-1.8 11.2h2.8l-1.4-3.8-1.4 3.8zM0 2.5h7.2L0 25V2.5zm25.5 0H18.3L25.5 25V2.5zM38.8 17.5c0 2.4-1.6 4.1-4.2 4.1-1.3 0-2.3-.5-2.9-1.4v1.2h-3V7.2h3.2v5.7c.6-.9 1.6-1.4 2.8-1.4 2.5 0 4.1 1.8 4.1 4.2v1.8zm-3.2-.2c0-1.4-.9-2.3-2.1-2.3s-2.1.9-2.1 2.3v.4c0 1.4.9 2.3 2.1 2.3s2.1-.9 2.1-2.3v-.4zm15.4.2c0 2.5-1.9 4.3-4.5 4.3-2.6 0-4.5-1.8-4.5-4.3s1.9-4.3 4.5-4.3c2.6 0 4.5 1.8 4.5 4.3zm-3.2 0c0-1.4-.8-2.3-1.9-2.3-1.2 0-2 .9-2 2.3s.8 2.3 2 2.3c1.1 0 1.9-.9 1.9-2.3zm15.6-5.8v9.5h-3v-1.2c-.6.9-1.6 1.4-2.8 1.4-2.6 0-4.2-1.8-4.2-4.2 0-2.4 1.6-4.2 4.2-4.2 1.2 0 2.2.5 2.8 1.4v-6.9h3v4.2zm-3.2 5.6c0-1.4-.8-2.3-2-2.3s-2 .9-2 2.3v.4c0 1.4.8 2.3 2 2.3s2-.9 2-2.3v-.4zm13.9 1.3H72c.2 1.3 1.1 2.1 2.4 2.1 1 0 1.8-.4 2.1-1.1l2.6.9c-.8 1.5-2.4 2.5-4.7 2.5-3.3 0-5.4-2.1-5.4-4.8 0-2.7 2.1-4.8 5.2-4.8 3.1 0 5.1 2 5.1 4.7v.5zm-3-1.5c-.2-1.1-1-1.9-2.2-1.9-1.2 0-2 .8-2.2 1.9h4.4z"/>
+          </svg>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const lastLogo = document.querySelector('.logo:last-child');
+      const cleanup = () => {
+        document.documentElement.classList.remove('anim');
+      };
+      if (lastLogo) {
+        lastLogo.addEventListener('animationend', cleanup, { once: true });
+      }
+      setTimeout(cleanup, 2600);
+    });
+  </script>
+</body>
+</html>
