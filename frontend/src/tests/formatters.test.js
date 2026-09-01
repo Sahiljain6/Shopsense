@@ -1,6 +1,6 @@
-﻿import { describe, it } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { formatINR, formatRatingStars, truncateText, generateBuyLinks } from "../utils/formatters.js";
+import { formatINR, formatRatingStars, truncateText, generateBuyLinks, formatDiscountPercentage } from "../utils/formatters.js";
 
 describe("Currency & String Formatters Unit Tests", () => {
   describe("formatINR", () => {
@@ -95,6 +95,25 @@ describe("Currency & String Formatters Unit Tests", () => {
       const links = generateBuyLinks("");
       assert.equal(links.length, 3);
       assert.equal(links[0].url, "https://www.amazon.in/s?k=");
+    });
+  });
+
+  describe("formatDiscountPercentage", () => {
+    it("computes accurate discount percentage between launch MRP and deal price", () => {
+      assert.equal(formatDiscountPercentage(100000, 75000), 25);
+      assert.equal(formatDiscountPercentage(2000, 1500), 25);
+      assert.equal(formatDiscountPercentage(10000, 6667), 33);
+    });
+
+    it("returns 0 when deal price is equal to or higher than launch price", () => {
+      assert.equal(formatDiscountPercentage(5000, 5000), 0);
+      assert.equal(formatDiscountPercentage(5000, 6000), 0);
+    });
+
+    it("handles zero or invalid prices safely", () => {
+      assert.equal(formatDiscountPercentage(0, 500), 0);
+      assert.equal(formatDiscountPercentage(500, 0), 0);
+      assert.equal(formatDiscountPercentage(null, undefined), 0);
     });
   });
 });

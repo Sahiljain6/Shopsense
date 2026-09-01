@@ -1,4 +1,4 @@
-﻿export function formatINR(amount) {
+export function formatINR(amount) {
   const num = Number(amount) || 0;
   return `₹${num.toLocaleString("en-IN")}`;
 }
@@ -24,4 +24,11 @@ export function generateBuyLinks(productName) {
     { store: "Flipkart", url: `https://www.flipkart.com/search?q=${q}`, color: "#2874f0" },
     { store: "Croma", url: `https://www.croma.com/searchB?q=${q}`, color: "#0f7d1c" },
   ];
+}
+
+export function formatDiscountPercentage(mrp, currentPrice) {
+  const m = Number(mrp) || 0;
+  const c = Number(currentPrice) || 0;
+  if (m <= 0 || c <= 0 || m <= c) return 0;
+  return Math.round(((m - c) / m) * 100);
 }
