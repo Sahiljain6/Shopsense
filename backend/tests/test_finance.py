@@ -54,3 +54,31 @@ def test_ai_orchestrator_emi_tool_execution(db_session) -> None:
     assert parsed["eligible"] is True
     assert parsed["amount"] == 60000
     assert len(parsed["no_cost_plans"]) == 2
+
+
+def test_amortization_schedule_valid() -> None:
+    from app.services.finance import calculate_amortization_schedule
+    schedule = calculate_amortization_schedule(12000, 12.0, 12)
+    assert len(schedule) == 12
+    assert schedule[0]["month"] == 1
+    assert schedule[0]["principal"] > 0
+    assert schedule[0]["interest"] > 0
+    assert schedule[-1]["month"] == 12
+    assert schedule[-1]["balance"] == 0.0
+
+
+def test_amortization_schedule_zero_or_negative() -> None:
+    from app.services.finance import calculate_amortization_schedule
+    assert calculate_amortization_schedule(0, 12.0, 6) == []
+    assert calculate_amortization_schedule(10000, 12.0, 0) == []
+    assert calculate_amortization_schedule(-5000, 12.0, 6) == []
+
+
+def test_amortization_schedule_zero_interest() -> None:
+    from app.services.finance import calculate_amortization_schedule
+    schedule = calculate_amortization_schedule(6000, 0.0, 6)
+    assert len(schedule) == 6
+    assert schedule[0]["emi"] == 1000.0
+    assert schedule[0]["interest"] == 0.0
+    assert schedule[-1]["balance"] == 0.0
+
