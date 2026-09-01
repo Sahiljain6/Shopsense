@@ -1,16 +1,8 @@
 import { useState, useCallback } from "react";
 import { fetchPriceHistory, friendlyError } from "../api";
 import { addToCartStorage } from "../hooks/useCart";
+import { formatINR, formatRatingStars, generateBuyLinks } from "../utils/formatters";
 import ProductDetailModal from "./ProductDetailModal";
-
-function generateBuyLinks(productName) {
-  const q = encodeURIComponent(productName);
-  return [
-    { store: "Amazon India", url: `https://www.amazon.in/s?k=${q}`, color: "#ff9900" },
-    { store: "Flipkart", url: `https://www.flipkart.com/search?q=${q}`, color: "#2874f0" },
-    { store: "Croma", url: `https://www.croma.com/searchB?q=${q}`, color: "#0f7d1c" },
-  ];
-}
 
 export default function ProductCard({ product }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -19,8 +11,9 @@ export default function ProductCard({ product }) {
   const [historyError, setHistoryError] = useState(null);
   const [cartAdded, setCartAdded] = useState(false);
 
-  const formattedPrice = `₹${Number(product.price).toLocaleString('en-IN')}`;
+  const formattedPrice = formatINR(product.price);
   const buyLinks = generateBuyLinks(product.name || "");
+  const stars = formatRatingStars(product.rating);
 
   // Calculate lowest effective rate (with bank discount/deals) & MRP
   const lowestRate = Math.round(product.price * 0.90);
@@ -79,9 +72,8 @@ export default function ProductCard({ product }) {
           </p>
 
           <div className="product-card-rating-stars">
-            {"★".repeat(Math.min(5, Math.floor(product.rating || 4)))}
-            {"☆".repeat(5 - Math.min(5, Math.floor(product.rating || 4)))}
-            <span className="rating-number"> {(product.rating || 4).toFixed(1)}</span>
+            {stars.filled}{stars.empty}
+            <span className="rating-number"> {stars.score}</span>
             <span className="stock-pill">In Stock</span>
           </div>
 
