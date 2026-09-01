@@ -209,7 +209,13 @@ def chat(
 ) -> ChatResponse:
     history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
     try:
-        response = AIOrchestrator(db).answer_via_agents(payload.message, payload.mode, history, cart=payload.cart)
+        response = AIOrchestrator(db).answer_via_agents(
+            payload.message,
+            payload.mode,
+            history,
+            cart=payload.cart,
+            model=payload.model,
+        )
     except Exception as err:
         db.rollback()
         print(f"Error during AIOrchestrator.answer: {err}")

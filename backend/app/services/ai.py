@@ -1389,12 +1389,15 @@ class AIOrchestrator:
         message: str,
         mode: str | None = None,
         history: list[dict[str, str]] | None = None,
-        cart: list[dict[str, object]] | None = None
+        cart: list[dict[str, object]] | None = None,
+        model: str | None = None,
     ) -> ChatResponse:
 
         try:
             if not get_settings().enable_multi_agent:
-                return self.answer(message, mode, history, cart=cart)
+                resp = self.answer(message, mode, history, cart=cart)
+                resp.model = model or "Sonnet 4.5"
+                return resp
 
             from app.services.agents.graph import run_graph
 
@@ -1402,16 +1405,23 @@ class AIOrchestrator:
                 "message": message,
                 "mode": mode,
                 "db": self.db,
-                "cart": cart
+                "cart": cart,
+                "model": model,
             })
 
             if isinstance(data.get("response"), ChatResponse):
-                return data["response"]
+                resp = data["response"]
+                resp.model = model or "Sonnet 4.5"
+                return resp
 
-            return self.answer(message, mode, history, cart=cart)
+            resp = self.answer(message, mode, history, cart=cart)
+            resp.model = model or "Sonnet 4.5"
+            return resp
 
         except Exception:
-            return self.answer(message, mode, history, cart=cart)
+            resp = self.answer(message, mode, history, cart=cart)
+            resp.model = model or "Sonnet 4.5"
+            return resp
 
     def _rank_products(
         self,

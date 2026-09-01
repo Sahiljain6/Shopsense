@@ -160,10 +160,10 @@ export const googleLogin = (credential) =>
     body: JSON.stringify({ credential }),
   });
 
-export const sendChat = (message, mode, history, cart = [], onStatusChange = null) =>
+export const sendChat = (message, mode, history, cart = [], onStatusChange = null, model = "Sonnet 4.5") =>
   apiFetch("/chat", {
     method: "POST",
-    body: JSON.stringify({ message, mode, history, cart }),
+    body: JSON.stringify({ message, mode, history, cart, model }),
     onStatusChange,
     retries: 1,
   });

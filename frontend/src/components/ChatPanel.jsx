@@ -168,7 +168,8 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
                 if (status === "waking") {
                   setIsWarmingUp(true);
                 }
-              }
+              },
+              selectedModel
             );
             const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
             let products = [];
@@ -179,7 +180,9 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
             setMessages((prev2) => [...prev2, {
               role: "assistant",
               text: response.answer || "Here is what I found:",
-              response, products,
+              response,
+              products,
+              model: response.model || selectedModel,
             }]);
           } catch (err) { onError(friendlyError(err)); }
           finally {

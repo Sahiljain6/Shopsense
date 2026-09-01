@@ -68,6 +68,7 @@ class ChatRequest(BaseModel):
     mode: str | None = None
     history: list[ChatTurn] = Field(default_factory=list)
     cart: list[dict[str, object]] = Field(default_factory=list)
+    model: str | None = "Sonnet 4.5"
 
 
 class ChatResponse(BaseModel):
@@ -77,6 +78,7 @@ class ChatResponse(BaseModel):
     pros: dict[str, list[str]] = Field(default_factory=dict)
     cons: dict[str, list[str]] = Field(default_factory=dict)
     clarification: str | None = None
+    model: str | None = None
 
 
 class CompareRequest(BaseModel):

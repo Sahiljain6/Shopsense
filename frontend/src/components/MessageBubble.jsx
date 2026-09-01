@@ -46,7 +46,7 @@ export default function MessageBubble({ message }) {
           </span>
           {!isUser && (
             <div className="message-actions-cluster">
-              <span className="message-model-tag">Sonnet 4.5</span>
+              <span className="message-model-tag">{message.model || "Sonnet 4.5"}</span>
               <button
                 type="button"
                 className="message-copy-btn"
