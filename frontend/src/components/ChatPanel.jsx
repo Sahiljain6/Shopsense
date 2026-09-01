@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import MessageBubble from "./MessageBubble";
 import ModelDropdown from "./ModelDropdown";
+import QuickActionsToolbar from "./QuickActionsToolbar";
 import { sendChat, fetchLink, getProducts, identifyImage, friendlyError } from "../api";
 import { getCartFromStorage } from "../hooks/useCart";
 
@@ -282,24 +283,7 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
       </AnimatePresence>
 
       {/* Fastshot Quick Actions Toolbar */}
-      <div className="composer-quick-strip" role="toolbar" aria-label="Suggested shopping actions">
-        <button type="button" className="fastshot-chip" onClick={() => executeSend("Find best deals on electronics today")}>
-          <span className="chip-bullet">⚡</span>
-          <span>Today's Deals</span>
-        </button>
-        <button type="button" className="fastshot-chip" onClick={() => executeSend("Compare iPhone 15 vs OnePlus 12")}>
-          <span className="chip-bullet">⚖️</span>
-          <span>Compare Specs</span>
-        </button>
-        <button type="button" className="fastshot-chip" onClick={() => executeSend("Calculate EMI for ₹45,000 for 12 months at 12%")}>
-          <span className="chip-bullet">💳</span>
-          <span>EMI Calc</span>
-        </button>
-        <button type="button" className="fastshot-chip" onClick={() => executeSend("Check delivery to pincode 400001")}>
-          <span className="chip-bullet">📍</span>
-          <span>Pincode Check</span>
-        </button>
-      </div>
+      <QuickActionsToolbar onSelectAction={executeSend} />
 
       {/* Composer Card */}
       <form className="chatbot-composer fastshot-composer-card" onSubmit={handleSubmit}>
