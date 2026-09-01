@@ -2,7 +2,7 @@ const API_URL = (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.tr
 const TOKEN_KEY = "shopsense_token";
 const PROTECTED_PATHS = ["/chat", "/compare", "/reviews/summary", "/history", "/wishlist"];
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(status, message) {
     super(message);
     this.name = "ApiError";
@@ -58,6 +58,8 @@ export async function apiFetch(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const headers = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
+    "X-Client-Platform": "Web/Vite",
+    "X-Client-Version": "1.0.0",
     ...(options.headers || {}),
   };
   const token = getToken();
