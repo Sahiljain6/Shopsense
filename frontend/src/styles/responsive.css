@@ -1,0 +1,56 @@
+﻿/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE LAYOUT & MOBILE BREAKPOINTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 900px) {
+  .app-container {
+    padding: 0 0.75rem 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .modal-grid-layout {
+    grid-template-columns: 1fr;
+  }
+  .modal-big-image-box {
+    height: 220px;
+  }
+  .modal-price-card {
+    grid-template-columns: 1fr;
+  }
+  .navbar-center-links {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .shopsense-navbar {
+    padding: 0.75rem 1rem;
+  }
+  .navbar-links {
+    display: none;
+  }
+  .message-product-cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .price-insights-grid {
+    grid-template-columns: 1fr;
+  }
+  .product-buy-links {
+    flex-direction: column;
+  }
+  .cart-drawer {
+    width: 100%;
+  }
+  .chatbot-widget-container {
+    margin: 0.75rem auto 0;
+    border-radius: 12px;
+  }
+  .chatbot-messages-stream {
+    min-height: 380px;
+    padding: 1rem;
+  }
+  .fastshot-prompts-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -261,3 +261,94 @@
   0%, 100% { opacity: 0.85; }
   50% { opacity: 1; }
 }
+
+/* ── WELCOME PROMPTS & EMPTY CHAT STATE ── */
+.chat-welcome-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  gap: 0.65rem;
+}
+
+.welcome-icon {
+  font-size: 2.5rem;
+}
+
+.welcome-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #18181b;
+}
+
+.welcome-desc {
+  font-size: 0.88rem;
+  color: #6b7280;
+  max-width: 340px;
+  line-height: 1.5;
+}
+
+.welcome-brand-mark {
+  margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.welcome-chips.fastshot-prompts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.65rem;
+  width: 100%;
+  max-width: 540px;
+  margin-top: 1rem;
+}
+
+.welcome-chip.fastshot-hero-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid rgba(229, 231, 235, 0.85);
+  background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.welcome-chip.fastshot-hero-chip:hover {
+  transform: translateY(-2px);
+  border-color: #f49d70;
+  box-shadow: 0 4px 12px rgba(244, 157, 112, 0.15);
+  background: #ffffff;
+}
+
+.hero-chip-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.hero-chip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.hero-chip-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #18181b;
+}
+
+.hero-chip-sub {
+  font-size: 0.74rem;
+  color: #6b7280;
+  line-height: 1.35;
+}
