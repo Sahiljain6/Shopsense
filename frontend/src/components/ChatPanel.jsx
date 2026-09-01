@@ -4,6 +4,7 @@ import MessageBubble from "./MessageBubble";
 import ModelDropdown from "./ModelDropdown";
 import QuickActionsToolbar from "./QuickActionsToolbar";
 import WelcomePromptGrid from "./WelcomePromptGrid";
+import AttachmentPreviewBar from "./AttachmentPreviewBar";
 import { sendChat, fetchLink, getProducts, identifyImage, friendlyError } from "../api";
 import { getCartFromStorage } from "../hooks/useCart";
 
@@ -242,14 +243,7 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
       </div>
 
       {/* Attachment bar */}
-      <AnimatePresence>
-        {attachedFile && (
-          <motion.div className="chat-attachment-bar" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-            <span>📷 {attachedFile.name}</span>
-            <button type="button" onClick={removeAttachment}>✕</button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <AttachmentPreviewBar attachedFile={attachedFile} onRemove={removeAttachment} />
 
       {/* Fastshot Quick Actions Toolbar */}
       <QuickActionsToolbar onSelectAction={executeSend} />
