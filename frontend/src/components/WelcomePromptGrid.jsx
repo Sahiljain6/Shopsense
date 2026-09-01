@@ -1,9 +1,4 @@
-﻿const PROMPTS = [
-  { icon: "🎧", title: "Best Earbuds", query: "Best wireless earbuds with ANC under ₹3,000" },
-  { icon: "📱", title: "Compare Phones", query: "Compare iPhone 15 vs OnePlus 12 specs and value" },
-  { icon: "⌨️", title: "Mechanical Keyboard", query: "Top gaming mechanical keyboard under ₹4,000" },
-  { icon: "💳", title: "EMI Breakdown", query: "Calculate EMI for ₹50,000 laptop for 6 months at 14%" },
-];
+import { POPULAR_PROMPTS } from "../utils/constants";
 
 export default function WelcomePromptGrid({ onSelectPrompt }) {
   return (
@@ -21,7 +16,7 @@ export default function WelcomePromptGrid({ onSelectPrompt }) {
       </p>
 
       <div className="welcome-chips fastshot-prompts-grid">
-        {PROMPTS.map((item) => (
+        {POPULAR_PROMPTS.map((item) => (
           <button
             key={item.title}
             type="button"

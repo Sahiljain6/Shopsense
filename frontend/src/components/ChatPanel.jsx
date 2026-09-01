@@ -7,17 +7,7 @@ import AttachmentPreviewBar from "./AttachmentPreviewBar";
 import ComposerInput from "./ComposerInput";
 import { sendChat, fetchLink, getProducts, identifyImage, friendlyError } from "../api";
 import { getCartFromStorage } from "../hooks/useCart";
-
-const CART_QUERIES = [
-  "show my cart", "view cart", "open cart", "cart",
-  "what is in my cart", "cart items", "my cart",
-];
-
-const GREETING_QUERIES = [
-  "hi", "hello", "hey", "hola", "namaste", "good morning", "good evening", "help",
-];
-
-const URL_PATTERN = /^https?:\/\/[^\s]+$/;
+import { CART_QUERIES, GREETING_QUERIES, URL_PATTERN } from "../utils/constants";
 
 function getCart() {
   return getCartFromStorage();

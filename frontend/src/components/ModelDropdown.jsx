@@ -1,11 +1,6 @@
-﻿import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-
-const ENGINES = [
-  { id: "Sonnet 4.5", desc: "Deep Reasoning & Comparisons", badge: "Smartest" },
-  { id: "Gemini Flash", desc: "Real-time Live Web Prices", badge: "Fastest" },
-  { id: "Deal Specialist", desc: "Photo & Logistics Inspections", badge: "Specialist" },
-];
+import { AI_ENGINES } from "../utils/constants";
 
 export default function ModelDropdown({ selectedModel, onSelectModel }) {
   const [showModelMenu, setShowModelMenu] = useState(false);
@@ -65,7 +60,7 @@ export default function ModelDropdown({ selectedModel, onSelectModel }) {
             role="listbox"
           >
             <div className="dropdown-header">Select Engine</div>
-            {ENGINES.map((m) => (
+            {AI_ENGINES.map((m) => (
               <button
                 key={m.id}
                 type="button"
