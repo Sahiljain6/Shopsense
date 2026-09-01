@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from app.schemas.api import ChatRequest
 
 def test_chat_request_default_model():
@@ -21,3 +21,16 @@ def test_chat_request_serialization():
     data = req.model_dump()
     assert data["message"] == "Hello AI"
     assert data["model"] == "Sonnet 4.5"
+
+def test_model_persona_enum_members():
+    from app.schemas.api import ModelPersona
+    assert ModelPersona.SONNET_4_5.value == "Sonnet 4.5"
+    assert ModelPersona.GEMINI_FLASH.value == "Gemini Flash"
+    assert ModelPersona.DEAL_SPECIALIST.value == "Deal Specialist"
+    assert len(ModelPersona) == 3
+
+def test_chat_response_model_attribution():
+    from app.schemas.api import ChatResponse
+    resp = ChatResponse(answer="Recommended deal", model="Sonnet 4.5")
+    assert resp.answer == "Recommended deal"
+    assert resp.model == "Sonnet 4.5"
