@@ -5,6 +5,7 @@ import QuickActionsToolbar from "./QuickActionsToolbar";
 import WelcomePromptGrid from "./WelcomePromptGrid";
 import AttachmentPreviewBar from "./AttachmentPreviewBar";
 import ComposerInput from "./ComposerInput";
+import TypingIndicator from "./TypingIndicator";
 import { sendChat, fetchLink, getProducts, identifyImage, friendlyError } from "../api";
 import { getCartFromStorage } from "../hooks/useCart";
 import { CART_QUERIES, GREETING_QUERIES, URL_PATTERN } from "../utils/constants";
@@ -213,20 +214,7 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
             {messages.map((msg, i) => (
               <MessageBubble key={i} message={msg} />
             ))}
-            {loading && (
-              <div className="chat-typing-container">
-                <div className="chat-typing-row">
-                  <span className="typing-dot" />
-                  <span className="typing-dot" />
-                  <span className="typing-dot" />
-                </div>
-                {isWarmingUp && (
-                  <div className="chat-warming-notice">
-                    <span>⚡</span> Waking up the server, this can take up to a minute...
-                  </div>
-                )}
-              </div>
-            )}
+            {loading && <TypingIndicator isWarmingUp={isWarmingUp} />}
           </>
         )}
         <div ref={messagesEndRef} />
