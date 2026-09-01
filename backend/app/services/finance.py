@@ -127,3 +127,33 @@ def calculate_emi_options(amount: float, bank: str | None = None) -> dict[str, A
         "bank_offers": bank_offers,
         "summary": f"Starting from ₹{best_monthly:,.0f}/month with No-Cost EMI (up to 6 months) across HDFC, ICICI, SBI & Axis."
     }
+
+
+def calculate_amortization_schedule(
+    principal: float, rate_annual: float, tenure_months: int
+) -> list[dict[str, Any]]:
+    """Compute month-by-month principal and interest amortization breakdown."""
+    if principal <= 0 or tenure_months <= 0:
+        return []
+    
+    monthly_rate = (rate_annual / 100) / 12
+    if monthly_rate == 0:
+        monthly_emi = principal / tenure_months
+    else:
+        factor = math.pow(1 + monthly_rate, tenure_months)
+        monthly_emi = (principal * monthly_rate * factor) / (factor - 1)
+
+    schedule = []
+    balance = principal
+    for m in range(1, tenure_months + 1):
+        interest_part = balance * monthly_rate
+        principal_part = monthly_emi - interest_part
+        balance = max(0.0, balance - principal_part)
+        schedule.append({
+            "month": m,
+            "emi": round(monthly_emi, 2),
+            "principal": round(principal_part, 2),
+            "interest": round(interest_part, 2),
+            "balance": round(balance, 2)
+        })
+    return schedule
