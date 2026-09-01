@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useCart } from "../hooks/useCart";
 import CartDrawer from "./CartDrawer";
 import HeaderBrandMark from "./HeaderBrandMark";
+import FeaturePillBadges from "./FeaturePillBadges";
 
 export default function Hero({ authed, onLogout, ambientMode = false, onToggleAmbient }) {
   const { cartItems, cartCount, cartTotal, removeFromCart, updateQty, clearCart } = useCart();
@@ -40,11 +41,7 @@ export default function Hero({ authed, onLogout, ambientMode = false, onToggleAm
           </div>
         </div>
 
-        <nav className="navbar-center-links">
-          <span className="nav-feature-pill">⚡ 22 Stacks</span>
-          <span className="nav-feature-pill">🎯 Deal Radar</span>
-          <span className="nav-feature-pill">💳 Live EMI</span>
-        </nav>
+        <FeaturePillBadges />
 
         <div className="navbar-right">
           {/* Ambient Video Mode Toggle */}
