@@ -81,7 +81,7 @@ export default function ProductCard({ product }) {
   return (
     <>
       {/* ── CARD SNAPSHOT IN CHAT ── */}
-      <div className="chat-product-card" onClick={handleOpenModal} title="Click to view full product details in big view">
+      <div className="chat-product-card fastshot-product-card" onClick={handleOpenModal} title="Click to view full product details in big view">
         <div className="product-card-top-row">
           <div className="product-card-image-box">
             {product.image_url ? (
@@ -95,11 +95,13 @@ export default function ProductCard({ product }) {
             ) : (
               <span className="product-card-fallback-icon">📦</span>
             )}
+            <span className="product-deal-badge">⚡ Deal Verified</span>
           </div>
           <div className="product-card-price-tag">{formattedPrice}</div>
         </div>
 
         <div className="product-card-content">
+          <div className="product-card-brand-tag">{product.brand || "Top Value"}</div>
           <h4 className="product-card-title">{product.name || "Product"}</h4>
           <p className="product-card-feature-line">
             {product.description || "Quality product with verified specifications."}
@@ -109,6 +111,7 @@ export default function ProductCard({ product }) {
             {"★".repeat(Math.min(5, Math.floor(product.rating || 4)))}
             {"☆".repeat(5 - Math.min(5, Math.floor(product.rating || 4)))}
             <span className="rating-number"> {(product.rating || 4).toFixed(1)}</span>
+            <span className="stock-pill">In Stock</span>
           </div>
 
           <div className="product-buy-links">
@@ -130,15 +133,15 @@ export default function ProductCard({ product }) {
           <div className="product-card-actions-row">
             <button
               type="button"
-              className="card-btn-secondary"
+              className="card-btn-secondary fastshot-btn-secondary"
               onClick={(e) => { e.stopPropagation(); handleOpenModal(); }}
             >
-              🔍 View Big
+              🔍 Details
             </button>
 
             <button
               type="button"
-              className={`card-btn-primary ${cartAdded ? "added" : ""}`}
+              className={`card-btn-primary fastshot-btn-primary ${cartAdded ? "added" : ""}`}
               onClick={handleAddToCart}
             >
               {cartAdded ? "✓ Added!" : "Add to Cart"}

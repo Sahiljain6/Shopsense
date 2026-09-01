@@ -1104,6 +1104,78 @@ button:disabled {
   background: #27272a;
 }
 
+/* Fastshot Card Enhancements */
+.chat-product-card.fastshot-product-card {
+  border: 1px solid rgba(229, 231, 235, 0.85);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+}
+.chat-product-card.fastshot-product-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.1);
+  border-color: rgba(244, 157, 112, 0.4);
+}
+
+.product-deal-badge {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+  background: rgba(24, 24, 27, 0.82);
+  backdrop-filter: blur(8px);
+  color: #fb923c;
+  border: 1px solid rgba(251, 146, 60, 0.3);
+}
+
+.product-card-brand-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9333ea;
+  margin-bottom: -0.2rem;
+}
+
+.stock-pill {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #16a34a;
+  background: #dcfce7;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  margin-left: 0.4rem;
+}
+
+.fastshot-btn-secondary {
+  border: 1px solid #e4e4e7;
+  background: #ffffff;
+  color: #3f3f46;
+  font-weight: 600;
+}
+.fastshot-btn-secondary:hover {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+.fastshot-btn-primary {
+  background: linear-gradient(163deg, #FBBC94 0%, #F49D70 46%, #E88654 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(210, 110, 60, 0.28);
+  font-weight: 700;
+}
+.fastshot-btn-primary:hover {
+  filter: brightness(1.07);
+  box-shadow: 0 4px 12px rgba(210, 110, 60, 0.4);
+}
+.fastshot-btn-primary.added {
+  background: #10b981 !important;
+  box-shadow: none;
+}
+
 .card-details-drawer {
   font-size: 0.75rem;
   color: #4b5563;
