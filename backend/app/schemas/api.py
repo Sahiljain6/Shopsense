@@ -1,4 +1,11 @@
+from enum import Enum
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+
+class ModelPersona(str, Enum):
+    SONNET_4_5 = "Sonnet 4.5"
+    GEMINI_FLASH = "Gemini Flash"
+    DEAL_SPECIALIST = "Deal Specialist"
 
 
 class Token(BaseModel):
