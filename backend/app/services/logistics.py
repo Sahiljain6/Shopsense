@@ -106,3 +106,32 @@ def lookup_pincode(pincode: str) -> dict[str, Any]:
         "courier_partners": couriers,
         "summary": f"PIN {clean_pin} ({district or 'India'}, {state}): {est_days} via {couriers}."
     }
+
+
+def estimate_shipping_sla(is_metro: bool, is_express: bool = False) -> dict[str, Any]:
+    """Estimate delivery turnaround time, transit days, and cutoff advice based on zone."""
+    if is_metro and is_express:
+        return {
+            "tier": "Same-Day / Next-Day Priority",
+            "min_days": 0,
+            "max_days": 1,
+            "cutoff_time": "12:00 PM IST",
+            "eligible_for_instant": True
+        }
+    elif is_metro:
+        return {
+            "tier": "Metro Express",
+            "min_days": 1,
+            "max_days": 2,
+            "cutoff_time": "6:00 PM IST",
+            "eligible_for_instant": False
+        }
+    else:
+        return {
+            "tier": "Standard Regional",
+            "min_days": 3,
+            "max_days": 5,
+            "cutoff_time": "4:00 PM IST",
+            "eligible_for_instant": False
+        }
+
