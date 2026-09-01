@@ -1,4 +1,4 @@
-const API_URL = (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim()) || "https://shopsense-api-pb2g.onrender.com";
+const API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL ? import.meta.env.VITE_API_URL.trim() : null) || "https://shopsense-api-pb2g.onrender.com";
 const TOKEN_KEY = "shopsense_token";
 const PROTECTED_PATHS = ["/chat", "/compare", "/reviews/summary", "/history", "/wishlist"];
 
