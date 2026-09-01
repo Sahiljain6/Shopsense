@@ -44,3 +44,31 @@ def test_ai_orchestrator_pincode_tool_execution(db_session) -> None:
     assert parsed["valid"] is True
     assert parsed["pincode"] == "560001"
     assert parsed["is_metro"] is True
+
+
+def test_estimate_shipping_sla_metro_priority() -> None:
+    from app.services.logistics import estimate_shipping_sla
+    sla = estimate_shipping_sla(is_metro=True, is_express=True)
+    assert sla["tier"] == "Same-Day / Next-Day Priority"
+    assert sla["min_days"] == 0
+    assert sla["max_days"] == 1
+    assert sla["eligible_for_instant"] is True
+
+
+def test_estimate_shipping_sla_metro_standard() -> None:
+    from app.services.logistics import estimate_shipping_sla
+    sla = estimate_shipping_sla(is_metro=True, is_express=False)
+    assert sla["tier"] == "Metro Express"
+    assert sla["min_days"] == 1
+    assert sla["max_days"] == 2
+    assert sla["eligible_for_instant"] is False
+
+
+def test_estimate_shipping_sla_regional() -> None:
+    from app.services.logistics import estimate_shipping_sla
+    sla = estimate_shipping_sla(is_metro=False, is_express=False)
+    assert sla["tier"] == "Standard Regional"
+    assert sla["min_days"] == 3
+    assert sla["max_days"] == 5
+    assert sla["eligible_for_instant"] is False
+
