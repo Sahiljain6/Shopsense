@@ -1,64 +1,12 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-
-import Logo from "./Logo";
-
-const CART_KEY = "shopsense_cart";
-
-function getCart() {
-  try {
-    return JSON.parse(localStorage.getItem(CART_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function removeFromCart(productId) {
-  const cart = getCart().filter((item) => item.id !== productId);
-  localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  window.dispatchEvent(new Event("cart-updated"));
-  return cart;
-}
-
-function updateQty(productId, delta) {
-  const cart = getCart();
-  const item = cart.find((i) => i.id === productId);
-  if (item) {
-    item.qty = Math.max(1, item.qty + delta);
-  }
-  localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  window.dispatchEvent(new Event("cart-updated"));
-  return cart;
-}
-
-function clearCart() {
-  localStorage.setItem(CART_KEY, "[]");
-  window.dispatchEvent(new Event("cart-updated"));
-}
-
-function getCartCount() {
-  return getCart().reduce((sum, item) => sum + (item.qty || 1), 0);
-}
+import { useCart } from "../hooks/useCart";
 
 export default function Hero({ authed, onLogout, ambientMode = false, onToggleAmbient }) {
-  const [cartCount, setCartCount] = useState(getCartCount());
+  const { cartItems, cartCount, cartTotal, removeFromCart, updateQty, clearCart } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
-  const [cartItems, setCartItems] = useState(getCart());
   const [checkoutStep, setCheckoutStep] = useState("cart"); // "cart" | "checkout" | "success"
   const [orderId, setOrderId] = useState("");
-
-  useEffect(() => {
-    const handler = () => {
-      setCartCount(getCartCount());
-      setCartItems(getCart());
-    };
-    window.addEventListener("cart-updated", handler);
-    window.addEventListener("storage", handler);
-    return () => {
-      window.removeEventListener("cart-updated", handler);
-      window.removeEventListener("storage", handler);
-    };
-  }, []);
 
   // Close drawer immediately if user logs out
   useEffect(() => {
@@ -68,13 +16,9 @@ export default function Hero({ authed, onLogout, ambientMode = false, onToggleAm
     }
   }, [authed]);
 
-  const total = cartItems.reduce(
-    (sum, item) => sum + (item.price || 0) * (item.qty || 1),
-    0
-  );
+  const total = cartTotal;
 
   const handleOpenCart = () => {
-    setCartItems(getCart());
     setCheckoutStep("cart");
     setCartOpen(true);
   };
@@ -83,7 +27,6 @@ export default function Hero({ authed, onLogout, ambientMode = false, onToggleAm
     const generatedId = `SS-2026-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderId(generatedId);
     clearCart();
-    setCartItems([]);
     setCheckoutStep("success");
   };
 

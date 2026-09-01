@@ -1,36 +1,7 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { fetchPriceHistory, friendlyError } from "../api";
-
-const CART_KEY = "shopsense_cart";
-
-function getCart() {
-  try {
-    return JSON.parse(localStorage.getItem(CART_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function addToCart(product) {
-  const cart = getCart();
-  const existing = cart.find((item) => item.id === product.id);
-  if (existing) {
-    existing.qty += 1;
-  } else {
-    cart.push({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      currency: product.currency || "₹",
-      image_url: product.image_url,
-      qty: 1,
-    });
-  }
-  localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  window.dispatchEvent(new Event("cart-updated"));
-  return cart;
-}
+import { addToCartStorage } from "../hooks/useCart";
 
 function generateBuyLinks(productName) {
   const q = encodeURIComponent(productName);
@@ -73,7 +44,7 @@ export default function ProductCard({ product }) {
 
   const handleAddToCart = (e) => {
     e.stopPropagation();
-    addToCart(product);
+    addToCartStorage(product);
     setCartAdded(true);
     setTimeout(() => setCartAdded(false), 2000);
   };
