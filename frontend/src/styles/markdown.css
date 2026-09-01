@@ -1,0 +1,120 @@
+﻿/* ═══════════════════════════════════════════════════════════════════════════
+   RICH MARKDOWN & RESPONSIVE COMPARISON TABLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.rich-markdown-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #1e293b;
+}
+
+.markdown-h3 {
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0.6rem 0 0.2rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.markdown-h4 {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0.5rem 0 0.15rem 0;
+}
+
+.markdown-paragraph {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.markdown-spacer {
+  height: 0.35rem;
+}
+
+.markdown-bullet-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.15rem 0;
+  line-height: 1.55;
+}
+
+.bullet-dot {
+  color: #3b82f6;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  flex-shrink: 0;
+}
+
+.bullet-content {
+  flex: 1;
+}
+
+.markdown-bold {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.markdown-italic {
+  font-style: italic;
+  color: #475569;
+}
+
+.markdown-code {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.86rem;
+  font-family: monospace;
+  color: #0284c7;
+}
+
+/* Styled Responsive Markdown Tables */
+.markdown-table-wrapper {
+  overflow-x: auto;
+  margin: 0.6rem 0;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.88rem;
+}
+
+.markdown-table th {
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 700;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 2px solid #cbd5e1;
+  white-space: nowrap;
+}
+
+.markdown-table td {
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+}
+
+.markdown-table tr:last-child td {
+  border-bottom: none;
+}
+
+.markdown-table tr:nth-child(even) {
+  background-color: #fafbfc;
+}
+
+.markdown-table tr:hover {
+  background-color: #f1f5f9;
+}
