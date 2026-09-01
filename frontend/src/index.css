@@ -903,10 +903,57 @@ button:disabled {
   align-items: flex-end;
 }
 
+.message-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 0.5rem;
+}
+
 .message-sender-name {
   font-size: 0.78rem;
   font-weight: 700;
-  color: #6b7280;
+  color: #a1a1aa;
+}
+
+.message-actions-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.message-model-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #d4d4d8;
+  letter-spacing: 0.02em;
+}
+
+.message-copy-btn {
+  font-size: 0.68rem;
+  color: #a1a1aa;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.message-copy-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.fastshot-avatar {
+  background: rgba(24, 24, 27, 0.9) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .message-bubble-body {
@@ -916,10 +963,12 @@ button:disabled {
   line-height: 1.6;
 }
 
-.user-bubble {
-  background: #18181b;
+.user-bubble.fastshot-user-bubble {
+  background: linear-gradient(180deg, #27272a 0%, #18181b 100%);
   color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-bottom-right-radius: 2px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
 }
 
 .user-text-content {
@@ -927,12 +976,12 @@ button:disabled {
   white-space: pre-wrap;
 }
 
-.assistant-bubble {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+.assistant-bubble.fastshot-assistant-bubble {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(229, 231, 235, 0.9);
   color: #18181b;
   border-bottom-left-radius: 2px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
