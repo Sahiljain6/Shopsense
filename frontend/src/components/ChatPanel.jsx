@@ -1,37 +1,35 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  sendChat,
-  fetchLink,
-  identifyImage,
-  getProducts,
-  friendlyError,
-} from "../api";
 import MessageBubble from "./MessageBubble";
+import ModelDropdown from "./ModelDropdown";
+import { sendChat, fetchLink, getProducts, identifyImage, friendlyError } from "../api";
+import { getCartFromStorage } from "../hooks/useCart";
 
-const URL_PATTERN = /^https?:\/\/\S+$/i;
-const CART_KEY = "shopsense_cart";
+const CART_QUERIES = [
+  "show my cart", "view cart", "open cart", "cart",
+  "what is in my cart", "cart items", "my cart",
+];
 
-// Local queries that should NOT go to backend
-const CART_QUERIES = ["cart", "my cart", "whats in my cart", "what's in my cart", "show cart", "show my cart", "cart items"];
-const GREETING_QUERIES = ["hi", "hello", "hey", "help", "hi there", "hello there"];
+const GREETING_QUERIES = [
+  "hi", "hello", "hey", "hola", "namaste", "good morning", "good evening", "help",
+];
+
+const URL_PATTERN = /^https?:\/\/[^\s]+$/;
 
 function getCart() {
-  try { return JSON.parse(localStorage.getItem(CART_KEY) || "[]"); } catch { return []; }
+  return getCartFromStorage();
 }
 
 function buildCartResponse() {
-  const cart = getCart();
-  if (cart.length === 0) {
-    return "Your cart is empty! 🛒\n\nTry asking me for product recommendations and click **Add to Cart** on any product you like.";
+  const items = getCart();
+  if (items.length === 0) {
+    return "🛒 **Your cart is empty.**\n\nAsk me to recommend products and click **Add to Cart** to get started!";
   }
-  const total = cart.reduce((s, i) => s + (i.price || 0) * (i.qty || 1), 0);
-  let msg = "### 🛒 Your Cart\n\n";
-  cart.forEach((item, idx) => {
-    msg += `${idx + 1}. **${item.name}** — ₹${Number(item.price).toLocaleString("en-IN")} × ${item.qty} = **₹${Number(item.price * item.qty).toLocaleString("en-IN")}**\n`;
-  });
-  msg += `\n---\n**Total: ₹${Number(total).toLocaleString("en-IN")}**\n\n💡 *Click the 🛒 cart icon in the top bar to manage items or checkout.*`;
-  return msg;
+  const total = items.reduce((sum, item) => sum + (item.price || 0) * (item.qty || 1), 0);
+  const lines = items
+    .map((item) => `• **${item.name}** × ${item.qty || 1} — ₹${Number((item.price || 0) * (item.qty || 1)).toLocaleString("en-IN")}`)
+    .join("\n");
+  return `🛒 **Your Cart (${items.length} item${items.length === 1 ? "" : "s"}):**\n\n${lines}\n\n**Total: ₹${Number(total).toLocaleString("en-IN")}**\n\nClick the **🛒 Cart** icon in the top right to review and proceed to checkout!`;
 }
 
 export default function ChatPanel({ onError, onClearError, isLoggedIn = false }) {
@@ -41,25 +39,9 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
   const [isWarmingUp, setIsWarmingUp] = useState(false);
   const [attachedFile, setAttachedFile] = useState(null);
   const [selectedModel, setSelectedModel] = useState("Sonnet 4.5");
-  const [showModelMenu, setShowModelMenu] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const warmUpTimerRef = useRef(null);
-  const modelMenuRef = useRef(null);
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (modelMenuRef.current && !modelMenuRef.current.contains(event.target)) {
-        setShowModelMenu(false);
-      }
-    }
-    if (showModelMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showModelMenu]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -336,61 +318,10 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
           />
 
           <div className="composer-action-cluster">
-            <div className="composer-model-wrapper" ref={modelMenuRef}>
-              <button
-                type="button"
-                className="composer-model-pill interactive"
-                onClick={() => setShowModelMenu((prev) => !prev)}
-                aria-haspopup="listbox"
-                aria-expanded={showModelMenu}
-                title="Switch AI Shopping Engine"
-              >
-                <span className="model-dot"></span>
-                <span className="model-name">{selectedModel}</span>
-                <svg className={`model-chevron ${showModelMenu ? "open" : ""}`} width="7" height="5" viewBox="0 0 7 5" fill="none">
-                  <path d="M1 1.5L3.5 3.5L6 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-
-              <AnimatePresence>
-                {showModelMenu && (
-                  <motion.div
-                    className="model-dropdown-menu"
-                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                    transition={{ duration: 0.15 }}
-                    role="listbox"
-                  >
-                    <div className="dropdown-header">Select Engine</div>
-                    {[
-                      { id: "Sonnet 4.5", desc: "Deep Reasoning & Comparisons", badge: "Smartest" },
-                      { id: "Gemini Flash", desc: "Real-time Live Web Prices", badge: "Fastest" },
-                      { id: "Deal Specialist", desc: "Photo & Logistics Inspections", badge: "Specialist" }
-                    ].map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        className={`model-option-item ${selectedModel === m.id ? "active" : ""}`}
-                        onClick={() => {
-                          setSelectedModel(m.id);
-                          setShowModelMenu(false);
-                        }}
-                      >
-                        <div className="option-info">
-                          <div className="option-title-row">
-                            <span className="option-name">{m.id}</span>
-                            <span className="option-badge">{m.badge}</span>
-                          </div>
-                          <span className="option-desc">{m.desc}</span>
-                        </div>
-                        {selectedModel === m.id && <span className="option-check">✓</span>}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            <ModelDropdown
+              selectedModel={selectedModel}
+              onSelectModel={setSelectedModel}
+            />
 
             <button
               type="button"
