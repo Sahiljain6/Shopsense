@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import MessageBubble from "./MessageBubble";
-import ModelDropdown from "./ModelDropdown";
 import QuickActionsToolbar from "./QuickActionsToolbar";
 import WelcomePromptGrid from "./WelcomePromptGrid";
 import AttachmentPreviewBar from "./AttachmentPreviewBar";
+import ComposerInput from "./ComposerInput";
 import { sendChat, fetchLink, getProducts, identifyImage, friendlyError } from "../api";
 import { getCartFromStorage } from "../hooks/useCart";
 
@@ -249,63 +249,20 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
       <QuickActionsToolbar onSelectAction={executeSend} />
 
       {/* Composer Card */}
-      <form className="chatbot-composer fastshot-composer-card" onSubmit={handleSubmit}>
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => setAttachedFile(e.target.files[0] || null)} />
-        
-        <div className="composer-main-row">
-          <input
-            className="composer-text-input"
-            type="text"
-            placeholder={isLoggedIn ? "Ask about products, compare prices, check EMI..." : "Please log in to chat"}
-            autoComplete="off"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            disabled={!isLoggedIn || Boolean(attachedFile)}
-            aria-label={isLoggedIn ? "Chat input" : "Log in to use chat"}
-          />
-
-          <div className="composer-action-cluster">
-            <ModelDropdown
-              selectedModel={selectedModel}
-              onSelectModel={setSelectedModel}
-            />
-
-            <button
-              type="button"
-              className="composer-attach-btn"
-              onClick={() => attachedFile ? removeAttachment() : fileInputRef.current?.click()}
-              disabled={!isLoggedIn}
-              aria-label={isLoggedIn ? "Attach image or screenshot" : "Log in to attach"}
-              title="Attach product screenshot or receipt"
-            >
-              {attachedFile ? (
-                <span className="attach-check">✓</span>
-              ) : (
-                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-                </svg>
-              )}
-            </button>
-
-            <motion.button
-              type="submit"
-              className="composer-fastshot-send"
-              disabled={!isLoggedIn || loading || !hasContent}
-              whileHover={hasContent ? { scale: 1.06, filter: "brightness(1.08)" } : {}}
-              whileTap={hasContent ? { scale: 0.94 } : {}}
-              aria-label={isLoggedIn ? "Send message" : "Log in to send messages"}
-            >
-              {loading ? (
-                <span className="send-spinner">...</span>
-              ) : (
-                <svg width="13" height="13" viewBox="0 0 14 14" fill="currentColor">
-                  <path d="M7 1.5L12.5 7L11.2 8.3L7.9 5V12.5H6.1V5L2.8 8.3L1.5 7L7 1.5Z"/>
-                </svg>
-              )}
-            </motion.button>
-          </div>
-        </div>
-      </form>
+      <ComposerInput
+        isLoggedIn={isLoggedIn}
+        inputText={inputText}
+        setInputText={setInputText}
+        attachedFile={attachedFile}
+        fileInputRef={fileInputRef}
+        onAttachFile={(e) => setAttachedFile(e.target.files[0] || null)}
+        onRemoveAttachment={removeAttachment}
+        selectedModel={selectedModel}
+        onSelectModel={setSelectedModel}
+        onSubmit={handleSubmit}
+        hasContent={hasContent}
+        loading={loading}
+      />
     </div>
   );
 }
