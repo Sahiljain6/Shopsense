@@ -256,36 +256,86 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
         )}
       </AnimatePresence>
 
-      {/* Composer */}
-      <form className="chatbot-composer" onSubmit={handleSubmit}>
+      {/* Fastshot Quick Actions Toolbar */}
+      <div className="composer-quick-strip" role="toolbar" aria-label="Suggested shopping actions">
+        <button type="button" className="fastshot-chip" onClick={() => executeSend("Find best deals on electronics today")}>
+          <span className="chip-bullet">⚡</span>
+          <span>Today's Deals</span>
+        </button>
+        <button type="button" className="fastshot-chip" onClick={() => executeSend("Compare iPhone 15 vs OnePlus 12")}>
+          <span className="chip-bullet">⚖️</span>
+          <span>Compare Specs</span>
+        </button>
+        <button type="button" className="fastshot-chip" onClick={() => executeSend("Calculate EMI for ₹45,000 for 12 months at 12%")}>
+          <span className="chip-bullet">💳</span>
+          <span>EMI Calc</span>
+        </button>
+        <button type="button" className="fastshot-chip" onClick={() => executeSend("Check delivery to pincode 400001")}>
+          <span className="chip-bullet">📍</span>
+          <span>Pincode Check</span>
+        </button>
+      </div>
+
+      {/* Composer Card */}
+      <form className="chatbot-composer fastshot-composer-card" onSubmit={handleSubmit}>
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => setAttachedFile(e.target.files[0] || null)} />
-        <button
-          type="button"
-          className="composer-icon-btn"
-          onClick={() => attachedFile ? removeAttachment() : fileInputRef.current?.click()}
-          disabled={!isLoggedIn}
-          aria-label={isLoggedIn ? "Attach image" : "Log in to attach images"}
-        >
-          {attachedFile ? "✓" : "📎"}
-        </button>
-        <input
-          className="composer-text-input"
-          type="text"
-          placeholder={isLoggedIn ? "Ask about products, compare prices, check your cart..." : "Please log in to chat"}
-          autoComplete="off"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          disabled={!isLoggedIn || Boolean(attachedFile)}
-          aria-label={isLoggedIn ? "Chat input" : "Log in to use chat"}
-        />
-        <button
-          type="submit"
-          className="composer-send-circle-btn"
-          disabled={!isLoggedIn || loading || !hasContent}
-          aria-label={isLoggedIn ? "Send message" : "Log in to send messages"}
-        >
-          {loading ? "..." : "➤"}
-        </button>
+        
+        <div className="composer-main-row">
+          <input
+            className="composer-text-input"
+            type="text"
+            placeholder={isLoggedIn ? "Ask about products, compare prices, check EMI..." : "Please log in to chat"}
+            autoComplete="off"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            disabled={!isLoggedIn || Boolean(attachedFile)}
+            aria-label={isLoggedIn ? "Chat input" : "Log in to use chat"}
+          />
+
+          <div className="composer-action-cluster">
+            <div className="composer-model-pill" title="AI Deal Engine Active">
+              <span className="model-dot"></span>
+              <span className="model-name">Sonnet 4.5</span>
+              <svg className="model-chevron" width="7" height="5" viewBox="0 0 7 5" fill="none">
+                <path d="M1 1.5L3.5 3.5L6 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+
+            <button
+              type="button"
+              className="composer-attach-btn"
+              onClick={() => attachedFile ? removeAttachment() : fileInputRef.current?.click()}
+              disabled={!isLoggedIn}
+              aria-label={isLoggedIn ? "Attach image or screenshot" : "Log in to attach"}
+              title="Attach product screenshot or receipt"
+            >
+              {attachedFile ? (
+                <span className="attach-check">✓</span>
+              ) : (
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                </svg>
+              )}
+            </button>
+
+            <motion.button
+              type="submit"
+              className="composer-fastshot-send"
+              disabled={!isLoggedIn || loading || !hasContent}
+              whileHover={hasContent ? { scale: 1.06, filter: "brightness(1.08)" } : {}}
+              whileTap={hasContent ? { scale: 0.94 } : {}}
+              aria-label={isLoggedIn ? "Send message" : "Log in to send messages"}
+            >
+              {loading ? (
+                <span className="send-spinner">...</span>
+              ) : (
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="currentColor">
+                  <path d="M7 1.5L12.5 7L11.2 8.3L7.9 5V12.5H6.1V5L2.8 8.3L1.5 7L7 1.5Z"/>
+                </svg>
+              )}
+            </motion.button>
+          </div>
+        </div>
       </form>
     </div>
   );
