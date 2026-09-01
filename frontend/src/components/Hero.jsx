@@ -40,7 +40,7 @@ function getCartCount() {
   return getCart().reduce((sum, item) => sum + (item.qty || 1), 0);
 }
 
-export default function Hero({ authed, onLogout }) {
+export default function Hero({ authed, onLogout, ambientMode = false, onToggleAmbient }) {
   const [cartCount, setCartCount] = useState(getCartCount());
   const [cartOpen, setCartOpen] = useState(false);
   const [cartItems, setCartItems] = useState(getCart());
@@ -97,6 +97,18 @@ export default function Hero({ authed, onLogout }) {
         </div>
 
         <div className="navbar-right">
+          {/* Ambient Video Mode Toggle */}
+          <button
+            className={`nav-ambient-btn ${ambientMode ? "active" : ""}`}
+            type="button"
+            onClick={onToggleAmbient}
+            title={ambientMode ? "Disable Fastshot Cinematic Ambient Video" : "Enable Fastshot Cinematic Ambient Video"}
+            aria-label="Toggle ambient background"
+          >
+            <span className="ambient-icon">{ambientMode ? "🌄" : "🏔️"}</span>
+            <span className="ambient-text">Ambient</span>
+          </button>
+
           {/* Cart is strictly gated on authed */}
           {authed && (
             <button
