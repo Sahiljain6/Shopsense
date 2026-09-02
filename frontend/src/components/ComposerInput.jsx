@@ -1,8 +1,9 @@
-﻿import { motion } from "framer-motion";
+import { motion } from "framer-motion";
 import ModelDropdown from "./ModelDropdown";
 
 export default function ComposerInput({
   isLoggedIn,
+  onOpenAuth,
   inputText,
   setInputText,
   attachedFile,
@@ -25,14 +26,18 @@ export default function ComposerInput({
         onChange={onAttachFile}
       />
 
-      <div className="composer-main-row">
+      <div
+        className="composer-main-row"
+        onClick={!isLoggedIn && onOpenAuth ? () => onOpenAuth("signin") : undefined}
+        style={!isLoggedIn ? { cursor: "pointer" } : undefined}
+      >
         <input
           className="composer-text-input"
           type="text"
           placeholder={
             isLoggedIn
               ? "Ask about products, compare prices, check EMI..."
-              : "Please log in to chat"
+              : "Sign in to chat, compare prices & find deals..."
           }
           autoComplete="off"
           value={inputText}
@@ -50,11 +55,15 @@ export default function ComposerInput({
           <button
             type="button"
             className="composer-attach-btn"
-            onClick={() =>
-              attachedFile ? onRemoveAttachment() : fileInputRef.current?.click()
-            }
+            onClick={(e) => {
+              if (!isLoggedIn) {
+                e.stopPropagation();
+                onOpenAuth?.("signin");
+                return;
+              }
+              attachedFile ? onRemoveAttachment() : fileInputRef.current?.click();
+            }}
             title={attachedFile ? "Remove photo" : "Attach product photo"}
-            disabled={!isLoggedIn}
             aria-label="Attach photo"
           >
             {attachedFile ? (

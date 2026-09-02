@@ -27,7 +27,7 @@ function buildCartResponse() {
   return `🛒 **Your Cart (${items.length} item${items.length === 1 ? "" : "s"}):**\n\n${lines}\n\n**Total: ₹${Number(total).toLocaleString("en-IN")}**\n\nClick the **🛒 Cart** icon in the top right to review and proceed to checkout!`;
 }
 
-export default function ChatPanel({ onError, onClearError, isLoggedIn = false }) {
+export default function ChatPanel({ onError, onClearError, isLoggedIn = false, onOpenAuth }) {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -51,6 +51,13 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
 
   const executeSend = useCallback(
     async (textToSend) => {
+      if (!isLoggedIn) {
+        if (onOpenAuth) {
+          onOpenAuth("signin");
+        }
+        return;
+      }
+
       const file = attachedFile;
       const text = (textToSend !== undefined ? textToSend : inputText).trim();
       if (!file && !text) return;
@@ -212,6 +219,7 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false })
       {/* Composer Card */}
       <ComposerInput
         isLoggedIn={isLoggedIn}
+        onOpenAuth={onOpenAuth}
         inputText={inputText}
         setInputText={setInputText}
         attachedFile={attachedFile}
