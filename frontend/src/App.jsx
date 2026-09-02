@@ -10,17 +10,6 @@ export default function App() {
   const [error, setError] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState("signin");
-  const [ambientMode, setAmbientMode] = useState(() => {
-    return localStorage.getItem("shopsense_ambient_mode") === "true";
-  });
-
-  const handleToggleAmbient = useCallback(() => {
-    setAmbientMode((prev) => {
-      const next = !prev;
-      localStorage.setItem("shopsense_ambient_mode", String(next));
-      return next;
-    });
-  }, []);
 
   const handleOpenAuth = useCallback((mode = "signin") => {
     setAuthModalMode(mode);
@@ -53,21 +42,17 @@ export default function App() {
   }, []);
 
   return (
-    <main className={`app-shell ${ambientMode ? "ambient-mode-active" : ""}`}>
-      {ambientMode && (
-        <div className="ambient-stage" aria-hidden="true">
-          <video className="ambient-stage-video" autoPlay muted loop playsInline>
-            <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260826_124724_bc041163-d651-425f-aea3-2acc1efc2c96.mp4" type="video/mp4" />
-          </video>
-          <div className="ambient-stage-overlay" />
-        </div>
-      )}
+    <main className="app-shell ambient-mode-active">
+      <div className="ambient-stage" aria-hidden="true">
+        <video className="ambient-stage-video" autoPlay muted loop playsInline>
+          <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260826_124724_bc041163-d651-425f-aea3-2acc1efc2c96.mp4" type="video/mp4" />
+        </video>
+        <div className="ambient-stage-overlay" />
+      </div>
       <section className="app-container">
         <Hero
           authed={authed}
           onLogout={handleLogout}
-          ambientMode={ambientMode}
-          onToggleAmbient={handleToggleAmbient}
           onOpenAuth={handleOpenAuth}
         />
         <ErrorBanner message={error} />
