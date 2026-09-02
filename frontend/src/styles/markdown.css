@@ -1,5 +1,6 @@
-﻿/* ═══════════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
    RICH MARKDOWN & RESPONSIVE COMPARISON TABLES
+   Optimized for Dark Glassmorphic Fastshot Stage
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .rich-markdown-container {
@@ -8,13 +9,13 @@
   gap: 0.4rem;
   font-size: 0.95rem;
   line-height: 1.6;
-  color: #1e293b;
+  color: #e2e8f0;
 }
 
 .markdown-h3 {
   font-size: 1.12rem;
   font-weight: 700;
-  color: #0f172a;
+  color: #ffffff;
   margin: 0.6rem 0 0.2rem 0;
   display: flex;
   align-items: center;
@@ -24,13 +25,14 @@
 .markdown-h4 {
   font-size: 1.02rem;
   font-weight: 700;
-  color: #1e293b;
+  color: #f8fafc;
   margin: 0.5rem 0 0.15rem 0;
 }
 
 .markdown-paragraph {
   margin: 0;
   line-height: 1.55;
+  color: #e2e8f0;
 }
 
 .markdown-spacer {
@@ -46,7 +48,7 @@
 }
 
 .bullet-dot {
-  color: #3b82f6;
+  color: #38bdf8;
   font-size: 0.75rem;
   line-height: 1.6;
   flex-shrink: 0;
@@ -58,31 +60,32 @@
 
 .markdown-bold {
   font-weight: 700;
-  color: #0f172a;
+  color: #ffffff;
 }
 
 .markdown-italic {
   font-style: italic;
-  color: #475569;
+  color: #cbd5e1;
 }
 
 .markdown-code {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 4px;
   padding: 0.1rem 0.35rem;
   font-size: 0.86rem;
   font-family: monospace;
-  color: #0284c7;
+  color: #38bdf8;
 }
 
 /* Styled Responsive Markdown Tables */
 .markdown-table-wrapper {
   overflow-x: auto;
   margin: 0.6rem 0;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 16, 26, 0.65);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 .markdown-table {
@@ -93,18 +96,18 @@
 }
 
 .markdown-table th {
-  background: #f8fafc;
-  color: #334155;
+  background: rgba(255, 255, 255, 0.07);
+  color: #f8fafc;
   font-weight: 700;
-  padding: 0.6rem 0.85rem;
-  border-bottom: 2px solid #cbd5e1;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.14);
   white-space: nowrap;
 }
 
 .markdown-table td {
   padding: 0.55rem 0.85rem;
-  border-bottom: 1px solid #f1f5f9;
-  color: #1e293b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
 }
 
 .markdown-table tr:last-child td {
@@ -112,9 +115,9 @@
 }
 
 .markdown-table tr:nth-child(even) {
-  background-color: #fafbfc;
+  background-color: rgba(255, 255, 255, 0.025);
 }
 
 .markdown-table tr:hover {
-  background-color: #f1f5f9;
+  background-color: rgba(255, 255, 255, 0.06);
 }
