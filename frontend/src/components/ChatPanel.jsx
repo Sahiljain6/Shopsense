@@ -1,12 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import MessageBubble from "./MessageBubble";
-import QuickActionsToolbar from "./QuickActionsToolbar";
 import WelcomePromptGrid from "./WelcomePromptGrid";
 import AttachmentPreviewBar from "./AttachmentPreviewBar";
 import ComposerInput from "./ComposerInput";
 import TypingIndicator from "./TypingIndicator";
-import ChatHeaderBar from "./ChatHeaderBar";
 import { sendChat, fetchLink, getProducts, identifyImage, friendlyError } from "../api";
 import { getCartFromStorage } from "../hooks/useCart";
 import { CART_QUERIES, GREETING_QUERIES, URL_PATTERN } from "../utils/constants";
@@ -192,9 +190,6 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
 
   return (
     <div className="chatbot-widget-container">
-      {/* Blue Header */}
-      <ChatHeaderBar title="ShopSense" subtitle="AI Assistant" />
-
       {/* Messages */}
       <div className="chatbot-messages-stream">
         {messages.length === 0 && !loading ? (
@@ -212,9 +207,6 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
 
       {/* Attachment bar */}
       <AttachmentPreviewBar attachedFile={attachedFile} onRemove={removeAttachment} />
-
-      {/* Fastshot Quick Actions Toolbar */}
-      <QuickActionsToolbar onSelectAction={executeSend} />
 
       {/* Composer Card */}
       <ComposerInput
