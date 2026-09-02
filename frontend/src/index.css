@@ -1,4 +1,4 @@
-﻿/* ═══════════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
    ShopSense — Central Stylesheet Hub
    Modularized into domain stylesheets for high performance and maintainability.
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -10,6 +10,7 @@
 @import "./styles/products.css";
 @import "./styles/cart.css";
 @import "./styles/auth.css";
+@import "./styles/auth-modal.css";
 @import "./styles/chat.css";
 @import "./styles/markdown.css";
 @import "./styles/responsive.css";
