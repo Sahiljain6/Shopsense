@@ -2,10 +2,9 @@ import { useState, useEffect } from "react";
 import { useCart } from "../hooks/useCart";
 import CartDrawer from "./CartDrawer";
 import HeaderBrandMark from "./HeaderBrandMark";
-import FeaturePillBadges from "./FeaturePillBadges";
 import UserProfileMenu from "./UserProfileMenu";
 
-export default function Hero({ authed, onLogout, ambientMode = false, onToggleAmbient, onOpenAuth }) {
+export default function Hero({ authed, onLogout, onOpenAuth }) {
   const { cartItems, cartCount, cartTotal, removeFromCart, updateQty, clearCart } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState("cart"); // "cart" | "checkout" | "success"
@@ -42,21 +41,7 @@ export default function Hero({ authed, onLogout, ambientMode = false, onToggleAm
           </div>
         </div>
 
-        <FeaturePillBadges />
-
         <div className="navbar-right">
-          {/* Ambient Video Mode Toggle */}
-          <button
-            className={`nav-ambient-btn ${ambientMode ? "active" : ""}`}
-            type="button"
-            onClick={onToggleAmbient}
-            title={ambientMode ? "Disable Fastshot Cinematic Ambient Video" : "Enable Fastshot Cinematic Ambient Video"}
-            aria-label="Toggle ambient background"
-          >
-            <span className="ambient-icon">{ambientMode ? "🌄" : "🏔️"}</span>
-            <span className="ambient-text">Ambient</span>
-          </button>
-
           {/* Cart is strictly gated on authed */}
           {authed && (
             <button
