@@ -1,8 +1,21 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to ShopSense are documented in this file.
 
-## [1.1.0] - 2026-09-01
+## [1.2.0] - 2026-09-02
+
+### Added
+- **Single-Page Home Architecture**: Consolidated multi-page auth barrier into a single, instant-loading home page featuring the Fastshot composer and chat interface.
+- **Glassmorphic AuthModal Overlay**: Lightweight popup authentication modal with smooth Framer Motion entrance, dark backdrop blur, and ESC/outside-click dismissal.
+- **Segmented Auth Mode Switcher**: Instant one-click toggle between "Sign In" and "Create Account" within the modal without page reload.
+- **Interactive Navbar Auth CTAs**: Added "Sign In" text button and Fastshot-styled "Sign Up" gradient pill CTA in the header for guest visitors.
+- **Interactive Guest Composer Triggers**: Unauthenticated clicks on composer inputs or quick action prompts gracefully invoke the sign-in modal.
+- **Auth Unit Test Suite**: Added `auth.test.js` validating token storage lifecycle and friendly authentication error mappings.
+
+### Refactored
+- **Performance Optimization**: Removed heavy full-page SVG desk lamp and firefly rendering loop from initial visitor load, reducing bundle bloat and eliminating perceived page lag.
+- **Domain CSS Expansion**: Introduced `auth-modal.css` maintaining consistent glassmorphism design tokens.
+
 
 ### Added
 - **Fastshot Glassmorphic Interface**: Complete hero redesign with cinematic ambient background video toggle, radial lighting gradients, and floating composer dock.
