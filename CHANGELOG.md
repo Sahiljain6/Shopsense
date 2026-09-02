@@ -2,6 +2,14 @@
 
 All notable changes to ShopSense are documented in this file.
 
+## [1.2.2] - 2026-09-02
+
+### Changed & Refactored
+- **Ultra-Translucent Chatbot & Dock**: Drastically increased transparency across `.chatbot-widget-container` (`rgba(10, 14, 22, 0.18)`), composer dock (`rgba(18, 22, 34, 0.38)`), and navigation bar (`rgba(10, 14, 22, 0.35)`).
+- **Custom Invisible & Slim Scrollbar**: Replaced default Windows white scrollbar track on the chat stream with a custom thin, translucent thumb (`rgba(255, 255, 255, 0.16)`).
+- **Removed Header Pills**: Removed `22 Stacks`, `Deal Radar`, and `Live EMI` pill badges from the header navigation for an unencumbered layout.
+- **Ambient Mode Permanent by Default**: Made cinematic video background permanently active by default, removing the manual toggle button from the navbar.
+
 ## [1.2.1] - 2026-09-02
 
 ### Changed & Refactored
