@@ -2,6 +2,14 @@
 
 All notable changes to ShopSense are documented in this file.
 
+## [1.2.1] - 2026-09-02
+
+### Changed & Refactored
+- **Transparent Chatbot Stage**: Replaced solid white chatbot box with a transparent, dark frosted-glass container (`backdrop-filter: blur(28px)`) seamlessly integrated into the Fastshot ambient background.
+- **Removed Legacy Window Bar & Action Chips**: Removed the bright blue OS window title bar and the quick action chips (`Today's Deals`, `Compare Specs`, `EMI Calc`, `Pincode Check`) from the frontend UI for a clean, minimalist design.
+- **Glassmorphic Message Bubbles & Cards**: Restyled assistant messages, user bubbles, product cards, and welcome chips in dark frosted glass with high-contrast text and crisp typography.
+- **Model Training Integration**: Integrated Today's Deals, Spec Comparisons, EMI Amortization, and Pincode Logistics directly into the backend AI system prompt rather than relying on frontend chips.
+
 ## [1.2.0] - 2026-09-02
 
 ### Added
