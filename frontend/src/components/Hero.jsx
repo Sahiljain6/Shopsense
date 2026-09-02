@@ -5,7 +5,7 @@ import HeaderBrandMark from "./HeaderBrandMark";
 import FeaturePillBadges from "./FeaturePillBadges";
 import UserProfileMenu from "./UserProfileMenu";
 
-export default function Hero({ authed, onLogout, ambientMode = false, onToggleAmbient }) {
+export default function Hero({ authed, onLogout, ambientMode = false, onToggleAmbient, onOpenAuth }) {
   const { cartItems, cartCount, cartTotal, removeFromCart, updateQty, clearCart } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState("cart"); // "cart" | "checkout" | "success"
@@ -70,6 +70,25 @@ export default function Hero({ authed, onLogout, ambientMode = false, onToggleAm
               <span className="cart-label">Cart</span>
               {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
             </button>
+          )}
+
+          {!authed && onOpenAuth && (
+            <div className="navbar-auth-actions">
+              <button
+                className="nav-signin-btn"
+                type="button"
+                onClick={() => onOpenAuth("signin")}
+              >
+                Sign In
+              </button>
+              <button
+                className="nav-signup-btn fastshot-cta-btn"
+                type="button"
+                onClick={() => onOpenAuth("signup")}
+              >
+                <span>Sign Up</span>
+              </button>
+            </div>
           )}
 
           <UserProfileMenu authed={authed} onLogout={onLogout} />
