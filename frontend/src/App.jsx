@@ -2,12 +2,14 @@ import { useState, useCallback } from "react";
 import { getToken, clearToken } from "./api";
 import Hero from "./components/Hero";
 import ErrorBanner from "./components/ErrorBanner";
-import AuthCard from "./components/AuthCard";
+import AuthModal from "./components/AuthModal";
 import ChatPanel from "./components/ChatPanel";
 
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [error, setError] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState("signin");
   const [ambientMode, setAmbientMode] = useState(() => {
     return localStorage.getItem("shopsense_ambient_mode") === "true";
   });
@@ -20,9 +22,20 @@ export default function App() {
     });
   }, []);
 
+  const handleOpenAuth = useCallback((mode = "signin") => {
+    setAuthModalMode(mode);
+    setShowAuthModal(true);
+    setError(null);
+  }, []);
+
+  const handleCloseAuth = useCallback(() => {
+    setShowAuthModal(false);
+  }, []);
+
   const handleLogin = useCallback(() => {
     setAuthed(true);
     setError(null);
+    setShowAuthModal(false);
   }, []);
 
   const handleLogout = useCallback(() => {
@@ -55,14 +68,25 @@ export default function App() {
           onLogout={handleLogout}
           ambientMode={ambientMode}
           onToggleAmbient={handleToggleAmbient}
+          onOpenAuth={handleOpenAuth}
         />
         <ErrorBanner message={error} />
-        {!authed ? (
-          <AuthCard onLogin={handleLogin} onError={handleError} />
-        ) : (
-          <ChatPanel onError={handleError} onClearError={handleClearError} isLoggedIn={authed} />
-        )}
+        <ChatPanel
+          onError={handleError}
+          onClearError={handleClearError}
+          isLoggedIn={authed}
+          onOpenAuth={handleOpenAuth}
+        />
       </section>
+
+      {/* Lightweight Auth Modal Overlay */}
+      <AuthModal
+        isOpen={showAuthModal}
+        initialMode={authModalMode}
+        onClose={handleCloseAuth}
+        onLogin={handleLogin}
+        onError={handleError}
+      />
     </main>
   );
 }
