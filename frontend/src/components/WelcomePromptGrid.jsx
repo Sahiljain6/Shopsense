@@ -1,14 +1,22 @@
 import { POPULAR_PROMPTS } from "../utils/constants";
+import logoMarkUrl from "../assets/logo-mark.png";
 
 export default function WelcomePromptGrid({ onSelectPrompt }) {
   return (
     <div className="chat-welcome-state fastshot-welcome-card">
       <div className="welcome-brand-mark">
-        <svg width="32" height="32" viewBox="0 0 34 34">
-          <circle cx="17" cy="17" r="17" fill="#9C86CE" />
-          <circle cx="17" cy="17" r="8.6" fill="#FFFFFF" />
-          <circle cx="17" cy="17" r="3.7" fill="#151519" />
-        </svg>
+        <img
+          src={logoMarkUrl}
+          alt="ShopSense"
+          width="44"
+          height="44"
+          style={{
+            height: "44px",
+            width: "auto",
+            objectFit: "contain",
+            filter: "drop-shadow(0 2px 14px rgba(6, 182, 212, 0.5))",
+          }}
+        />
       </div>
       <h3 className="welcome-title">Describe a product. We'll find the best deal.</h3>
       <p className="welcome-desc">

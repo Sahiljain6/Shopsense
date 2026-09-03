@@ -103,6 +103,12 @@ export async function apiFetch(path, options = {}) {
           await new Promise((resolve) => setTimeout(resolve, 3000));
           continue;
         }
+        if (response.status === 401) {
+          clearToken();
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("auth-expired"));
+          }
+        }
         throw new ApiError(response.status, await responseMessage(response));
       }
       return await response.json();

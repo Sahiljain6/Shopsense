@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { getToken, clearToken } from "./api";
 import Hero from "./components/Hero";
 import ErrorBanner from "./components/ErrorBanner";
@@ -10,6 +10,16 @@ export default function App() {
   const [error, setError] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState("signin");
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setAuthed(false);
+      setShowAuthModal(true);
+      setAuthModalMode("signin");
+    };
+    window.addEventListener("auth-expired", handleAuthExpired);
+    return () => window.removeEventListener("auth-expired", handleAuthExpired);
+  }, []);
 
   const handleOpenAuth = useCallback((mode = "signin") => {
     setAuthModalMode(mode);

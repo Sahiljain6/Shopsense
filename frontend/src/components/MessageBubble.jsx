@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import ProductCard from "./ProductCard";
 import MarkdownRenderer from "./MarkdownRenderer";
+import logoMarkUrl from "../assets/logo-mark.png";
 
 export default function MessageBubble({ message }) {
   const [copied, setCopied] = useState(false);
@@ -29,12 +30,19 @@ export default function MessageBubble({ message }) {
             <span>Y</span>
           </div>
         ) : (
-          <div className="avatar-circle ai-avatar fastshot-avatar" title="ShopSense AI Engine">
-            <svg width="20" height="20" viewBox="0 0 34 34">
-              <circle cx="17" cy="17" r="17" fill="#9C86CE"/>
-              <circle cx="17" cy="17" r="8.6" fill="#FFFFFF"/>
-              <circle cx="17" cy="17" r="3.7" fill="#151519"/>
-            </svg>
+          <div className="avatar-circle ai-avatar" title="ShopSense AI">
+            <img
+              src={logoMarkUrl}
+              alt="ShopSense AI"
+              width="20"
+              height="20"
+              style={{
+                height: "20px",
+                width: "auto",
+                objectFit: "contain",
+                filter: "drop-shadow(0 0 6px rgba(6, 182, 212, 0.6))",
+              }}
+            />
           </div>
         )}
       </div>

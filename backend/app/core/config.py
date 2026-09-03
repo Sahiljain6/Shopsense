@@ -66,7 +66,7 @@ class Settings(BaseSettings):
             if not self.jwt_secret or self.jwt_secret == dummy:
                 raise RuntimeError("CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be set in production.")
         elif not self.jwt_secret:
-            self.jwt_secret = secrets.token_urlsafe(32)
+            self.jwt_secret = "shopsense-development-jwt-secret-key-2026-fixed"
         return self
 
     model_config = SettingsConfigDict(

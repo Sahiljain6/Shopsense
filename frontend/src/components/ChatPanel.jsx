@@ -5,7 +5,7 @@ import WelcomePromptGrid from "./WelcomePromptGrid";
 import AttachmentPreviewBar from "./AttachmentPreviewBar";
 import ComposerInput from "./ComposerInput";
 import TypingIndicator from "./TypingIndicator";
-import { sendChat, fetchLink, getProducts, identifyImage, friendlyError } from "../api";
+import { sendChat, fetchLink, getProducts, identifyImage, friendlyError, getToken } from "../api";
 import { getCartFromStorage } from "../hooks/useCart";
 import { CART_QUERIES, GREETING_QUERIES, URL_PATTERN } from "../utils/constants";
 
@@ -49,7 +49,8 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
 
   const executeSend = useCallback(
     async (textToSend) => {
-      if (!isLoggedIn) {
+      const hasAuth = isLoggedIn || Boolean(getToken());
+      if (!hasAuth) {
         if (onOpenAuth) {
           onOpenAuth("signin");
         }
@@ -132,52 +133,50 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
         setIsWarmingUp(true);
       }, 7000);
 
-      setMessages((prev) => {
-        const history = prev.slice(-8).map((m) => ({
-          role: m.role === "user" ? "user" : "assistant",
-          content: m.text,
-        }));
-        const next = [...prev, { role: "user", text }];
+      const history = messages.slice(-8).map((m) => ({
+        role: m.role === "user" ? "user" : "assistant",
+        content: m.text,
+      }));
+      setMessages((prev) => [...prev, { role: "user", text }]);
 
-        (async () => {
-          try {
-            const response = await sendChat(
-              text,
-              null,
-              history,
-              getCart(),
-              (status) => {
-                if (status === "waking") {
-                  setIsWarmingUp(true);
-                }
-              },
-              selectedModel
-            );
-            const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
-            let products = [];
-            if (ids.length > 0) {
-              const catalog = await getProducts("", 50);
-              products = catalog.filter((p) => ids.includes(p.id));
+      try {
+        const response = await sendChat(
+          text,
+          null,
+          history,
+          getCart(),
+          (status) => {
+            if (status === "waking") {
+              setIsWarmingUp(true);
             }
-            setMessages((prev2) => [...prev2, {
-              role: "assistant",
-              text: response.answer || "Here is what I found:",
-              response,
-              products,
-              model: response.model || selectedModel,
-            }]);
-          } catch (err) { onError(friendlyError(err)); }
-          finally {
-            if (warmUpTimerRef.current) clearTimeout(warmUpTimerRef.current);
-            setLoading(false);
-            setIsWarmingUp(false);
-          }
-        })();
-
-        return next;
-      });
+          },
+          selectedModel
+        );
+        const ids = Array.isArray(response.product_ids) ? response.product_ids : [];
+        let products = [];
+        if (ids.length > 0) {
+          const catalog = await getProducts("", 50);
+          products = catalog.filter((p) => ids.includes(p.id));
+        }
+        setMessages((prev2) => [
+          ...prev2,
+          {
+            role: "assistant",
+            text: response.answer || "Here is what I found:",
+            response,
+            products,
+            model: response.model || selectedModel,
+          },
+        ]);
+      } catch (err) {
+        onError(friendlyError(err));
+      } finally {
+        if (warmUpTimerRef.current) clearTimeout(warmUpTimerRef.current);
+        setLoading(false);
+        setIsWarmingUp(false);
+      }
     },
-    [attachedFile, inputText, onClearError, onError]
+    [isLoggedIn, onOpenAuth, attachedFile, inputText, messages, selectedModel, onClearError, onError]
   );
 
   const handleSubmit = (e) => {
