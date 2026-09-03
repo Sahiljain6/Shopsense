@@ -37,8 +37,21 @@ export default function Hero({ authed, onLogout, onOpenAuth }) {
       <header className="shopsense-navbar fastshot-navbar">
         <div className="navbar-left">
           <div className="navbar-brand">
-            <HeaderBrandMark size={30} />
+            <HeaderBrandMark size={32} />
           </div>
+        </div>
+
+        <div className="navbar-center-links">
+          <span className="nav-feature-pill radar-active" title="Real-time multi-portal price tracking active">
+            <span className="nav-radar-dot" />
+            <span>Deal Radar Live</span>
+          </span>
+          <span className="nav-feature-pill" title="Amazon, Flipkart & Croma price comparison">
+            <span>⚖️ 3-Store Compare</span>
+          </span>
+          <span className="nav-feature-pill" title="Verified spec sheets & bank EMI breakdown">
+            <span>💳 No-Cost EMI</span>
+          </span>
         </div>
 
         <div className="navbar-right">

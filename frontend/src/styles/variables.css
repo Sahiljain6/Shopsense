@@ -1,28 +1,75 @@
-﻿/* ═══════════════════════════════════════════════════════════════════════════
-   ShopSense — Design System & Custom Properties
+/* ═══════════════════════════════════════════════════════════════════════════
+   ShopSense — Design System & Custom Properties (World-Class Craft)
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --font-main: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Typography Families */
+  --font-display: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-body: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* Color System */
-  --bg-page: #0b0f19;
-  --bg-auth: #ffffff;
-  --brand-blue: #2563eb;
-  --brand-blue-hover: #1d4ed8;
+  /* Color System — Cyber Cyan & AI Glow */
+  --ss-cyan-300: #67e8f9;
+  --ss-cyan-400: #22d3ee;
+  --ss-cyan-500: #06b6d4;
+  --ss-cyan-600: #0891b2;
+  --ss-cyan-glow: rgba(6, 182, 212, 0.35);
+  --ss-cyan-glow-strong: rgba(6, 182, 212, 0.65);
 
+  /* Color System — Deal Radar Amber & Savings */
+  --ss-amber-400: #fbbf24;
+  --ss-amber-500: #f59e0b;
+  --ss-orange-500: #f97316;
+  --ss-amber-glow: rgba(245, 158, 11, 0.35);
+
+  /* Surfaces & Glassmorphism */
+  --ss-canvas: #07090e;
+  --ss-surface-1: rgba(13, 17, 26, 0.45);
+  --ss-surface-2: rgba(20, 26, 38, 0.55);
+  --ss-surface-3: rgba(27, 35, 52, 0.65);
+  --ss-surface-card: rgba(255, 255, 255, 0.04);
+  --ss-surface-card-hover: rgba(255, 255, 255, 0.08);
+
+  /* Hairlines & Specular Highlights */
+  --ss-border-glass: rgba(255, 255, 255, 0.08);
+  --ss-border-glass-strong: rgba(255, 255, 255, 0.16);
+  --ss-border-focus: rgba(6, 182, 212, 0.55);
+  --ss-specular: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+
+  /* Text & Contrast */
+  --ss-text-white: #ffffff;
+  --ss-text-primary: #f1f5f9;
+  --ss-text-secondary: #cbd5e1;
+  --ss-text-muted: #94a3b8;
+  --ss-text-tertiary: #64748b;
+
+  /* Shadows */
+  --ss-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --ss-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --ss-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.48);
+  --ss-shadow-cyan: 0 8px 32px rgba(6, 182, 212, 0.25);
+
+  /* Motion & Easing */
+  --ss-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ss-ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ss-dur-fast: 0.15s;
+  --ss-dur-normal: 0.24s;
+
+  /* Legacy Compatibility Variables */
+  --font-main: var(--font-body);
+  --bg-page: var(--ss-canvas);
+  --brand-blue: var(--ss-cyan-500);
+  --brand-blue-hover: var(--ss-cyan-400);
   --text-dark: #18181b;
-  --text-secondary: #4b5563;
-  --text-muted: #6b7280;
-  --text-light: #ffffff;
-
-  --border-light: #e4e4e7;
-  --border-subtle: #f3f4f6;
-
+  --text-secondary: var(--ss-text-secondary);
+  --text-muted: var(--ss-text-muted);
+  --text-light: var(--ss-text-white);
+  --border-light: var(--ss-border-glass);
   --radius-pill: 9999px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  --radius-xl: 22px;
 }
 
 *, *::before, *::after {
@@ -31,29 +78,51 @@
   padding: 0;
 }
 
-body {
-  font-family: var(--font-main);
-  background-color: var(--bg-page);
-  color: var(--text-dark);
-  min-height: 100vh;
+html, body {
+  height: 100%;
+  background-color: var(--ss-canvas);
+  color: var(--ss-text-primary);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-button, input {
+button, input, textarea, select {
   font-family: inherit;
+  color: inherit;
 }
 
 button {
   cursor: pointer;
   border: none;
   background: none;
+  user-select: none;
 }
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .hidden {
   display: none !important;
 }
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  transition: background 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.4);
+}
+
