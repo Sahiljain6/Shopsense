@@ -22,6 +22,10 @@ def upgrade() -> None:
     conn = op.get_bind()
     dialect = conn.dialect.name
     insp = sa.inspect(conn)
+    tables = insp.get_table_names()
+    if "users" not in tables:
+        return
+
     cols = [c["name"] for c in insp.get_columns("users")]
     indexes = [idx["name"] for idx in insp.get_indexes("users")]
 

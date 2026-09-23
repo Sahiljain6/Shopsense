@@ -1,4 +1,4 @@
-﻿"""add sku to products
+"""add sku to products
 
 Revision ID: 0001_add_sku
 Revises: 
@@ -15,6 +15,11 @@ depends_on = None
 
 def upgrade() -> None:
     conn = op.get_bind()
+    insp = sa.inspect(conn)
+    tables = insp.get_table_names()
+    if "products" not in tables:
+        return
+
     if conn.dialect.name == "postgresql":
         conn.execute(sa.text("ALTER TABLE products ADD COLUMN IF NOT EXISTS sku VARCHAR(120);"))
         conn.execute(sa.text("CREATE UNIQUE INDEX IF NOT EXISTS ix_products_sku ON products (sku);"))

@@ -28,6 +28,12 @@ def run_migrations_online() -> None:
     connectable = config.attributes.get("connection", None)
 
     def do_run_migrations(connection):
+        # Ensure base schema tables exist if starting with a brand new empty database
+        try:
+            target_metadata.create_all(bind=connection)
+        except Exception as e:
+            print(f"[ALEMBIC NOTICE] Base metadata creation notice: {e}")
+
         # Self-healing: if database has an unknown or orphaned revision, heal it so migrations never crash loop
         try:
             from sqlalchemy import inspect, text

@@ -33,36 +33,92 @@ ShopSense is a full-stack AI shopping assistant purpose-built for Indian e-comme
 
 ## 🏗️ Architecture
 
+![ShopSense System Architecture](docs/architecture.png)
+
+<details>
+<summary>📐 View Interactive Mermaid Flowchart</summary>
+
+```mermaid
+flowchart TD
+    shopper(["Shopper"])
+    google_id(["Google Identity"])
+
+    subgraph ShoppingInterface["Shopping interface"]
+        app_shell["App shell<br/><code>[App.jsx]</code>"]
+        chat_panel["Chat panel<br/><code>[ChatPanel.jsx]</code>"]
+        auth_ui["Auth UI<br/><code>[AuthModal.jsx]</code>"]
+        cart_drawer["Cart interface<br/><code>[CartDrawer.jsx]</code>"]
+        product_card["Product cards<br/><code>[ProductCard.jsx]</code>"]
+        api_client["API client<br/><code>[api.js]</code>"]
+    end
+
+    razorpay(["Razorpay sandbox"])
+
+    subgraph ApiIdentity["API and identity"]
+        rest_routes["REST routes<br/><code>[routes.py]</code>"]
+        token_security["Token security<br/><code>[security.py]</code>"]
+    end
+
+    subgraph ShoppingIntelligence["Shopping intelligence"]
+        ai_orch["AI orchestrator<br/><code>[ai.py]</code>"]
+        scraper["Link inspection<br/><code>[scraper.py]</code>"]
+        finance["Finance planner<br/><code>[finance.py]</code>"]
+        logistics["Delivery estimator<br/><code>[logistics.py]</code>"]
+        vision["Visual inspection<br/><code>[vision.py]</code>"]
+        catalog_ranking["Catalog ranking<br/><code>[search.py]</code>"]
+        live_search["Live retailer search<br/><code>[live_search.py]</code>"]
+        agent_graph["Agent graph<br/><code>[graph.py]</code>"]
+    end
+
+    subgraph CatalogState["Catalog and state"]
+        cart_state["Browser cart state<br/><code>[useCart.js]</code>"]
+        catalog_svc["Catalog service<br/><code>[catalog.py]</code>"]
+        db_models["Product and user models<br/><code>[entities.py]</code>"]
+        db_session["Database sessions<br/><code>[session.py]</code>"]
+    end
+
+    relational_db[("Relational database")]
+    ai_providers(["AI providers"])
+    retailer_sources(["Retailer search sources"])
+
+    %% User & Auth flows
+    shopper -->|uses| app_shell
+    google_id -->|supplies identity| app_shell
+    app_shell -->|renders| chat_panel
+    app_shell -->|opens| auth_ui
+    auth_ui -->|authenticates| api_client
+    chat_panel -->|submits chat| product_card
+    chat_panel -.-> api_client
+    product_card -->|adds products| cart_drawer
+    product_card -.->|optional checkout| razorpay
+    cart_drawer -->|updates| cart_state
+    api_client -->|REST requests| rest_routes
+
+    %% Backend Routing
+    rest_routes -->|verifies tokens| token_security
+    rest_routes -->|searches products| catalog_svc
+    rest_routes -->|reads and writes| db_session
+    rest_routes -->|dispatches chat| ai_orch
+    rest_routes -->|inspects links| scraper
+    rest_routes -->|provides planning| finance
+    rest_routes -->|estimates delivery| logistics
+    rest_routes -->|handles images| vision
+
+    %% Intelligence & Agents
+    ai_orch -->|grounds results| catalog_ranking
+    ai_orch -->|searches retailers| live_search
+    ai_orch -->|optional graph| agent_graph
+    ai_orch -->|requests generation| ai_providers
+    catalog_ranking -->|reads catalog| db_session
+    live_search -->|queries prices| retailer_sources
+
+    %% Data layer
+    catalog_svc -->|queries through| db_session
+    db_models -->|maps records| relational_db
+    db_session -->|connects| relational_db
 ```
 
-┌──────────────────────────────────────────────────────────┐
-│                     Vercel (React/Vite)                  │
-│  AuthCard  •  ChatPanel  •  ProductCard  •  Hero/Cart    │
-└───────────────────────────┬──────────────────────────────┘
-                            │ HTTPS / REST
-┌───────────────────────────▼──────────────────────────────┐
-│              Render — FastAPI (Python 3.12)               │
-│                                                           │
-│  /chat  →  AIOrchestrator                                 │
-│              ├── search_catalog()   (SQLAlchemy + Postgres)│
-│              ├── live_search()      (DuckDuckGo / Serper) │
-│              ├── LangGraph pipeline (optional)            │
-│              └── AI provider router                       │
-│                    ├── Gemini 2.5 Flash (primary)        │
-│                    ├── Groq / Llama-3 (fallback)         │
-│                    └── OpenAI GPT-4o-mini (fallback)     │
-│                                                           │
-│  /auth  →  JWT (python-jose) + bcrypt                    │
-│  /cart  →  localStorage-first, server-synced             │
-│  Rate limiting: slowapi (30 req/min chat, 5 req/min reg) │
-└───────────────────────────┬──────────────────────────────┘
-                            │
-┌───────────────────────────▼──────────────────────────────┐
-│           Render Postgres (free tier, Alembic migrations) │
-│  users • categories • products • reviews • wishlist       │
-│  seed_version (version-gated re-seed on deploy)           │
-└──────────────────────────────────────────────────────────┘
-```
+</details>
 
 ---
 

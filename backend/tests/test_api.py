@@ -208,6 +208,38 @@ def test_alembic_self_healing_orphaned_revision(db_session) -> None:
     assert current == "0003_google_auth"
 
 
+def test_alembic_upgrade_on_fresh_empty_database() -> None:
+    """Ensure alembic upgrade head runs cleanly on a completely fresh/empty database without table-not-found errors."""
+    from sqlalchemy import create_engine, text
+    from alembic.config import Config
+    from alembic import command
+    from pathlib import Path
+
+    backend_dir = Path(__file__).resolve().parent.parent
+    alembic_ini = backend_dir / "alembic.ini"
+
+    # Create a completely fresh in-memory SQLite engine with zero tables
+    fresh_engine = create_engine("sqlite:///:memory:")
+    cfg = Config(str(alembic_ini))
+    cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+
+    with fresh_engine.connect() as conn:
+        cfg.attributes["connection"] = conn
+        command.upgrade(cfg, "head")
+
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+        assert current == "0003_google_auth"
+
+        # Verify tables exist
+        from sqlalchemy import inspect
+        insp = inspect(conn)
+        tables = insp.get_table_names()
+        assert "products" in tables
+        assert "users" in tables
+        assert "categories" in tables
+
+
+
 def test_jwt_secret_validation_in_production_and_dev(monkeypatch) -> None:
     """Ensure Settings raises a RuntimeError if JWT_SECRET is not set in production,
     and generates a random-per-run secret in development."""
