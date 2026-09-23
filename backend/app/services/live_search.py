@@ -1,12 +1,19 @@
 import re
+import warnings
 import httpx
 
 try:
-    from duckduckgo_search import DDGS
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            from duckduckgo_search import DDGS
     HAS_DDG = True
 except ImportError:
     DDGS = None
     HAS_DDG = False
+
 
 from app.services.trust_engine import evaluate_store_trust, filter_and_rank_trustworthy_deals
 
@@ -39,8 +46,10 @@ def search_live_deals(query: str, max_results: int = 5) -> list[dict[str, str | 
 
     if HAS_DDG and DDGS is not None:
         try:
-            with DDGS() as ddgs:
-                raw_results = list(ddgs.text(search_term, max_results=max_results * 4))
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                with DDGS() as ddgs:
+                    raw_results = list(ddgs.text(search_term, max_results=max_results * 4))
                 for item in raw_results:
                     link = (item.get("href") or item.get("link") or "").lower()
                     title = item.get("title") or ""

@@ -248,23 +248,35 @@ def get_active_groq_models(api_key: str) -> list[str]:
     return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
 
 
+AVAILABLE_GEMINI_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+    "gemini-2.5-pro",
+]
+
+
 def get_active_gemini_models(api_key: str) -> list[str]:
-    """Dynamically fetch live Gemini models supporting generateContent from Google's ListModels API."""
+    """Dynamically fetch live Gemini models supporting generateContent from Google's ListModels API,
+    filtering out TTS, audio-only, and embedding models."""
     clean_key = api_key.strip().strip("'").strip('"')
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
     try:
         import httpx
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(timeout=3) as client:
             resp = client.get(url)
             if resp.status_code == 200:
                 data = resp.json()
                 models_data = data.get("models", [])
                 valid_ids = []
+                EXCLUDE_SUBSTRINGS = ["tts", "embedding", "whisper", "imagen", "learnlm", "aqa", "realtime", "robotics"]
                 for m in models_data:
                     methods = m.get("supportedGenerationMethods", [])
                     name = m.get("name", "").removeprefix("models/")
-                    # Exclude retired 1.0/1.5 models if present
-                    if "generateContent" in methods and name and not any(retired in name for retired in ["1.0", "1.5"]):
+                    if "generateContent" in methods and name:
+                        if any(ex in name.lower() for ex in EXCLUDE_SUBSTRINGS):
+                            continue
                         valid_ids.append(name)
                 if valid_ids:
                     flash_models = [m for m in valid_ids if "flash" in m.lower()]
@@ -276,7 +288,7 @@ def get_active_gemini_models(api_key: str) -> list[str]:
     except Exception as err:
         print(f"Notice fetching Gemini model list dynamically: {err}")
 
-    return ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+    return list(AVAILABLE_GEMINI_MODELS)
 
 
 
@@ -529,7 +541,9 @@ class AIOrchestrator:
         if self.provider == "gemini" and self.gemini_api_key:
             # Try official Gemini REST endpoint with live models
             gemini_contents = _build_gemini_contents(user, history)
-            models_to_try = getattr(self, "active_gemini_models", None) or ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+            models_to_try = getattr(self, "active_gemini_models", None) or list(AVAILABLE_GEMINI_MODELS)
+            import httpx
+            _gemini_chat_timeout = httpx.Timeout(connect=2.0, read=3.0, write=2.0, pool=1.0)
             for model_name in models_to_try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_api_key}"
                 payload = {
@@ -539,8 +553,7 @@ class AIOrchestrator:
                     "contents": gemini_contents
                 }
                 try:
-                    import httpx
-                    with httpx.Client(timeout=15) as client:
+                    with httpx.Client(timeout=_gemini_chat_timeout) as client:
                         resp = client.post(url, json=payload)
                         if resp.status_code == 200:
                             data = resp.json()
@@ -864,10 +877,9 @@ class AIOrchestrator:
         if self.provider == "gemini" and getattr(self, "gemini_api_key", None):
             import httpx as _httpx
             gemini_contents = _build_gemini_contents(user, history)
-            models_to_try = getattr(self, "active_gemini_models", None) or ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
-            # Tighter per-attempt timeout: connect 5s, read 10s (a single completion
-            # shouldn't need more; if it does that's worth knowing via a distinct log).
-            _gemini_timeout = _httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=2.0)
+            models_to_try = getattr(self, "active_gemini_models", None) or list(AVAILABLE_GEMINI_MODELS)
+            # Strict per-attempt timeout: connect 2s, read 3s to preserve overall budget
+            _gemini_timeout = _httpx.Timeout(connect=2.0, read=3.0, write=2.0, pool=1.0)
             for model_name in models_to_try:
                 if not _budget_ok(f"Gemini/{model_name}"):
                     break
