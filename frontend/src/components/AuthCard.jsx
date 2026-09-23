@@ -38,12 +38,23 @@ export default function AuthCard({ onLogin, onError }) {
   async function handleSubmit(e) {
     e.preventDefault();
     onError(null);
+
+    // Client-side guard — prevent sending a payload that will 422
+    if (isRegister && password.length < 8) {
+      onError("Password must be at least 8 characters long.");
+      return;
+    }
+    if (!email || !password) {
+      onError("Email and password are required.");
+      return;
+    }
+
     setLoading(true);
     setLampState("loading");
 
     try {
-      const payload = { email, password };
-      if (isRegister && fullName) payload.full_name = fullName;
+      const payload = { email: email.trim().toLowerCase(), password };
+      if (isRegister && fullName) payload.full_name = fullName.trim();
       const token = isRegister ? await register(payload) : await login(payload);
       setToken(token.access_token);
       setLampState("success");

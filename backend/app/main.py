@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.api.routes import router
@@ -579,6 +581,22 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 app = FastAPI(title="ShopSense API - India Edition", version="1.1.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Log every 422 with the field-level errors so auth schema mismatches are immediately visible in logs."""
+    print(
+        f"[VALIDATION ERROR] {request.method} {request.url.path} — "
+        f"errors: {exc.errors()} — body: {exc.body!r}"
+    )
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "detail": exc.errors(),
+            "hint": "Check that all required fields are present and meet the schema requirements.",
+        },
+    )
 
 app.add_middleware(
     CORSMiddleware,

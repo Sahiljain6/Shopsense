@@ -1,5 +1,5 @@
 from enum import Enum
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class ModelPersona(str, Enum):
@@ -20,14 +20,34 @@ class RefreshTokenRequest(BaseModel):
 
 
 class UserCreate(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8)
-    full_name: str = ""
+    email: EmailStr = Field(description="Valid email address")
+    password: str = Field(
+        min_length=8,
+        description="Password must be at least 8 characters long",
+    )
+    full_name: str = Field(default="", description="Optional display name")
+
+    @field_validator("password")
+    @classmethod
+    def password_not_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Password cannot be blank.")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def email_lowercase(cls, v: str) -> str:
+        return v.strip().lower()
 
 
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, description="Account password")
+
+    @field_validator("email")
+    @classmethod
+    def email_lowercase(cls, v: str) -> str:
+        return v.strip().lower()
 
 
 class GoogleAuthRequest(BaseModel):
@@ -38,8 +58,9 @@ class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     email: EmailStr
-    full_name: str
+    full_name: str = ""
     is_admin: bool
+    google_id: str | None = None
 
 
 class ProductBase(BaseModel):

@@ -49,11 +49,22 @@ export default function AuthModal({
     e.preventDefault();
     if (loading) return;
     onError(null);
+
+    // Client-side guard — prevent sending a payload that will 422
+    if (isRegister && password.length < 8) {
+      onError("Password must be at least 8 characters long.");
+      return;
+    }
+    if (!email || !password) {
+      onError("Email and password are required.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const payload = { email, password };
-      if (isRegister && fullName) payload.full_name = fullName;
+      const payload = { email: email.trim().toLowerCase(), password };
+      if (isRegister && fullName) payload.full_name = fullName.trim();
 
       const token = isRegister ? await register(payload) : await login(payload);
       setToken(token.access_token);

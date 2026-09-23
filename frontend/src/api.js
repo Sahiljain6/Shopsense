@@ -31,6 +31,7 @@ export function friendlyError(error) {
     if (error.status === 401) return `Authentication error: ${message}`;
     if (error.status === 403) return `Authorization error: ${message}`;
     if (error.status === 404) return `Endpoint not found: ${message}`;
+    if (error.status === 422) return `Registration error: ${message}`;
     if (error.status >= 500) return `Server error (${error.status}): ${message}`;
     return `${error.status}: ${message}`;
   }
@@ -42,6 +43,15 @@ async function responseMessage(response) {
   if (!text) return response.statusText || "Request failed";
   try {
     const data = JSON.parse(text);
+    // Handle Pydantic v2 validation errors: detail is an array of {loc, msg, type}
+    if (Array.isArray(data.detail)) {
+      return data.detail
+        .map((e) => {
+          const field = e.loc ? e.loc.slice(1).join(".") : "field";
+          return `${field}: ${e.msg}`;
+        })
+        .join("; ");
+    }
     return data.detail || data.message || text;
   } catch {
     return text;
