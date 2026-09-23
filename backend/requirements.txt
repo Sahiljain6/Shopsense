@@ -17,7 +17,7 @@ psycopg2-binary
 pydantic[email]
 ollama
 beautifulsoup4==4.12.3
-duckduckgo-search
+ddgs>=6.0.0
 slowapi==0.1.10
 google-auth==2.35.0
 

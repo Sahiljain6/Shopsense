@@ -58,11 +58,11 @@ def test_transaction_rollback_resilience(client, db_session) -> None:
 
 
 def test_gemini_live_model_discovery() -> None:
-    """Ensure get_active_gemini_models returns active production models and filters non-text/TTS models."""
+    """Ensure get_active_gemini_models returns active production models (1.5-flash, 1.5-pro) and filters non-text/TTS models."""
     from app.services.ai import get_active_gemini_models
     models = get_active_gemini_models("test-invalid-key")
-    assert "gemini-2.5-flash" in models
     assert "gemini-1.5-flash" in models
+    assert "gemini-1.5-pro" in models
     assert not any("tts" in m.lower() for m in models)
     assert not any("embedding" in m.lower() for m in models)
     assert not any("1.0" in m for m in models)
