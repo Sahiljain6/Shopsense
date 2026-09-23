@@ -43,6 +43,9 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173,"
         "https://shopsense-theta.vercel.app,"
         "https://shopsense.vercel.app,"
+        "https://shopsense-4444.vercel.app,"
+        "https://shopsense-4444-git-main-sahil-jain-s-projects.vercel.app,"
+        "https://shopsense-4444-m4xke85sl-sahil-jain-s-projects.vercel.app,"
         "https://shopsense-nv1k3jgjm-sahil-jain-s-projects.vercel.app,"
         "https://shopsense-gmeelq7ml-sahil-jain-s-projects.vercel.app"
     )
