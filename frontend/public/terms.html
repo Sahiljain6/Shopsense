@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Service — ShopSense AI Shopping Copilot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #070b14;
+      --card-bg: rgba(15, 23, 42, 0.75);
+      --border: rgba(255, 255, 255, 0.1);
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --heading: #f8fafc;
+      --accent: #06b6d4;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(ellipse at 50% 0%, rgba(6, 182, 212, 0.08) 0%, transparent 60%),
+        radial-gradient(circle at 10% 20%, rgba(37, 99, 235, 0.06) 0%, transparent 50%);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 3rem 1.5rem;
+    }
+    .container {
+      max-width: 820px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3rem 2.5rem;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 40px -15px rgba(0,0,0,0.7);
+    }
+    .brand-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(6, 182, 212, 0.1);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 1.5rem;
+    }
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--heading);
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
+    .effective-date {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.25rem;
+    }
+    h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--heading);
+      margin-top: 2rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h2::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 1.1em;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+    p, li {
+      color: var(--text);
+      font-size: 0.98rem;
+      margin-bottom: 1rem;
+    }
+    ul {
+      padding-left: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+    li {
+      margin-bottom: 0.4rem;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .footer-nav {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    @media (max-width: 640px) {
+      body { padding: 1rem; }
+      .container { padding: 2rem 1.5rem; }
+      h1 { font-size: 1.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="brand-pill">
+      <span>shop</span><span style="font-weight:900">sense•</span> Terms of Service
+    </div>
+    <h1>Terms of Service</h1>
+    <div class="effective-date">Last updated: September 24, 2026</div>
+
+    <p>
+      Please read these Terms of Service ("Terms") carefully before using the <strong>ShopSense</strong> web application and AI assistant services operated by ShopSense ("we", "us", or "our").
+    </p>
+
+    <h2>1. Acceptance of Terms</h2>
+    <p>
+      By accessing our application, creating an account, or authenticating via Google OAuth, you agree to be bound by these Terms. If you disagree with any part of the terms, you may not access the service.
+    </p>
+
+    <h2>2. Description of Service</h2>
+    <p>
+      ShopSense is an AI-powered conversational shopping copilot designed for Indian consumers. It provides product catalog search, live e-commerce price comparison, deal analysis, and product recommendations in Indian Rupees (₹).
+    </p>
+
+    <h2>3. User Accounts & Google Authentication</h2>
+    <p>
+      When you create an account or sign in with Google:
+    </p>
+    <ul>
+      <li>You agree to provide accurate and complete identity details.</li>
+      <li>You are responsible for maintaining the confidentiality of your credentials and account sessions.</li>
+      <li>You must notify us immediately if you suspect unauthorized access to your account.</li>
+    </ul>
+
+    <h2>4. Acceptable Use Policy</h2>
+    <p>You agree not to engage in any of the following prohibited activities:</p>
+    <ul>
+      <li>Using automated scripts, bots, or scrapers to overwhelm or flood our API endpoints.</li>
+      <li>Attempting to bypass security headers, rate limits, or SSRF protection boundaries.</li>
+      <li>Submitting harmful, abusive, or illegal prompts to the AI assistant.</li>
+      <li>Impersonating another individual or accessing accounts without authorization.</li>
+    </ul>
+
+    <h2>5. Third-Party Retailers & Pricing Accuracy</h2>
+    <p>
+      ShopSense aggregates public pricing information from third-party Indian e-commerce merchants (such as Amazon India, Flipkart, Croma, Reliance Digital).
+    </p>
+    <ul>
+      <li>Product prices, availability, coupons, and specifications fluctuate rapidly and are controlled solely by external sellers.</li>
+      <li>ShopSense is an independent shopping assistant and is not directly affiliated with or endorsing any individual third-party merchant unless explicitly stated.</li>
+      <li>Always verify final prices and return policies on the merchant's official checkout page before completing any financial transactions.</li>
+    </ul>
+
+    <h2>6. Disclaimer of Warranties & AI Recommendations</h2>
+    <p>
+      The AI recommendations, price forecasts, and comparisons are provided on an "AS IS" and "AS AVAILABLE" basis for informational shopping assistance. While we strive for extreme accuracy with verified catalog data, ShopSense makes no warranties regarding the infallibility of AI-generated responses.
+    </p>
+
+    <h2>7. Limitation of Liability</h2>
+    <p>
+      In no event shall ShopSense or its developers be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the service or third-party purchases made based on recommendations.
+    </p>
+
+    <h2>8. Changes to Terms</h2>
+    <p>
+      We reserve the right to modify or replace these Terms at any time. Continued use of ShopSense following any revisions indicates your acceptance of the updated terms.
+    </p>
+
+    <h2>9. Contact Us</h2>
+    <p>
+      For any legal or service inquiries, please contact:
+    </p>
+    <p>
+      <strong>ShopSense Team</strong><br />
+      Email: <a href="mailto:sahil.jain24@sakec.ac.in">sahil.jain24@sakec.ac.in</a><br />
+      Developer: Sahil Jain
+    </p>
+
+    <div class="footer-nav">
+      <div>© 2026 ShopSense. All rights reserved.</div>
+      <div>
+        <a href="/">Home</a> • 
+        <a href="/privacy.html">Privacy Policy</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

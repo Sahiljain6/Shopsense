@@ -363,6 +363,14 @@ export default function AuthModal({
                 )}
               </button>
             </form>
+
+            {/* Legal compliance links for Google OAuth & Users */}
+            <div style={{ textAlign: "center", fontSize: "0.76rem", color: "#64748b", marginTop: "0.25rem" }}>
+              By continuing, you agree to our{" "}
+              <a href="/terms.html" target="_blank" rel="noopener noreferrer" style={{ color: "#06b6d4", textDecoration: "none" }}>Terms of Service</a>
+              {" "}and{" "}
+              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: "#06b6d4", textDecoration: "none" }}>Privacy Policy</a>.
+            </div>
           </motion.div>
         </div>
       )}

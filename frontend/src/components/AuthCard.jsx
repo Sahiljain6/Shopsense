@@ -594,13 +594,21 @@ export default function AuthCard({ onLogin, onError }) {
               className="auth-link-btn"
               onClick={() => {
                 setIsRegister((prev) => !prev);
-                onError(null);
+                clearErrorMessage();
               }}
             >
               {isRegister
                 ? "Already have an account? Sign in"
                 : "Don't have an account? Sign up"}
             </button>
+          </div>
+
+          {/* Legal compliance links for Google OAuth */}
+          <div style={{ textAlign: "center", fontSize: "0.76rem", color: "#64748b", marginTop: "0.75rem" }}>
+            By signing in, you accept our{" "}
+            <a href="/terms.html" target="_blank" rel="noopener noreferrer" style={{ color: "#06b6d4", textDecoration: "none" }}>Terms</a>
+            {" "}and{" "}
+            <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: "#06b6d4", textDecoration: "none" }}>Privacy Policy</a>.
           </div>
         </motion.div>
           ) : (
