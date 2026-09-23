@@ -34,6 +34,7 @@ ShopSense is a full-stack AI shopping assistant purpose-built for Indian e-comme
 ## 🏗️ Architecture
 
 ```
+
 ┌──────────────────────────────────────────────────────────┐
 │                     Vercel (React/Vite)                  │
 │  AuthCard  •  ChatPanel  •  ProductCard  •  Hero/Cart    │
