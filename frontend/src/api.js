@@ -172,11 +172,16 @@ export async function register(payload) {
   return login({ email: payload.email, password: payload.password });
 }
 
-export const googleLogin = (credential) =>
-  apiFetch("/auth/google", {
+export const googleLogin = (credentialOrPayload) => {
+  const payload =
+    typeof credentialOrPayload === "string"
+      ? { credential: credentialOrPayload }
+      : credentialOrPayload;
+  return apiFetch("/auth/google", {
     method: "POST",
-    body: JSON.stringify({ credential }),
+    body: JSON.stringify(payload),
   });
+};
 
 export const sendChat = (message, mode, history, cart = [], onStatusChange = null, model = "Sonnet 4.5") =>
   apiFetch("/chat", {

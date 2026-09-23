@@ -27,6 +27,17 @@ export default function AuthCard({ onLogin, onError }) {
   // Real form feedback state: "idle" | "loading" | "success" | "error"
   const [lampState, setLampState] = useState("idle");
   const [isCordPulled, setIsCordPulled] = useState(false);
+  const [localError, setLocalError] = useState(null);
+
+  const setErrorMessage = (msg) => {
+    setLocalError(msg);
+    if (onError) onError(msg);
+  };
+
+  const clearErrorMessage = () => {
+    setLocalError(null);
+    if (onError) onError(null);
+  };
 
   // Respect user's reduced motion preferences by turning lamp on immediately
   useEffect(() => {
@@ -37,15 +48,15 @@ export default function AuthCard({ onLogin, onError }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    onError(null);
+    clearErrorMessage();
 
     // Client-side guard — prevent sending a payload that will 422
     if (isRegister && password.length < 8) {
-      onError("Password must be at least 8 characters long.");
+      setErrorMessage("Password must be at least 8 characters long.");
       return;
     }
     if (!email || !password) {
-      onError("Email and password are required.");
+      setErrorMessage("Email and password are required.");
       return;
     }
 
@@ -64,7 +75,7 @@ export default function AuthCard({ onLogin, onError }) {
       }, 550);
     } catch (err) {
       setLampState("error");
-      onError(friendlyError(err));
+      setErrorMessage(friendlyError(err));
       setTimeout(() => {
         setLampState("idle");
       }, 1500);
@@ -74,15 +85,15 @@ export default function AuthCard({ onLogin, onError }) {
   }
 
   async function handleGoogleSuccess(credentialResponse) {
-    onError(null);
+    clearErrorMessage();
     setLoading(true);
     setLampState("loading");
 
     try {
-      if (!credentialResponse?.credential) {
+      if (!credentialResponse?.credential && !credentialResponse?.access_token) {
         throw new Error("No credential returned from Google sign-in.");
       }
-      const token = await googleLogin(credentialResponse.credential);
+      const token = await googleLogin(credentialResponse.credential || credentialResponse);
       setToken(token.access_token);
       setLampState("success");
       setTimeout(() => {
@@ -90,7 +101,7 @@ export default function AuthCard({ onLogin, onError }) {
       }, 550);
     } catch (err) {
       setLampState("error");
-      onError(friendlyError(err));
+      setErrorMessage(friendlyError(err));
       setTimeout(() => {
         setLampState("idle");
       }, 1500);
@@ -101,7 +112,7 @@ export default function AuthCard({ onLogin, onError }) {
 
   function handleGoogleError() {
     setLampState("error");
-    onError("Google sign-in was cancelled or encountered an error. Please try again.");
+    setErrorMessage("Google sign-in was cancelled or encountered an error. Please try again.");
     setTimeout(() => {
       setLampState("idle");
     }, 1500);
@@ -458,6 +469,18 @@ export default function AuthCard({ onLogin, onError }) {
                 </p>
               </div>
 
+          {/* Inline Error Notice */}
+          {localError && (
+            <div className="auth-card-error" role="alert">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <span>{localError}</span>
+            </div>
+          )}
+
           {/* Google Identity Services (GIS) Sign-In */}
           <div className="social-buttons-group google-gis-wrapper" style={{ display: "flex", justifyContent: "center", width: "100%", minHeight: "44px" }}>
             {import.meta.env.VITE_GOOGLE_CLIENT_ID ? (
@@ -473,8 +496,8 @@ export default function AuthCard({ onLogin, onError }) {
               <button
                 type="button"
                 className="social-auth-btn google-btn"
-                style={{ width: "300px", opacity: 0.85 }}
-                onClick={() => onError("Google Sign-In is pending setup. Please set VITE_GOOGLE_CLIENT_ID in Vercel Environment Variables and redeploy.")}
+                style={{ width: "300px", opacity: 0.95 }}
+                onClick={() => setErrorMessage("Google Sign-In is pending setup. Please set VITE_GOOGLE_CLIENT_ID in your Vercel Environment Variables and redeploy.")}
               >
                 <svg className="social-btn-icon" viewBox="0 0 24 24" width="18" height="18">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

@@ -51,7 +51,8 @@ class UserLogin(BaseModel):
 
 
 class GoogleAuthRequest(BaseModel):
-    credential: str
+    credential: str | None = None
+    access_token: str | None = None
 
 
 class UserRead(BaseModel):

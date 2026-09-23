@@ -17,13 +17,28 @@ export default function AuthModal({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [localError, setLocalError] = useState(null);
+
+  const setErrorMessage = useCallback(
+    (msg) => {
+      setLocalError(msg);
+      if (onError) onError(msg);
+    },
+    [onError]
+  );
+
+  const clearErrorMessage = useCallback(() => {
+    setLocalError(null);
+    if (onError) onError(null);
+  }, [onError]);
 
   // Sync mode whenever initialMode updates upon opening
   useEffect(() => {
     if (isOpen) {
       setMode(initialMode);
+      clearErrorMessage();
     }
-  }, [isOpen, initialMode]);
+  }, [isOpen, initialMode, clearErrorMessage]);
 
   // Handle ESC key to dismiss modal
   useEffect(() => {
@@ -48,15 +63,15 @@ export default function AuthModal({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
-    onError(null);
+    clearErrorMessage();
 
     // Client-side guard — prevent sending a payload that will 422
     if (isRegister && password.length < 8) {
-      onError("Password must be at least 8 characters long.");
+      setErrorMessage("Password must be at least 8 characters long.");
       return;
     }
     if (!email || !password) {
-      onError("Email and password are required.");
+      setErrorMessage("Email and password are required.");
       return;
     }
 
@@ -71,33 +86,33 @@ export default function AuthModal({
       onLogin();
       onClose();
     } catch (err) {
-      onError(friendlyError(err));
+      setErrorMessage(friendlyError(err));
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleSuccess = async (credentialResponse) => {
-    onError(null);
+    clearErrorMessage();
     setLoading(true);
 
     try {
-      if (!credentialResponse?.credential) {
+      if (!credentialResponse?.credential && !credentialResponse?.access_token) {
         throw new Error("No credential returned from Google sign-in.");
       }
-      const token = await googleLogin(credentialResponse.credential);
+      const token = await googleLogin(credentialResponse.credential || credentialResponse);
       setToken(token.access_token);
       onLogin();
       onClose();
     } catch (err) {
-      onError(friendlyError(err));
+      setErrorMessage(friendlyError(err));
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleError = () => {
-    onError("Google sign-in was cancelled or encountered an error. Please try again.");
+    setErrorMessage("Google sign-in was cancelled or encountered an error. Please try again.");
   };
 
   return (
@@ -170,6 +185,28 @@ export default function AuthModal({
               </p>
             </div>
 
+            {/* Inline Error Notice */}
+            {localError && (
+              <div className="auth-modal-error" role="alert">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ flexShrink: 0 }}
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <span>{localError}</span>
+              </div>
+            )}
+
             {/* Segmented Mode Tabs */}
             <div className="auth-modal-tabs" role="tablist">
               <button
@@ -179,7 +216,7 @@ export default function AuthModal({
                 className={`auth-tab-btn ${!isRegister ? "active" : ""}`}
                 onClick={() => {
                   setMode("signin");
-                  onError(null);
+                  clearErrorMessage();
                 }}
               >
                 Sign In
@@ -191,7 +228,7 @@ export default function AuthModal({
                 className={`auth-tab-btn ${isRegister ? "active" : ""}`}
                 onClick={() => {
                   setMode("signup");
-                  onError(null);
+                  clearErrorMessage();
                 }}
               >
                 Create Account
@@ -213,10 +250,10 @@ export default function AuthModal({
                 <button
                   type="button"
                   className="social-auth-btn google-btn"
-                  style={{ width: "100%", maxWidth: "300px", opacity: 0.88 }}
+                  style={{ width: "100%", maxWidth: "300px", opacity: 0.95 }}
                   onClick={() =>
-                    onError(
-                      "Google Sign-In is pending setup. Please set VITE_GOOGLE_CLIENT_ID in environment variables."
+                    setErrorMessage(
+                      "Google Sign-In is pending setup. Please set VITE_GOOGLE_CLIENT_ID in your Vercel Environment Variables and redeploy."
                     )
                   }
                 >

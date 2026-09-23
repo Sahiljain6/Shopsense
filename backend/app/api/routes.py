@@ -116,30 +116,58 @@ def google_auth(
     payload: GoogleAuthRequest,
     db: Session = Depends(get_db)
 ) -> Token:
-    """Verify Google Identity Services (GIS) ID token and authenticate or register user."""
+    """Verify Google Identity Services (GIS) ID token or OAuth2 access token and authenticate or register user."""
     settings = get_settings()
-    try:
-        audience = settings.google_client_id if settings.google_client_id else None
-        id_info = id_token.verify_oauth2_token(
-            payload.credential,
-            google_requests.Request(),
-            audience=audience
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid Google ID token: {exc}"
-        )
+    id_info = None
 
-    # Verify issuer
-    if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
+    if payload.credential:
+        try:
+            audience = settings.google_client_id if settings.google_client_id else None
+            id_info = id_token.verify_oauth2_token(
+                payload.credential,
+                google_requests.Request(),
+                audience=audience
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid Google ID token: {exc}"
+            )
+
+        # Verify issuer
+        if id_info.get("iss") not in ["accounts.google.com", "https://accounts.google.com"]:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Google token issuer"
+            )
+    elif payload.access_token:
+        try:
+            with httpx.Client(timeout=10.0) as http_client:
+                res = http_client.get(
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={"Authorization": f"Bearer {payload.access_token}"}
+                )
+                if res.status_code != 200:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Failed to fetch Google user profile with access token"
+                    )
+                id_info = res.json()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Error validating Google access token: {exc}"
+            )
+    else:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Google token issuer"
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Either credential (ID token) or access_token must be provided."
         )
 
     # Verify email verified
-    if not id_info.get("email_verified"):
+    if not id_info.get("email_verified") and id_info.get("verified_email") is not True:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Google email not verified"
