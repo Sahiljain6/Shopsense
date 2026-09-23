@@ -248,16 +248,18 @@ def get_active_groq_models(api_key: str) -> list[str]:
     return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
 
 
-PRIMARY_GEMINI_MODELS = [
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
-    "gemini-2.0-flash",
+ACTIVE_GEMINI_MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-pro-preview",
 ]
+PRIMARY_GEMINI_MODELS = ACTIVE_GEMINI_MODELS
+IMAGE_GEMINI_MODEL = "gemini-3.1-flash-image"
 
 
 def get_active_gemini_models(api_key: str) -> list[str]:
     """Dynamically fetch live Gemini models supporting generateContent from Google's ListModels API,
-    strictly prioritizing production models (gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash)
+    strictly prioritizing ACTIVE_GEMINI_MODELS (gemini-3.8-flash, gemini-3.5-flash-lite, gemini-3.1-pro-preview)
     and filtering out TTS, audio-only, and embedding models."""
     clean_key = api_key.strip().strip("'").strip('"')
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
@@ -279,7 +281,7 @@ def get_active_gemini_models(api_key: str) -> list[str]:
                         valid_ids.append(name)
                 if valid_ids:
                     prioritized = []
-                    for preferred in PRIMARY_GEMINI_MODELS:
+                    for preferred in ACTIVE_GEMINI_MODELS:
                         if preferred in valid_ids and preferred not in prioritized:
                             prioritized.append(preferred)
                     for other in valid_ids:
@@ -290,7 +292,7 @@ def get_active_gemini_models(api_key: str) -> list[str]:
     except Exception as err:
         print(f"Notice fetching Gemini model list dynamically: {err}")
 
-    return list(PRIMARY_GEMINI_MODELS)
+    return list(ACTIVE_GEMINI_MODELS)
 
 
 
@@ -464,7 +466,7 @@ class AIOrchestrator:
             self.model = (
                 settings.gemini_model
                 if (settings.gemini_model and not any(r in settings.gemini_model.lower() for r in ["tts", "embedding", "2.5-flash"]))
-                else (self.active_gemini_models[0] if self.active_gemini_models else "gemini-1.5-flash")
+                else (self.active_gemini_models[0] if self.active_gemini_models else "gemini-3.8-flash")
             )
 
         elif groq_key and groq_key.strip():
