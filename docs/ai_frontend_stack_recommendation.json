@@ -1,0 +1,39 @@
+{
+  "framework": "React (Next.js 15+ App Router or Vite + React 19 / 18 + TypeScript)",
+  "reasoning": "React is the premier, industry-standard ecosystem for production AI applications. Major LLM providers and AI runtime frameworks (Vercel AI SDK, LangChain, OpenAI, Anthropic, Google Gen AI SDK) build their streaming hooks, RSC streaming protocols, and UI primitives React-first. React's concurrent rendering (transitions, useDeferredValue) prevents UI thread freezing during high-velocity token streams (100+ tokens/sec). Furthermore, its robust ecosystem of virtualized message lists (@tanstack/react-virtual) and streaming Markdown parsers provides unmatched production reliability for real-time conversational flows.",
+  "libraries": {
+    "state_management": "Zustand + TanStack Query (with optional XState for multi-agent branching flows)",
+    "http_client": "Fetch API (Native Web Streams) + @microsoft/fetch-event-source",
+    "streaming": "Vercel AI SDK (ai & @ai-sdk/react) + Server-Sent Events (SSE)",
+    "ui_components": "shadcn/ui (Tailwind CSS + Radix UI Primitives) + @tanstack/react-virtual + framer-motion"
+  },
+  "setup_steps": [
+    "Initialize project with TypeScript and Vite or Next.js: npm create vite@latest ai-app -- --template react-ts or npx create-next-app@latest ai-app --typescript --tailwind --app",
+    "Install AI streaming and state dependencies: npm install ai @ai-sdk/react @microsoft/fetch-event-source zustand @tanstack/react-query @tanstack/react-virtual lucide-react framer-motion clsx tailwind-merge",
+    "Initialize shadcn/ui component system: npx shadcn@latest init and add essential primitives (button, textarea, scroll-area, card, tooltip, dropdown-menu)",
+    "Configure a Zustand chat store with transient selectors to buffer incoming tokens without triggering full chat tree re-renders",
+    "Implement a streaming client service using @microsoft/fetch-event-source or Vercel AI SDK useChat with AbortController support for instant generation halting",
+    "Build a virtualized message list using @tanstack/react-virtual with autoscroll pinned to the stream bottom unless user manually scrolls up",
+    "Integrate real-time stream markdown parsing using react-markdown with remark-gfm and syntax highlighting"
+  ],
+  "alternatives": [
+    {
+      "name": "Svelte 5 / SvelteKit (Runes + Native Streams)",
+      "pros": "Fine-grained reactivity with zero virtual-DOM overhead, best-in-class CPU efficiency for high-frequency token updates, minimal bundle footprint",
+      "cons": "Smaller ecosystem for turnkey AI SDKs; community hooks for LLM tool calling and multimodal streams require custom implementation",
+      "best_for": "Ultra-lightweight embedded AI widgets and memory-constrained client environments"
+    },
+    {
+      "name": "Vue 3 (Composition API + Pinia + VueUse useEventSource)",
+      "pros": "Intuitive reactive refs, clean template syntax, built-in transition system for message streaming",
+      "cons": "Second-class AI SDK support compared to React; fewer production-ready streaming markdown components",
+      "best_for": "Teams with existing Vue enterprise codebases integrating conversational AI"
+    },
+    {
+      "name": "Full-Duplex WebSockets / WebRTC (over Server-Sent Events)",
+      "pros": "Sub-millisecond bidirectional transport, essential for OpenAI Realtime API and Gemini Live audio/vision streaming",
+      "cons": "Higher stateful connection management complexity, load-balancer connection pinning challenges, no automatic HTTP/2 multiplexing",
+      "best_for": "Real-time voice-to-voice agents, bidirectional canvas collaboration, and video streaming AI agents"
+    }
+  ]
+}
