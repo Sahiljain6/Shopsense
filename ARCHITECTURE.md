@@ -1,4 +1,4 @@
-﻿# ShopSense Architecture & Design Blueprint
+# ShopSense Architecture & Design Blueprint
 
 ## 1. System Overview
 ShopSense is an AI-powered conversational e-commerce comparison shopping engine tailored for the Indian market. It features a Fastshot-inspired glassmorphic interface and a collaborative multi-agent backend orchestrator capable of real-time price intelligence, specification comparison, and financing breakdowns.
@@ -40,6 +40,10 @@ graph TD
   - `chat.css`: Messages stream, user/assistant bubbles, and typing dots.
   - `markdown.css`: Responsive comparison tables and code formatting.
   - `responsive.css`: Mobile breakpoints and viewport constraints.
+- **AI Streaming & State Architecture**:
+  - Detailed production evaluation and blueprint documented in [`docs/FRONTEND_AI_STACK_SPEC.md`](./docs/FRONTEND_AI_STACK_SPEC.md) and [`docs/ai_frontend_stack_recommendation.json`](./docs/ai_frontend_stack_recommendation.json).
+  - Recommended Stack: React 18/19 + Zustand transient store + `@microsoft/fetch-event-source` + Vercel AI SDK + `shadcn/ui` + `@tanstack/react-virtual`.
+  - Client streaming utility: [`frontend/src/utils/aiStreamClient.js`](./frontend/src/utils/aiStreamClient.js) providing low-latency SSE chunk parsing, token dispatching, and `AbortController` cancellation.
 
 ## 3. Backend & Multi-Agent Orchestration
 - **Runtime**: FastAPI with async route handlers and Pydantic v2 schemas.
