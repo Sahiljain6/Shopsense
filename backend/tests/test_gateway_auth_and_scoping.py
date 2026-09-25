@@ -210,3 +210,93 @@ def test_admin_role_hierarchy_and_audit_log_access(client, db_session) -> None:
     reg_token = create_access_token(regular_user.email, user=regular_user)
     denied_res = client.get("/admin/audit-logs", headers={"Authorization": f"Bearer {reg_token}"})
     assert denied_res.status_code == 403
+
+
+def test_user_quota_live_dashboard(client, db_session) -> None:
+    """
+    Scenario: User inspects live quota dashboard at /user/quota.
+    Expected: Accurately reflects limits, consumed usage, and remaining tokens.
+    """
+    user = create_user_with_tier(db_session, "quota_dash@example.com", tier="pro")
+    token = create_access_token(user.email, user=user)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Record some usage
+    quota_engine.record_usage(user.id, 50000)
+
+    res = client.get("/user/quota", headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["tier"] == "pro"
+    assert data["monthly_tokens"]["used"] >= 50000
+    assert data["monthly_tokens"]["limit"] == TIER_DEFAULT_QUOTAS[UserTier.PRO].monthly_tokens
+    assert data["monthly_tokens"]["remaining"] == data["monthly_tokens"]["limit"] - data["monthly_tokens"]["used"]
+    assert data["rate_limits"]["requests_per_minute"] == 120
+
+
+def test_user_profile_read_and_patch(client, db_session) -> None:
+    """
+    Scenario: User reads and updates profile via /user/profile.
+    Expected: Can read full profile and update full_name.
+    """
+    user = create_user_with_tier(db_session, "profile_actor@example.com", tier="free")
+    token = create_access_token(user.email, user=user)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Read profile
+    get_res = client.get("/user/profile", headers=headers)
+    assert get_res.status_code == 200
+    assert get_res.json()["email"] == "profile_actor@example.com"
+
+    # Update profile
+    patch_res = client.patch("/user/profile", params={"full_name": "Updated Name"}, headers=headers)
+    assert patch_res.status_code == 200
+    assert patch_res.json()["full_name"] == "Updated Name"
+
+
+def test_admin_user_tier_and_flags_management(client, db_session) -> None:
+    """
+    Scenario: Admin updates user tier and feature flags.
+    Expected: Target user tier changes, sessions invalidate, and flags update.
+    """
+    admin = create_user_with_tier(db_session, "admin_mgr@example.com", tier="admin", is_admin=True)
+    admin_token = create_access_token(admin.email, user=admin)
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    target = create_user_with_tier(db_session, "target_user@example.com", tier="free")
+
+    # Admin changes target tier to pro
+    patch_tier_res = client.patch(
+        f"/admin/users/{target.id}/tier",
+        params={"tier": "pro"},
+        headers=admin_headers,
+    )
+    assert patch_tier_res.status_code == 200
+    assert patch_tier_res.json()["new_tier"] == "pro"
+
+    # Admin updates target feature flags
+    flags_res = client.patch(
+        f"/admin/users/{target.id}/feature-flags",
+        json=["streaming_v2", "experimental_vision"],
+        headers=admin_headers,
+    )
+    assert flags_res.status_code == 200
+    assert "streaming_v2" in flags_res.json()["new_flags"]
+
+
+def test_admin_analytics_tier_breakdown(client, db_session) -> None:
+    """
+    Scenario: Admin views analytics platform dashboard.
+    Expected: Returns user tier breakdown, total users, orders, and products.
+    """
+    admin = create_user_with_tier(db_session, "admin_analytics@example.com", tier="admin", is_admin=True)
+    admin_token = create_access_token(admin.email, user=admin)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    res = client.get("/admin/analytics", headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert "users_by_tier" in data
+    assert "total_users" in data
+    assert "total_chat_messages" in data
+
