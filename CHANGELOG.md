@@ -2,6 +2,25 @@
 
 All notable changes to ShopSense are documented in this file.
 
+## [1.3.0] - 2026-09-25
+
+### Added
+- **API Gateway Authentication Middleware**: High-performance edge middleware with sub-2ms stateless RS256/HS256 JWT signature verification, anti-spoofing header stripping, and verified identity injection (`X-User-Tier`, `X-User-Id`).
+- **Hierarchical Role & Scope Permissions**: Four-tier role hierarchy (`admin` > `enterprise` > `pro` > `free`) with granular OAuth2-style permission scopes and declarative FastAPI dependencies (`require_scope`, `require_feature_flag`, `require_tier`).
+- **Refresh Token Rotation (RTR) & Reuse Detection**: Single-use refresh token families with automatic compromise detection—replaying an old token revokes the entire family and all active sessions.
+- **Instant Session Invalidation & Token Versioning**: Mid-session tier downgrades or subscription updates increment user token version, instantly rejecting obsolete JWTs across all endpoints with zero database queries.
+- **Multi-Tier Token Quota Engine**: Pre-request token reservation (`check_quota`) and post-inference token settlement (`record_usage`), returning RFC 7807 429 Too Many Requests when limits are exhausted.
+- **Row-Level Tenant Isolation**: `ScopedQueryFilter` enforcing row-level database ownership on user queries to prevent Insecure Direct Object Reference (IDOR) vulnerabilities.
+- **Security Audit Logger**: Structured audit dispatcher capturing access denials, quota overages, rate limits, and administrative tier modifications.
+- **User Quota & Management Endpoints**:
+  - `GET /user/quota`: Live dashboard of monthly token usage, limits, and rate limits.
+  - `GET /user/profile` & `PATCH /user/profile`: Authenticated user profile retrieval and name updates.
+  - `GET /admin/analytics`: Platform analytics enriched with user tier distributions.
+  - `PATCH /admin/users/{user_id}/tier`: Admin tier updates with immediate session revocation.
+  - `PATCH /admin/users/{user_id}/feature-flags`: Admin-driven feature flag assignment for gradual rollouts.
+  - `GET /admin/audit-logs`: Privileged audit log stream for platform security reviews.
+- **Comprehensive Security Test Suite**: Added `test_gateway_auth_and_scoping.py` with 11 automated test cases covering free tier restriction, quota exhaustion, mid-session tier downgrades, IDOR isolation, and RTR replay protection.
+
 ## [1.2.2] - 2026-09-02
 
 ### Changed & Refactored
