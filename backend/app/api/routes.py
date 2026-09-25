@@ -617,3 +617,65 @@ def get_security_audit_logs(
     events = audit_logger.get_events(event_type=event_type)
     return [e.model_dump() for e in events]
 
+
+@router.get("/user/quota", response_model=dict[str, object])
+def get_user_quota(
+    context: SecurityContext = Depends(get_security_context),
+) -> dict[str, object]:
+    """
+    Live quota dashboard: returns current monthly token usage, limits,
+    rate limit settings, and remaining allowances for the authenticated user.
+    Zero database queries — reads from quota engine in-memory store.
+    """
+    current_usage = quota_engine.get_usage(context.user_id)
+    monthly_limit = context.quota.monthly_tokens
+    remaining = max(0, monthly_limit - current_usage)
+    used_pct = round((current_usage / monthly_limit) * 100, 2) if monthly_limit > 0 else 0.0
+
+    return {
+        "user_id": context.user_id,
+        "tier": context.tier.value,
+        "monthly_tokens": {
+            "limit": monthly_limit,
+            "used": current_usage,
+            "remaining": remaining,
+            "used_percent": used_pct,
+        },
+        "rate_limits": {
+            "requests_per_minute": context.quota.rate_limit_rpm,
+        },
+        "context_window": {
+            "max_tokens": context.quota.max_context_window,
+        },
+        "feature_flags": sorted(list(context.feature_flags)),
+        "scopes": sorted(list(context.scopes)),
+    }
+
+
+@router.get("/user/profile", response_model=UserRead)
+def get_user_profile(
+    user: User = Depends(get_current_user),
+) -> User:
+    """Return current authenticated user's full profile."""
+    return user
+
+
+@router.patch("/user/profile", response_model=UserRead)
+def update_user_profile(
+    full_name: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> User:
+    """Update mutable profile fields (full_name) for the authenticated user."""
+    try:
+        if full_name is not None:
+            user.full_name = full_name.strip()
+        db.commit()
+        db.refresh(user)
+        return user
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update profile.")
+
+
+
