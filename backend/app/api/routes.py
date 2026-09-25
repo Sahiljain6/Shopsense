@@ -461,12 +461,31 @@ def delete_wishlist(product_id: int, db: Session = Depends(get_db), user: User =
 
 
 @router.get("/admin/analytics")
-def admin_analytics(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> dict[str, int]:
+def admin_analytics(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict[str, object]:
+    """
+    Platform-wide analytics with user tier breakdown (admin:analytics:platform_wide).
+    """
     try:
-        return {"users": db.scalar(select(func.count(User.id))) or 0, "products": db.scalar(select(func.count(Product.id))) or 0, "orders": db.scalar(select(func.count(Order.id))) or 0}
+        all_users = db.scalars(select(User)).all()
+        tier_breakdown: dict[str, int] = {}
+        for u in all_users:
+            t = getattr(u, "tier", "free") or "free"
+            tier_breakdown[t] = tier_breakdown.get(t, 0) + 1
+
+        chat_total = db.scalar(select(func.count(ChatHistory.id))) or 0
+        return {
+            "total_users": len(all_users),
+            "total_products": db.scalar(select(func.count(Product.id))) or 0,
+            "total_orders": db.scalar(select(func.count(Order.id))) or 0,
+            "total_chat_messages": chat_total,
+            "users_by_tier": tier_breakdown,
+        }
     except Exception:
         db.rollback()
-        return {"users": 0, "products": 0, "orders": 0}
+        return {"error": "Failed to compute analytics."}
 
 
 @router.get("/admin/users", response_model=list[UserRead])
@@ -476,6 +495,79 @@ def admin_users(db: Session = Depends(get_db), _: User = Depends(require_admin))
     except Exception:
         db.rollback()
         return []
+
+
+@router.patch("/admin/users/{user_id}/tier", response_model=dict[str, object])
+def admin_update_user_tier(
+    user_id: int,
+    tier: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict[str, object]:
+    """
+    Admin: update a user's subscription tier and immediately invalidate all
+    existing sessions (token version bump) so stale tokens are rejected on the
+    very next request without requiring a forced logout.
+    """
+    valid_tiers = [t.value for t in UserTier]
+    if tier.lower() not in valid_tiers:
+        raise HTTPException(status_code=400, detail=f"Invalid tier '{tier}'. Must be one of {valid_tiers}.")
+
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found.")
+
+    old_tier = getattr(target, "tier", "free")
+    target.tier = tier.lower()
+    new_version = invalidate_user_sessions(user_id)
+    target.token_version = new_version
+    db.commit()
+    db.refresh(target)
+
+    audit_logger.log(audit_logger.__class__.__name__ and __import__("app.core.audit", fromlist=["AuditEvent"]).AuditEvent(
+        event_type="admin_tier_update",
+        user_id=user_id,
+        reason="admin_action",
+        details={"old_tier": old_tier, "new_tier": tier.lower(), "new_token_version": new_version},
+    ))
+
+    return {
+        "user_id": user_id,
+        "email": target.email,
+        "old_tier": old_tier,
+        "new_tier": target.tier,
+        "token_version": new_version,
+        "message": "Tier updated. All existing sessions immediately invalidated.",
+    }
+
+
+@router.patch("/admin/users/{user_id}/feature-flags", response_model=dict[str, object])
+def admin_update_feature_flags(
+    user_id: int,
+    flags: list[str],
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict[str, object]:
+    """
+    Admin: Set the full list of feature flags for a user.
+    The new JWT issued on next login/refresh will reflect the updated flags.
+    """
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found.")
+
+    old_flags = list(getattr(target, "feature_flags", []) or [])
+    target.feature_flags = sorted(list(set(flags)))
+    db.commit()
+    db.refresh(target)
+
+    return {
+        "user_id": user_id,
+        "email": target.email,
+        "old_flags": old_flags,
+        "new_flags": target.feature_flags,
+        "message": "Feature flags updated. Changes take effect on next token refresh.",
+    }
 
 
 @router.get("/admin/reviews", response_model=list[ReviewRead])
