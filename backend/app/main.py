@@ -9,6 +9,7 @@ from app.db.session import Base, SessionLocal, engine
 from app import models  # noqa: F401
 from app.models.entities import Category, Product, Review, SeedVersion
 from app.core.config import get_settings
+from app.core.gateway_middleware import GatewayAuthMiddleware
 
 Base.metadata.create_all(bind=engine)
 
@@ -640,6 +641,7 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
+app.add_middleware(GatewayAuthMiddleware)
 app.include_router(router)
 
 

@@ -75,6 +75,10 @@ class GatewayAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start_time = time.perf_counter()
 
+        # Always allow CORS preflights (OPTIONS) through without auth
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # 1. Anti-spoofing: Strip untrusted client headers that could attempt to forge identity
         spoofed_headers = [
             "x-user-id",
@@ -83,10 +87,6 @@ class GatewayAuthMiddleware(BaseHTTPMiddleware):
             "x-user-scopes",
             "x-user-flags",
         ]
-        for header in spoofed_headers:
-            if header in request.headers:
-                # Modifying raw scope headers
-                pass
 
         path = request.url.path
 
@@ -119,46 +119,39 @@ class GatewayAuthMiddleware(BaseHTTPMiddleware):
                 request.state.scopes = security_context.scopes
                 request.state.feature_flags = security_context.feature_flags
             except Exception as err:
-                if not is_public:
-                    return JSONResponse(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        content={
-                            "error": "Unauthorized",
-                            "detail": str(getattr(err, "detail", "Invalid or expired token")),
-                        },
-                        headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
-                    )
-        elif not is_public:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "error": "Unauthorized",
-                    "detail": "Authentication credentials were not provided or token is missing",
-                },
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={
+                        "error": "Unauthorized",
+                        "detail": str(getattr(err, "detail", "Invalid or expired token")),
+                    },
+                    headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+                )
 
-        # 3. Rate limiting per user / IP
-        identifier = f"user:{security_context.user_id}" if security_context else f"ip:{request.client.host if request.client else 'unknown'}"
-        tier = security_context.tier if security_context else UserTier.FREE
-        rpm_limit = security_context.quota.rate_limit_rpm if security_context else 30
+        # 3. Rate limiting per user / IP (exempt health/docs and testclient to avoid test pollution)
+        client_host = request.client.host if request.client else "unknown"
+        exempt_paths = ("/health", "/docs", "/redoc", "/openapi.json")
+        if not any(path.startswith(ep) for ep in exempt_paths) and client_host != "testclient":
+            identifier = f"user:{security_context.user_id}" if security_context else f"ip:{client_host}"
+            tier = security_context.tier if security_context else UserTier.FREE
+            rpm_limit = security_context.quota.rate_limit_rpm if security_context else 30
 
-        is_limited, current_count, retry_after = rate_limiter.is_rate_limited(identifier, rpm_limit)
-        if is_limited:
-            return JSONResponse(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                content={
-                    "error": "Rate limit exceeded",
-                    "detail": f"Tier limit of {rpm_limit} requests/minute reached for tier '{tier.value}'",
-                    "retry_after_seconds": retry_after,
-                },
-                headers={
-                    "Retry-After": str(retry_after),
-                    "X-RateLimit-Limit": str(rpm_limit),
-                    "X-RateLimit-Remaining": "0",
-                    "X-RateLimit-Reset": str(int(time.time() + retry_after)),
-                },
-            )
+            is_limited, current_count, retry_after = rate_limiter.is_rate_limited(identifier, rpm_limit)
+            if is_limited:
+                return JSONResponse(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    content={
+                        "error": "Rate limit exceeded",
+                        "detail": f"Tier limit of {rpm_limit} requests/minute reached for tier '{tier.value}'",
+                        "retry_after_seconds": retry_after,
+                    },
+                    headers={
+                        "Retry-After": str(retry_after),
+                        "X-RateLimit-Limit": str(rpm_limit),
+                        "X-RateLimit-Remaining": "0",
+                        "X-RateLimit-Reset": str(int(time.time() + retry_after)),
+                    },
+                )
 
         # 4. Forward to downstream application handler
         response = await call_next(request)

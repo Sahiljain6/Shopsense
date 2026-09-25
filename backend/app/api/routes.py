@@ -8,7 +8,25 @@ from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.core.config import get_settings
-from app.core.security import clear_auth_cookies, create_access_token, create_refresh_token, decode_refresh_token, get_current_user, hash_password, require_admin, set_auth_cookies, verify_password
+from app.core.auth_types import Scope, SecurityContext, UserTier
+from app.core.audit import audit_logger
+from app.core.db_scoping import ScopedQueryFilter
+from app.core.quota import check_quota, quota_engine
+from app.core.scoping import require_scope, require_feature_flag, require_tier
+from app.core.security import (
+    clear_auth_cookies,
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    get_current_user,
+    get_security_context,
+    hash_password,
+    invalidate_user_sessions,
+    require_admin,
+    rotate_refresh_token,
+    set_auth_cookies,
+    verify_password,
+)
 from app.db.session import get_db
 from app.models.entities import ChatHistory, Order, Product, Review, SeedVersion, User, Wishlist
 from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, GoogleAuthRequest, PriceHistoryResponse, ProductCreate, ProductRead, RefreshTokenRequest, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
@@ -58,8 +76,8 @@ def login(request: Request, response: Response, payload: UserLogin, db: Session 
         user = db.scalar(select(User).where(User.email == payload.email))
         if user is None or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        access_token = create_access_token(user.email)
-        refresh_token = create_refresh_token(user.email)
+        access_token = create_access_token(user.email, user=user)
+        refresh_token = create_refresh_token(user.email, user_id=user.id)
         csrf = set_auth_cookies(response, access_token, refresh_token)
         return Token(access_token=access_token, refresh_token=refresh_token, csrf_token=csrf)
     except HTTPException:
@@ -77,7 +95,7 @@ def refresh_auth(
     payload: RefreshTokenRequest | None = None,
     db: Session = Depends(get_db)
 ) -> Token:
-    """Refresh access token using httpOnly cookie or payload refresh token."""
+    """Refresh access token using httpOnly cookie or payload refresh token with RTR and reuse detection."""
     raw_refresh = request.cookies.get("refresh_token")
     if not raw_refresh and payload and payload.refresh_token:
         raw_refresh = payload.refresh_token
@@ -85,15 +103,58 @@ def refresh_auth(
     if not raw_refresh:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token missing")
 
-    email = decode_refresh_token(raw_refresh)
+    new_refresh, email, user_id = rotate_refresh_token(raw_refresh)
     user = db.scalar(select(User).where(User.email == email))
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    new_access = create_access_token(user.email)
-    new_refresh = create_refresh_token(user.email)
+    new_access = create_access_token(user.email, user=user)
     csrf = set_auth_cookies(response, new_access, new_refresh)
     return Token(access_token=new_access, refresh_token=new_refresh, csrf_token=csrf)
+
+
+@router.get("/auth/session", response_model=dict[str, object])
+def get_current_session(context: SecurityContext = Depends(get_security_context)) -> dict[str, object]:
+    """Retrieve verified SecurityContext without contacting database (0 DB queries)."""
+    return {
+        "user_id": context.user_id,
+        "email": context.email,
+        "tier": context.tier.value,
+        "org_id": context.org_id,
+        "token_version": context.token_version,
+        "scopes": list(context.scopes),
+        "feature_flags": list(context.feature_flags),
+        "quota": context.quota.model_dump(),
+    }
+
+
+@router.post("/auth/tier", response_model=dict[str, object])
+def update_user_tier(
+    tier: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    """
+    Update user subscription tier and trigger immediate session revocation / version bump
+    so outdated JWT tokens are instantly rejected on their next call.
+    """
+    valid_tiers = [t.value for t in UserTier]
+    if tier.lower() not in valid_tiers:
+        raise HTTPException(status_code=400, detail=f"Invalid tier. Must be one of {valid_tiers}")
+
+    user.tier = tier.lower()
+    new_version = invalidate_user_sessions(user.id)
+    user.token_version = new_version
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "user_id": user.id,
+        "email": user.email,
+        "tier": user.tier,
+        "token_version": user.token_version,
+        "message": "Tier updated successfully. Previous tokens invalidated.",
+    }
 
 
 @router.post("/auth/logout")
@@ -209,8 +270,8 @@ def google_auth(
             db.commit()
             db.refresh(user)
 
-        access_token = create_access_token(user.email)
-        refresh_token = create_refresh_token(user.email)
+        access_token = create_access_token(user.email, user=user)
+        refresh_token = create_refresh_token(user.email, user_id=user.id)
         csrf = set_auth_cookies(response, access_token, refresh_token)
         return Token(access_token=access_token, refresh_token=refresh_token, csrf_token=csrf)
     except Exception as err:
@@ -234,7 +295,34 @@ def chat(
     payload: ChatRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    context: SecurityContext = Depends(check_quota(estimated_tokens=500)),
 ) -> ChatResponse:
+    # 1. Advanced Model Scope Validation
+    is_advanced_request = (
+        payload.mode in ["advanced", "deep_research"]
+        or (payload.model and any(adv in payload.model.lower() for adv in ["claude 3.7", "opus", "extended"]))
+    )
+    if is_advanced_request:
+        if not context.has_scope(Scope.LLM_QUERY_ADVANCED.value):
+            audit_logger.log_denied_access(
+                user_id=context.user_id,
+                email=context.email,
+                tier=context.tier.value,
+                required_scope=Scope.LLM_QUERY_ADVANCED.value,
+                assigned_scopes=list(context.scopes),
+                reason="insufficient_scope",
+                endpoint="/chat",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Forbidden",
+                    "message": "Advanced reasoning models require Pro or Enterprise tier subscription.",
+                    "required_scope": Scope.LLM_QUERY_ADVANCED.value,
+                    "current_tier": context.tier.value,
+                },
+            )
+
     history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
     try:
         response = AIOrchestrator(db).answer_via_agents(
@@ -244,6 +332,8 @@ def chat(
             cart=payload.cart,
             model=payload.model,
         )
+        tokens_consumed = max(50, (len(payload.message) + len(response.answer)) // 4 + 50)
+        quota_engine.record_usage(user.id, tokens_consumed)
     except Exception as err:
         db.rollback()
         print(f"Error during AIOrchestrator.answer: {err}")
@@ -489,3 +579,41 @@ def get_barcode_product(code: str) -> dict[str, object]:
     if not result:
         raise HTTPException(status_code=404, detail="Barcode not found in Open Food Facts database.")
     return result
+
+
+@router.get("/user/conversations", response_model=list[dict[str, object]])
+def get_user_conversations(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    context: SecurityContext = Depends(get_security_context),
+) -> list[dict[str, object]]:
+    """
+    Retrieve user conversations strictly isolated to the caller's identity (IDOR-safe).
+    Row-level isolation is applied via ScopedQueryFilter.
+    """
+    stmt = select(ChatHistory).order_by(ChatHistory.created_at.desc()).limit(limit)
+    stmt = ScopedQueryFilter.apply_user_scope(stmt, ChatHistory, context)
+    records = db.scalars(stmt).all()
+    return [
+        {
+            "id": r.id,
+            "user_id": r.user_id,
+            "message": r.message,
+            "response": r.response,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in records
+    ]
+
+
+@router.get("/admin/audit-logs", response_model=list[dict[str, object]])
+def get_security_audit_logs(
+    event_type: str | None = None,
+    context: SecurityContext = require_scope(Scope.ADMIN_ALL.value),
+) -> list[dict[str, object]]:
+    """
+    Retrieve recent security audit logs (Admin only with admin:* scope).
+    """
+    events = audit_logger.get_events(event_type=event_type)
+    return [e.model_dump() for e in events]
+
