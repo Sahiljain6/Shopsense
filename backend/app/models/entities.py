@@ -12,6 +12,10 @@ class User(Base):
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     full_name: Mapped[str] = mapped_column(String(255), default="")
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    tier: Mapped[str] = mapped_column(String(32), default="free")
+    org_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    token_version: Mapped[int] = mapped_column(Integer, default=1)
+    feature_flags: Mapped[list[str]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

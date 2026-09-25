@@ -61,6 +61,9 @@ class UserRead(BaseModel):
     email: EmailStr
     full_name: str = ""
     is_admin: bool
+    tier: str = "free"
+    org_id: str | None = None
+    feature_flags: list[str] = []
     google_id: str | None = None
 
 

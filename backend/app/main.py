@@ -23,6 +23,10 @@ def ensure_schema_upgrades() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);"))
                 conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id);"))
                 conn.execute(text("ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL;"))
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(32) DEFAULT 'free';"))
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS org_id VARCHAR(64);"))
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1;"))
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS feature_flags JSON DEFAULT '[]';"))
                 conn.commit()
             elif engine.dialect.name == "sqlite":
                 cols = [r[1] for r in conn.execute(text("PRAGMA table_info(products);")).fetchall()]
@@ -31,9 +35,18 @@ def ensure_schema_upgrades() -> None:
                     conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_products_sku ON products (sku);"))
                     conn.commit()
                 u_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(users);")).fetchall()]
-                if u_cols and "google_id" not in u_cols:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN google_id VARCHAR(255);"))
-                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id);"))
+                if u_cols:
+                    if "google_id" not in u_cols:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN google_id VARCHAR(255);"))
+                        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id);"))
+                    if "tier" not in u_cols:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN tier VARCHAR(32) DEFAULT 'free';"))
+                    if "org_id" not in u_cols:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN org_id VARCHAR(64);"))
+                    if "token_version" not in u_cols:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1;"))
+                    if "feature_flags" not in u_cols:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN feature_flags JSON DEFAULT '[]';"))
                     conn.commit()
     except Exception as err:
         print(f"Notice during schema upgrade check: {err}")
