@@ -190,6 +190,10 @@ python -m pytest -v
 
 The test suite covers: catalog search regression, multi-agent fallback, history-aware Gemini calls, CORS restrictions, rate limiting, Alembic migration idempotency, and orphaned-revision self-healing.
 
+## 📜 API Contract
+
+The versioned, language-agnostic backend contract for conversation state, model inference, Server-Sent Events, file context, validation, privacy, rate limiting, and standardized errors is available in [`docs/ai_backend_api_v1.json`](docs/ai_backend_api_v1.json). The API is designed for an OpenAPI 3.1 publication at `/v1/openapi.json` and Swagger UI at `/v1/docs`.
+
 ---
 
 ## 📂 Project Structure

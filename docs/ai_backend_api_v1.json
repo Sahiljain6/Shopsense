@@ -1,0 +1,148 @@
+{
+  "api_version": "v1",
+  "base_url": "https://api.shopsense.example/v1",
+  "protocol": "HTTPS only; REST with JSON request and response bodies unless noted",
+  "serialization": {
+    "request_content_type": "application/json; charset=utf-8",
+    "response_content_type": "application/json; charset=utf-8",
+    "timestamps": "RFC 3339 / ISO 8601 UTC strings",
+    "identifiers": "UUID v4 strings",
+    "envelope": {
+      "data": "Endpoint-specific successful payload",
+      "meta": "Request and pagination metadata",
+      "request_id": "Server-generated correlation ID"
+    }
+  },
+  "versioning": {
+    "strategy": "Major version in the URL path (/v1); additive fields are backward-compatible within a major version. Deprecations provide a Sunset header and at least 90 days notice.",
+    "compatibility": "Clients must ignore unknown response fields; breaking changes are released at /v2."
+  },
+  "authentication": {
+    "method": "Bearer JWT",
+    "header": "Authorization: Bearer <access-token>",
+    "authorization": "Every conversation, message, profile, and file operation is scoped to the authenticated subject. Return 404 rather than exposing resources owned by another user."
+  },
+  "endpoints": [
+    {
+      "path": "/chat",
+      "method": "POST",
+      "description": "Persist a user message, resolve server-side conversation context, and invoke the selected model. Set stream=true to receive tokens immediately as SSE.",
+      "request_schema": {
+        "conversation_id": "uuid (required)",
+        "message": "string (required, 1-4000 Unicode characters after trimming)",
+        "model": "string (optional; allow-listed model ID, default server policy)",
+        "temperature": "number (optional, inclusive range 0-1, default 0.2)",
+        "max_tokens": "integer (optional, 1-4096, capped by model and user quota)",
+        "file_ids": "array<uuid> (optional, max 10; must be owned by caller and ready)",
+        "stream": "boolean (optional, default false)",
+        "idempotency_key": "string (optional, 8-128 characters; prevents duplicate persisted turns)"
+      },
+      "response_schema": {
+        "data": {
+          "message": {
+            "id": "uuid",
+            "conversation_id": "uuid",
+            "role": "assistant",
+            "content": "string",
+            "status": "completed",
+            "created_at": "ISO8601",
+            "model": "string"
+          },
+          "usage": { "input_tokens": "integer", "output_tokens": "integer", "total_tokens": "integer" }
+        },
+        "meta": { "latency_ms": "integer", "context_message_count": "integer" },
+        "request_id": "uuid"
+      },
+      "status_codes": { "200": "Completed non-streaming response", "400": "Malformed or invalid request", "401": "Missing or invalid token", "404": "Conversation or referenced file unavailable", "409": "Idempotency key conflict", "422": "Content rejected by validation or safety policy", "429": "Rate or quota limit exceeded", "502": "Upstream model failure", "503": "Model service unavailable" },
+      "example_request": { "conversation_id": "a810b3a3-6621-4ed7-bc6a-46c3a6241b22", "message": "Compare the two phones I uploaded.", "model": "shopsense-default", "temperature": 0.2, "max_tokens": 700, "file_ids": ["bb3d9698-1ff5-4b9e-b5ba-0c4b1cde7b45"], "stream": false },
+      "example_response": { "data": { "message": { "id": "5f4d9e52-9b50-4d37-99dc-622ba00699d4", "conversation_id": "a810b3a3-6621-4ed7-bc6a-46c3a6241b22", "role": "assistant", "content": "I can compare their display, camera, and price.", "status": "completed", "created_at": "2026-09-26T12:00:01Z", "model": "shopsense-default" }, "usage": { "input_tokens": 215, "output_tokens": 14, "total_tokens": 229 } }, "meta": { "latency_ms": 156, "context_message_count": 8 }, "request_id": "d5c1f2f6-1e3b-43c4-8e02-956dcc53604b" },
+      "streaming_format": "SSE when Accept: text/event-stream or stream=true. The initial HTTP status is 200; do not buffer model output."
+    },
+    {
+      "path": "/conversations",
+      "method": "POST",
+      "description": "Create a conversation. Context is managed by storing messages by conversation_id; the server applies a token-aware recent-message window plus compacted summaries when serving /chat.",
+      "request_schema": { "title": "string (optional, 1-120 characters)", "metadata": "object (optional, max 10 KB; no secrets or raw credentials)" },
+      "response_schema": { "data": { "id": "uuid", "title": "string", "created_at": "ISO8601", "updated_at": "ISO8601", "message_count": "integer" }, "request_id": "uuid" },
+      "status_codes": { "201": "Created", "400": "Invalid input", "401": "Unauthorized", "429": "Rate limited" }
+    },
+    {
+      "path": "/conversations",
+      "method": "GET",
+      "description": "List the caller's conversations using stable cursor pagination.",
+      "query_params": { "limit": "integer (optional, default 20, 1-100)", "cursor": "opaque string (optional; supplied from meta.next_cursor)", "sort": "enum(updated_desc, created_desc, relevance), default updated_desc" },
+      "response_schema": { "data": { "conversations": [{ "id": "uuid", "title": "string", "message_count": "integer", "created_at": "ISO8601", "last_message_at": "ISO8601" }] }, "meta": { "next_cursor": "string|null", "has_more": "boolean", "limit": "integer" }, "request_id": "uuid" },
+      "status_codes": { "200": "Success", "400": "Invalid cursor or query", "401": "Unauthorized", "429": "Rate limited" }
+    },
+    {
+      "path": "/conversations/{conversation_id}/history",
+      "method": "GET",
+      "description": "Return a chronological page of persisted messages for one conversation. Cursor pagination is preferred over offset pagination to prevent duplicates when new turns arrive.",
+      "query_params": { "limit": "integer (optional, default 50, 1-100)", "before": "opaque message cursor (optional; returns older messages)", "include_deleted": "boolean (optional, default false; normally false)" },
+      "response_schema": { "data": { "conversation_id": "uuid", "messages": [{ "id": "uuid", "role": "enum(user,assistant,system,tool)", "content": "string|null", "status": "enum(completed,streaming,failed,deleted)", "attachments": [{ "file_id": "uuid", "filename": "string", "mime_type": "string" }], "created_at": "ISO8601", "updated_at": "ISO8601", "model": "string|null", "usage": { "input_tokens": "integer", "output_tokens": "integer" } }] }, "meta": { "next_before": "string|null", "has_more": "boolean" }, "request_id": "uuid" },
+      "status_codes": { "200": "Success", "400": "Invalid cursor", "401": "Unauthorized", "404": "Conversation unavailable", "429": "Rate limited" }
+    },
+    {
+      "path": "/messages/{message_id}",
+      "method": "GET",
+      "description": "Retrieve a single message and its metadata.",
+      "response_schema": { "data": { "id": "uuid", "conversation_id": "uuid", "role": "string", "content": "string|null", "status": "string", "created_at": "ISO8601", "updated_at": "ISO8601", "model": "string|null", "usage": "object|null" }, "request_id": "uuid" },
+      "status_codes": { "200": "Success", "401": "Unauthorized", "404": "Message unavailable", "429": "Rate limited" }
+    },
+    {
+      "path": "/messages/{message_id}",
+      "method": "PATCH",
+      "description": "Edit an eligible user-authored message. Editing creates a new revision and marks any dependent assistant completion stale; it never overwrites audit history.",
+      "request_schema": { "content": "string (required, 1-4000 Unicode characters after trimming)", "revision": "integer (required optimistic-lock version)" },
+      "response_schema": { "data": { "id": "uuid", "revision": "integer", "content": "string", "updated_at": "ISO8601", "dependent_responses": "enum(stale,none)" }, "request_id": "uuid" },
+      "status_codes": { "200": "Updated", "400": "Invalid input", "401": "Unauthorized", "403": "Message cannot be edited", "404": "Message unavailable", "409": "Revision conflict", "422": "Content rejected", "429": "Rate limited" }
+    },
+    {
+      "path": "/messages/{message_id}",
+      "method": "DELETE",
+      "description": "Soft-delete a caller-owned message. The response body is removed from normal history while minimal encrypted audit metadata is retained under the data-retention policy.",
+      "response_schema": { "data": { "id": "uuid", "status": "deleted", "deleted_at": "ISO8601" }, "request_id": "uuid" },
+      "status_codes": { "200": "Deleted", "401": "Unauthorized", "403": "Message cannot be deleted", "404": "Message unavailable", "429": "Rate limited" }
+    },
+    {
+      "path": "/users/me",
+      "method": "GET",
+      "description": "Retrieve the current user's profile. Never return password hashes, JWTs, provider credentials, or raw sensitive attributes.",
+      "response_schema": { "data": { "id": "uuid", "display_name": "string", "email": "string", "preferences": "object", "created_at": "ISO8601" }, "request_id": "uuid" },
+      "status_codes": { "200": "Success", "401": "Unauthorized", "429": "Rate limited" }
+    },
+    {
+      "path": "/files/upload",
+      "method": "POST",
+      "description": "Upload a context file using multipart/form-data. Accepted types: application/pdf, text/plain, text/markdown, image/png, image/jpeg, image/webp. Files are virus-scanned, MIME-sniffed, encrypted at rest, and asynchronously extracted before they may be attached to /chat.",
+      "request_schema": { "file": "binary (required; max 20 MiB)", "conversation_id": "uuid (optional)", "purpose": "enum(chat_context,profile_asset), required" },
+      "response_schema": { "data": { "file_id": "uuid", "filename": "string", "size_bytes": "integer", "mime_type": "string", "status": "enum(processing,ready,rejected)", "created_at": "ISO8601" }, "request_id": "uuid" },
+      "status_codes": { "202": "Accepted for scanning/extraction", "400": "Missing or invalid multipart body", "401": "Unauthorized", "413": "File too large", "415": "Unsupported media type", "422": "Unsafe file content", "429": "Rate or storage quota exceeded" }
+    }
+  ],
+  "streaming_implementation": {
+    "format": "Server-Sent Events (SSE); WebSocket is optional only for bidirectional features such as cancellation and presence.",
+    "headers": { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" },
+    "events": { "message": "Persisted user message acknowledgement", "delta": "Incremental assistant text", "metadata": "Model and usage partials", "completed": "Terminal completed response", "error": "Terminal structured error" },
+    "example": "event: delta\\ndata: {\\\"message_id\\\":\\\"5f4d...\\\",\\\"delta\\\":\\\"Hello\\\"}\\n\\nevent: completed\\ndata: {\\\"message_id\\\":\\\"5f4d...\\\",\\\"usage\\\":{\\\"total_tokens\\\":12}}\\n\\n",
+    "resume": "Clients retain Last-Event-ID and may reconnect to GET /chat/streams/{stream_id}; replay is available for 10 minutes."
+  },
+  "validation_and_privacy": {
+    "validation": ["Reject unknown model IDs, invalid UUIDs, oversized arrays/files, malformed JSON, empty or overlong strings, and invalid cursor signatures.", "Normalize Unicode, trim message text, apply prompt-injection and abuse checks before model dispatch, and validate referenced resources belong to the caller."],
+    "data_protection": ["Encrypt message content, extracted file text, embeddings, and PII at rest using managed KMS envelope encryption; TLS 1.2+ in transit.", "Store only keyed hashes for searchable sensitive identifiers where possible; redact secrets from logs, traces, model prompts, and error details.", "Use signed short-lived download URLs and per-user authorization for files. Apply configurable retention/deletion policies and audit access without storing raw content in audit logs."],
+    "performance": "Keep profile/history/list endpoints under 200 ms p95 via indexed tenant-scoped queries, Redis caches, and cursor pagination. /chat begins streaming as soon as the provider emits a token; non-streaming /chat cannot guarantee <200 ms because model inference is external."
+  },
+  "error_handling": {
+    "error_format": { "error": { "code": "UPPER_SNAKE_CASE_MACHINE_CODE", "message": "Safe human-readable summary", "details": [{ "field": "message", "issue": "must not be blank" }], "retryable": "boolean" }, "request_id": "uuid" },
+    "common_errors": [
+      { "code": "INVALID_INPUT", "http_status": 400 }, { "code": "AUTH_FAILED", "http_status": 401 }, { "code": "FORBIDDEN", "http_status": 403 }, { "code": "NOT_FOUND", "http_status": 404 }, { "code": "REVISION_CONFLICT", "http_status": 409 }, { "code": "PAYLOAD_TOO_LARGE", "http_status": 413 }, { "code": "UNSUPPORTED_MEDIA_TYPE", "http_status": 415 }, { "code": "VALIDATION_FAILED", "http_status": 422 }, { "code": "RATE_LIMITED", "http_status": 429 }, { "code": "INTERNAL_ERROR", "http_status": 500 }, { "code": "MODEL_ERROR", "http_status": 502 }, { "code": "MODEL_UNAVAILABLE", "http_status": 503 }
+    ]
+  },
+  "rate_limiting": {
+    "algorithm": "Redis-backed token bucket keyed by authenticated user ID, with IP-based pre-auth limits; return RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, and Retry-After headers.",
+    "limits": { "POST /chat": "30 requests/minute and 120,000 requested tokens/hour per user", "GET /conversations and history": "1,000 requests/minute per user", "GET /messages/{message_id}": "1,000 requests/minute per user", "PATCH/DELETE /messages/{message_id}": "60 requests/minute per user", "POST /conversations": "60 requests/minute per user", "GET /users/me": "300 requests/minute per user", "POST /files/upload": "20 requests/minute and 100 MiB/day per user" }
+  },
+  "documentation_tool": "OpenAPI 3.1 published as /v1/openapi.json and rendered by Swagger UI at /v1/docs; this document is the human-readable contract source.",
+  "testing_scenarios": ["Valid non-streaming chat and SSE delta-to-completed ordering", "Invalid JWT, cross-tenant resource access, malformed UUID, and prompt-injection rejection", "Idempotent retry and optimistic message-edit conflict", "File type, size, malware, ownership, and extraction-status enforcement", "Cursor pagination while new conversation messages arrive", "Per-endpoint rate and token quota limits", "100+ concurrent SSE clients with disconnect/reconnect and provider failure", "Encryption/redaction assertions for persistence, logs, and telemetry"],
+  "implementation_stack": { "framework": "Any standards-compliant REST server (FastAPI, Express, Django, Go, Java, or similar)", "database": "PostgreSQL with tenant-scoped indexes and encrypted application fields", "cache": "Redis for rate limits, cursors, stream replay, and short-lived context cache", "queue": "Durable worker queue for file scanning, extraction, embedding, summarization, and retryable provider work", "object_storage": "Private encrypted S3-compatible storage for original files" }
+}
