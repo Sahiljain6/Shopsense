@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.api.routes import router
+from app.api.conversation_routes import conv_router
 from app.db.session import Base, SessionLocal, engine
 from app import models  # noqa: F401
 from app.models.entities import Category, Product, Review, SeedVersion
@@ -643,6 +644,7 @@ async def security_headers_middleware(request: Request, call_next):
 
 app.add_middleware(GatewayAuthMiddleware)
 app.include_router(router)
+app.include_router(conv_router)
 
 
 @app.get("/health")

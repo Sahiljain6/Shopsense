@@ -70,6 +70,8 @@ class GatewayAuthMiddleware(BaseHTTPMiddleware):
         "/currency/convert",
         "/deals",
         "/barcode",
+        "/conversations",
+        "/messages",
     )
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:

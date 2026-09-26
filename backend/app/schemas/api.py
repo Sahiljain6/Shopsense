@@ -101,6 +101,7 @@ class ChatRequest(BaseModel):
     history: list[ChatTurn] = Field(default_factory=list)
     cart: list[dict[str, object]] = Field(default_factory=list)
     model: str | None = "Sonnet 4.5"
+    conversation_id: str | None = None
 
 
 class ChatResponse(BaseModel):

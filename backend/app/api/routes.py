@@ -38,6 +38,8 @@ from app.services.deal_hunter import fetch_gaming_deals
 from app.services.scraper import scrape_product
 from app.services.ssrf_validator import SSRFError, validate_url
 from app.services.vision import identify_image
+from app.services.context_manager import ContextWindowManager, SummarizationService
+from app.services.conversation_service import ConversationService
 
 logger = logging.getLogger("shopsense.api")
 router = APIRouter()
@@ -324,6 +326,22 @@ def chat(
             )
 
     history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
+    context_plan = None
+
+    if payload.conversation_id:
+        try:
+            cwm = ContextWindowManager(model_name=payload.model or "default")
+            context_plan = cwm.assemble_conversation_context(
+                db=db,
+                conversation_id=payload.conversation_id,
+                current_query=payload.message,
+            )
+            # Use assembled messages as history (excluding current user turn)
+            assembled = context_plan["assembled_messages"]
+            history = [m for m in assembled if m["role"] != "user" or m["content"] != payload.message]
+        except Exception as err:
+            logger.warning(f"Notice: unable to assemble conversation context for {payload.conversation_id}: {err}")
+
     try:
         response = AIOrchestrator(db).answer_via_agents(
             payload.message,
@@ -348,6 +366,26 @@ def chat(
     except Exception as err:
         db.rollback()
         print(f"Notice: unable to save chat history: {err}")
+
+    # Persist turns into stateful conversation management system if conversation_id provided
+    if payload.conversation_id:
+        try:
+            ConversationService.add_message(
+                db=db,
+                conversation_id=payload.conversation_id,
+                role="user",
+                content=payload.message,
+            )
+            ConversationService.add_message(
+                db=db,
+                conversation_id=payload.conversation_id,
+                role="assistant",
+                content=response.answer,
+            )
+            if context_plan and context_plan.get("needs_summarization"):
+                SummarizationService.execute_summarization(db=db, conversation_id=payload.conversation_id)
+        except Exception as err:
+            logger.warning(f"Notice: unable to persist stateful conversation turns: {err}")
 
     return response
 
