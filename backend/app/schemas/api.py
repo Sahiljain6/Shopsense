@@ -107,6 +107,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     product_ids: list[int] = Field(default_factory=list)
+    products: list[ProductRead] = Field(default_factory=list)
     reasons: dict[str, str] = Field(default_factory=dict)
     pros: dict[str, list[str]] = Field(default_factory=dict)
     cons: dict[str, list[str]] = Field(default_factory=dict)

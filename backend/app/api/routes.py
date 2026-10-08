@@ -1,6 +1,9 @@
+import asyncio
+import json
 import logging
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from slowapi import Limiter
@@ -282,8 +285,12 @@ def google_auth(
 
 
 @router.get("/products", response_model=list[ProductRead])
-def products(q: str | None = None, limit: int = 10, db: Session = Depends(get_db)) -> list[ProductRead]:
+def products(q: str | None = None, limit: int = 10, ids: str | None = None, db: Session = Depends(get_db)) -> list[ProductRead]:
     try:
+        if ids:
+            parsed_ids = [int(x.strip()) for x in ids.split(",") if x.strip().isdigit()]
+            if parsed_ids:
+                return [_product_read(p) for p in CatalogService(db).get_many(parsed_ids)]
         return [_product_read(p) for p in CatalogService(db).search(q, limit)]
     except Exception:
         db.rollback()
@@ -359,6 +366,14 @@ def chat(
             answer="I ran into a temporary issue retrieving product data. Please try asking again in a moment."
         )
 
+    # Attach full product schemas so frontend does not need a second roundtrip
+    if response.product_ids and not response.products:
+        try:
+            prod_entities = CatalogService(db).get_many(response.product_ids)
+            response.products = [_product_read(p) for p in prod_entities]
+        except Exception as e:
+            logger.warning("Notice attaching product models to chat response: %s", e)
+
     # Save chat history in an isolated transaction so history logging never crashes the response
     try:
         db.add(ChatHistory(user_id=user.id, message=payload.message, response=response.model_dump()))
@@ -388,6 +403,141 @@ def chat(
             logger.warning(f"Notice: unable to persist stateful conversation turns: {err}")
 
     return response
+
+
+@router.post("/chat/stream")
+@limiter.limit("30/minute")
+async def chat_stream(
+    request: Request,
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    context: SecurityContext = Depends(check_quota(estimated_tokens=500)),
+):
+    """Server-Sent Events (SSE) chat streaming endpoint for fast perceived latency.
+    Emits progressive status updates, token chunks, resolved products, and final metadata.
+    """
+    is_advanced_request = (
+        payload.mode in ["advanced", "deep_research"]
+        or (payload.model and any(adv in payload.model.lower() for adv in ["claude 3.7", "opus", "extended"]))
+    )
+    if is_advanced_request and not context.has_scope(Scope.LLM_QUERY_ADVANCED.value):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "Forbidden",
+                "message": "Advanced reasoning models require Pro or Enterprise tier subscription.",
+                "required_scope": Scope.LLM_QUERY_ADVANCED.value,
+                "current_tier": context.tier.value,
+            },
+        )
+
+    history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
+    context_plan = None
+    if payload.conversation_id:
+        try:
+            cwm = ContextWindowManager(model_name=payload.model or "default")
+            context_plan = cwm.assemble_conversation_context(
+                db=db,
+                conversation_id=payload.conversation_id,
+                current_query=payload.message,
+            )
+            assembled = context_plan["assembled_messages"]
+            history = [m for m in assembled if m["role"] != "user" or m["content"] != payload.message]
+        except Exception as err:
+            logger.warning(f"Notice: unable to assemble conversation context for {payload.conversation_id}: {err}")
+
+    async def event_generator():
+        try:
+            # 1. Initial status event
+            yield f"data: {json.dumps({'type': 'status', 'status': 'Analyzing query...'})}\n\n"
+            await asyncio.sleep(0.01)
+
+            # 2. Execute orchestrator inside worker thread so we don't block the async event loop
+            orch = AIOrchestrator(db)
+            loop = asyncio.get_running_loop()
+            response: ChatResponse = await loop.run_in_executor(
+                None,
+                lambda: orch.answer_via_agents(
+                    payload.message,
+                    payload.mode,
+                    history,
+                    cart=payload.cart,
+                    model=payload.model,
+                )
+            )
+
+            # 3. Resolve products immediately
+            if response.product_ids and not response.products:
+                prod_entities = CatalogService(db).get_many(response.product_ids)
+                response.products = [_product_read(p) for p in prod_entities]
+
+            # 4. Stream tokens progressively
+            full_text = response.answer or ""
+            words = full_text.split(" ")
+            chunk_size = 4
+            for i in range(0, len(words), chunk_size):
+                chunk = " ".join(words[i:i + chunk_size])
+                if i + chunk_size < len(words):
+                    chunk += " "
+                yield f"data: {json.dumps({'type': 'token', 'token': chunk, 'chunk': chunk})}\n\n"
+                await asyncio.sleep(0.015)
+
+            # 5. Send resolved products event
+            if response.products:
+                prods_json = [p.model_dump() for p in response.products]
+                yield f"data: {json.dumps({'type': 'products', 'products': prods_json, 'product_ids': response.product_ids})}\n\n"
+
+            # 6. Send final completion event
+            resp_dict = response.model_dump()
+            resp_dict["products"] = [p.model_dump() for p in response.products]
+            yield f"data: {json.dumps({'type': 'done', 'response': resp_dict})}\n\n"
+            yield "data: [DONE]\n\n"
+
+            # 7. Record quota and log history
+            tokens_consumed = max(50, (len(payload.message) + len(response.answer)) // 4 + 50)
+            quota_engine.record_usage(user.id, tokens_consumed)
+
+            try:
+                db.add(ChatHistory(user_id=user.id, message=payload.message, response=response.model_dump()))
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.warning(f"Notice saving chat history: {e}")
+
+            if payload.conversation_id:
+                try:
+                    ConversationService.add_message(
+                        db=db,
+                        conversation_id=payload.conversation_id,
+                        role="user",
+                        content=payload.message,
+                    )
+                    ConversationService.add_message(
+                        db=db,
+                        conversation_id=payload.conversation_id,
+                        role="assistant",
+                        content=response.answer,
+                    )
+                    if context_plan and context_plan.get("needs_summarization"):
+                        SummarizationService.execute_summarization(db=db, conversation_id=payload.conversation_id)
+                except Exception as e:
+                    logger.warning(f"Notice persisting stateful turns: {e}")
+
+        except Exception as exc:
+            logger.exception("Error in chat stream: %s", exc)
+            yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 @router.post("/fetch-link", response_model=FetchLinkResponse)
@@ -433,7 +583,11 @@ async def identify_image_route(file: UploadFile = File(...), db: Session = Depen
 
     try:
         from app.services.agents.photo_deal_agent import resolve_photo_mismatch_and_find_deals
-        return resolve_photo_mismatch_and_find_deals(image_bytes, db)
+        resp = resolve_photo_mismatch_and_find_deals(image_bytes, db)
+        if resp.product_ids and not resp.products:
+            prod_entities = CatalogService(db).get_many(resp.product_ids)
+            resp.products = [_product_read(p) for p in prod_entities]
+        return resp
     except Exception as err:
         logger.exception("Error in multi-agent photo deal finder: %s", err)
         return ChatResponse(answer="I couldn't process that photo properly. Please try another image or search by text.")
