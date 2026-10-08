@@ -54,10 +54,9 @@ export default function App() {
   return (
     <main className="app-shell ambient-mode-active">
       <div className="ambient-stage" aria-hidden="true">
-        <video className="ambient-stage-video" autoPlay muted loop playsInline>
-          <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260826_124724_bc041163-d651-425f-aea3-2acc1efc2c96.mp4" type="video/mp4" />
-        </video>
-        <div className="ambient-stage-overlay" />
+        <div className="ambient-stage-glow ambient-glow-top" />
+        <div className="ambient-stage-glow ambient-glow-bottom" />
+        <div className="ambient-stage-grid" />
       </div>
       <section className="app-container">
         <Hero

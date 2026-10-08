@@ -6,16 +6,15 @@
   width: 100%;
   max-width: 900px;
   margin: 1rem auto 0;
-  background: rgba(10, 14, 22, 0.35);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
+  background: #0b0f19;
   border-radius: 24px;
-  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.09);
-  transition: border-color 0.3s ease;
+  transition: border-color 0.2s ease;
+  contain: paint;
 }
 
 .chatbot-widget-header {
@@ -155,13 +154,11 @@
 
 .assistant-bubble.fastshot-assistant-bubble,
 .assistant-bubble {
-  background: rgba(20, 26, 38, 0.45);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: #131926;
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #f1f5f9;
   border-top-left-radius: 4px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 /* ── WELCOME CARD & BENTO PROMPTS ── */
@@ -230,9 +227,7 @@
   padding: 1rem 1.15rem;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: #111724;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   text-align: left;
   cursor: pointer;
@@ -339,9 +334,7 @@
   align-items: center;
   gap: 0.65rem;
   padding: 0.6rem 1.15rem;
-  background: rgba(20, 26, 38, 0.55);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: #131926;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
   color: #94a3b8;
@@ -383,7 +376,7 @@
   color: #fef08a;
   font-size: 0.78rem;
   font-weight: 600;
-  backdrop-filter: blur(12px);
+  border: 1px solid rgba(245, 158, 11, 0.35);
   animation: pulseWarming 2s infinite ease-in-out;
 }
 
@@ -398,5 +391,14 @@
   gap: 0.95rem;
   margin-top: 0.85rem;
   width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 

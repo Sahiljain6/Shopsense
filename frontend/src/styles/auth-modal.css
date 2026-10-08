@@ -11,9 +11,7 @@
   align-items: center;
   justify-content: center;
   padding: 1.25rem;
-  background: rgba(4, 7, 13, 0.78);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(4, 7, 13, 0.85);
   overflow-y: auto;
   animation: authBackdropFadeIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

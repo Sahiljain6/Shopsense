@@ -4,9 +4,7 @@
 
 .chat-product-card.fastshot-product-card,
 .chat-product-card {
-  background: rgba(16, 22, 34, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: #111724;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   padding: 0.95rem;
@@ -243,9 +241,7 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(4, 6, 12, 0.78);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: rgba(4, 6, 12, 0.85);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -254,9 +250,7 @@
 }
 
 .focused-product-modal {
-  background: rgba(14, 19, 30, 0.94);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
+  background: #0e131e;
   border: 1px solid rgba(255, 255, 255, 0.12);
   width: 100%;
   max-width: 880px;

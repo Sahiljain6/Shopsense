@@ -8,9 +8,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.9rem 1.75rem;
-  background: rgba(10, 14, 22, 0.45);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
+  background: #0d121c;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px 18px 0 0;
   color: #ffffff;

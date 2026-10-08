@@ -5,9 +5,7 @@
 .cart-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(4, 6, 12, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(4, 6, 12, 0.82);
   z-index: 998;
 }
 
@@ -18,9 +16,7 @@
   width: 400px;
   max-width: 90vw;
   height: 100vh;
-  background: rgba(13, 18, 28, 0.96);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
+  background: #0d121c;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
   z-index: 999;
   display: flex;
