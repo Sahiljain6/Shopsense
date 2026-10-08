@@ -1,10 +1,10 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import ProductCard from "./ProductCard";
 import MarkdownRenderer from "./MarkdownRenderer";
 import logoMarkUrl from "../assets/logo-mark.png";
 
-export default function MessageBubble({ message }) {
+function MessageBubble({ message }) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
   const products = Array.isArray(message.products) ? message.products : [];
@@ -20,9 +20,9 @@ export default function MessageBubble({ message }) {
   return (
     <motion.div
       className={`chat-message-row ${isUser ? "user-row" : "assistant-row"}`}
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
     >
       <div className="message-avatar-box">
         {isUser ? (
@@ -40,7 +40,6 @@ export default function MessageBubble({ message }) {
                 height: "20px",
                 width: "auto",
                 objectFit: "contain",
-                filter: "drop-shadow(0 0 6px rgba(6, 182, 212, 0.6))",
               }}
             />
           </div>
@@ -72,7 +71,12 @@ export default function MessageBubble({ message }) {
           {isUser ? (
             <p className="user-text-content">{message.text || ""}</p>
           ) : (
-            <MarkdownRenderer content={message.text || ""} />
+            <>
+              <MarkdownRenderer content={message.text || ""} />
+              {message.streaming && !message.text && (
+                <span className="streaming-cursor-pulse">▊</span>
+              )}
+            </>
           )}
         </div>
 
@@ -91,3 +95,15 @@ export default function MessageBubble({ message }) {
     </motion.div>
   );
 }
+
+export default React.memo(MessageBubble, (prevProps, nextProps) => {
+  const p = prevProps.message;
+  const n = nextProps.message;
+  return (
+    p.text === n.text &&
+    p.role === n.role &&
+    p.model === n.model &&
+    p.streaming === n.streaming &&
+    (p.products?.length || 0) === (n.products?.length || 0)
+  );
+});

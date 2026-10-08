@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 
 /**
  * Custom Rich Markdown, Table & Deal Link Renderer
@@ -11,38 +11,42 @@ import React from "react";
  * - *Italic Text* -> <em>
  * - • or - or * List items -> Formatted Bullet Item
  */
-export default function MarkdownRenderer({ content }) {
+function MarkdownRenderer({ content }) {
   if (!content) return null;
 
-  const rawLines = content.split("\n");
-  const blocks = [];
-  let currentTable = null;
+  const blocks = useMemo(() => {
+    const rawLines = content.split("\n");
+    const parsedBlocks = [];
+    let currentTable = null;
 
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i];
-    const trimmed = line.trim();
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
+      const trimmed = line.trim();
 
-    // Check if line is a table row (starts and ends with | or contains multiple |)
-    const isTableRow = trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.includes("|");
+      // Check if line is a table row (starts and ends with | or contains multiple |)
+      const isTableRow = trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.includes("|");
 
-    if (isTableRow) {
-      if (!currentTable) {
-        currentTable = [];
+      if (isTableRow) {
+        if (!currentTable) {
+          currentTable = [];
+        }
+        currentTable.push(trimmed);
+        continue;
+      } else {
+        if (currentTable) {
+          parsedBlocks.push({ type: "table", rows: currentTable, index: i - currentTable.length });
+          currentTable = null;
+        }
+        parsedBlocks.push({ type: "line", content: line, index: i });
       }
-      currentTable.push(trimmed);
-      continue;
-    } else {
-      if (currentTable) {
-        blocks.push({ type: "table", rows: currentTable, index: i - currentTable.length });
-        currentTable = null;
-      }
-      blocks.push({ type: "line", content: line, index: i });
     }
-  }
 
-  if (currentTable) {
-    blocks.push({ type: "table", rows: currentTable, index: rawLines.length - currentTable.length });
-  }
+    if (currentTable) {
+      parsedBlocks.push({ type: "table", rows: currentTable, index: rawLines.length - currentTable.length });
+    }
+
+    return parsedBlocks;
+  }, [content]);
 
   return (
     <div className="rich-markdown-container">
@@ -55,6 +59,8 @@ export default function MarkdownRenderer({ content }) {
     </div>
   );
 }
+
+export default React.memo(MarkdownRenderer);
 
 function renderTable(rows, tableIndex) {
   if (rows.length < 2) return null;

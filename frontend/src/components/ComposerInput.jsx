@@ -1,11 +1,12 @@
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import ModelDropdown from "./ModelDropdown";
 
 export default function ComposerInput({
   isLoggedIn,
   onOpenAuth,
-  inputText,
-  setInputText,
+  inputText: externalInputText,
+  setInputText: externalSetInputText,
   attachedFile,
   fileInputRef,
   onAttachFile,
@@ -13,11 +14,39 @@ export default function ComposerInput({
   selectedModel,
   onSelectModel,
   onSubmit,
-  hasContent,
+  onSendMessage,
   loading,
 }) {
+  const [internalText, setInternalText] = useState("");
+  const isControlled = externalInputText !== undefined && externalSetInputText !== undefined;
+  const currentText = isControlled ? externalInputText : internalText;
+
+  const handleChange = (e) => {
+    if (isControlled) {
+      externalSetInputText(e.target.value);
+    } else {
+      setInternalText(e.target.value);
+    }
+  };
+
+  const handleFormSubmit = (e) => {
+    e.preventDefault();
+    if (loading) return;
+    if (onSendMessage) {
+      const text = currentText.trim();
+      if (!text && !attachedFile) return;
+      onSendMessage(text);
+      if (!isControlled) setInternalText("");
+    } else if (onSubmit) {
+      onSubmit(e);
+      if (!isControlled) setInternalText("");
+    }
+  };
+
+  const hasContent = Boolean(currentText.trim()) || Boolean(attachedFile);
+
   return (
-    <form className="chatbot-composer fastshot-composer-card" onSubmit={onSubmit}>
+    <form className="chatbot-composer fastshot-composer-card" onSubmit={handleFormSubmit}>
       <input
         ref={fileInputRef}
         type="file"
@@ -40,8 +69,8 @@ export default function ComposerInput({
               : "Sign in to chat, compare prices & find deals..."
           }
           autoComplete="off"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
+          value={currentText}
+          onChange={handleChange}
           disabled={!isLoggedIn || Boolean(attachedFile)}
           aria-label={isLoggedIn ? "Chat input" : "Log in to use chat"}
         />

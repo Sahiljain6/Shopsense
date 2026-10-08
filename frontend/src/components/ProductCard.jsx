@@ -1,10 +1,10 @@
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { fetchPriceHistory, friendlyError } from "../api";
 import { addToCartStorage } from "../hooks/useCart";
 import { formatINR, formatRatingStars, generateBuyLinks } from "../utils/formatters";
 import ProductDetailModal from "./ProductDetailModal";
 
-export default function ProductCard({ product }) {
+function ProductCard({ product }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -35,12 +35,12 @@ export default function ProductCard({ product }) {
     }
   }, [product.id, historyData]);
 
-  const handleAddToCart = (e) => {
+  const handleAddToCart = useCallback((e) => {
     e.stopPropagation();
     addToCartStorage(product);
     setCartAdded(true);
     setTimeout(() => setCartAdded(false), 2000);
-  };
+  }, [product]);
 
   return (
     <>
@@ -54,6 +54,9 @@ export default function ProductCard({ product }) {
                 alt={product.name || "Product"}
                 className="product-card-img"
                 loading="lazy"
+                decoding="async"
+                width="160"
+                height="160"
                 onError={(e) => { e.target.style.display = "none"; }}
               />
             ) : (
@@ -128,3 +131,5 @@ export default function ProductCard({ product }) {
     </>
   );
 }
+
+export default React.memo(ProductCard);
