@@ -10,7 +10,7 @@
 
 ---
 
-## ✨ What It Does
+## ✨ What It Does:
 
 ShopSense is a full-stack AI shopping assistant purpose-built for Indian e-commerce workflows:
 
@@ -122,7 +122,7 @@ flowchart TD
 
 ---
 
-## 🚀 Quick Start (Local)
+## 🚀 Quick Start(Local):
 
 ### Prerequisites
 - Docker & Docker Compose **or** Python 3.12 + Node 20 + Postgres 15
