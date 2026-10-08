@@ -1,6 +1,8 @@
+import { streamAIResponse } from "./utils/aiStreamClient.js";
+
 const API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL ? import.meta.env.VITE_API_URL.trim() : null) || "https://shopsense-api-pb2g.onrender.com";
 const TOKEN_KEY = "shopsense_token";
-const PROTECTED_PATHS = ["/chat", "/compare", "/reviews/summary", "/history", "/wishlist"];
+const PROTECTED_PATHS = ["/chat", "/chat/stream", "/compare", "/reviews/summary", "/history", "/wishlist"];
 
 export class ApiError extends Error {
   constructor(status, message) {
@@ -190,6 +192,43 @@ export const sendChat = (message, mode, history, cart = [], onStatusChange = nul
     onStatusChange,
     retries: 1,
   });
+
+export async function streamChat({
+  message,
+  mode,
+  history = [],
+  cart = [],
+  model = "Sonnet 4.5",
+  signal,
+  onToken,
+  onStatus,
+  onProducts,
+  onComplete,
+  onError,
+}) {
+  const token = getToken();
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    "X-Client-Platform": "Web/Vite",
+    "X-Client-Version": "1.0.0",
+  };
+  const csrfToken = getCsrfToken();
+  if (csrfToken) {
+    headers["X-CSRF-Token"] = csrfToken;
+  }
+
+  return streamAIResponse({
+    url: `${API_URL}/chat/stream`,
+    headers,
+    body: { message, mode, history, cart, model },
+    signal,
+    onToken,
+    onStatus,
+    onProducts,
+    onComplete,
+    onError,
+  });
+}
 
 export const fetchLink = (url) =>
   apiFetch("/fetch-link", { method: "POST", body: JSON.stringify({ url }) });

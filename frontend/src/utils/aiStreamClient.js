@@ -24,11 +24,15 @@ export async function streamAIResponse({
   body,
   signal,
   onToken,
+  onStatus,
+  onProducts,
   onToolCall,
+  onDoneMetadata,
   onComplete,
   onError
 }) {
   let accumulatedText = "";
+  let fullResponseMeta = null;
 
   try {
     const response = await fetch(url, {
@@ -71,12 +75,28 @@ export async function streamAIResponse({
         if (trimmed.startsWith("data:")) {
           const rawData = trimmed.replace(/^data:\s*/, "");
           if (rawData === "[DONE]") {
-            if (onComplete) onComplete(accumulatedText);
+            if (onComplete) onComplete(accumulatedText, fullResponseMeta);
             return accumulatedText;
           }
 
           try {
             const parsed = JSON.parse(rawData);
+
+            if (parsed.type === "status" && parsed.status) {
+              if (onStatus) onStatus(parsed.status);
+              continue;
+            }
+
+            if (parsed.type === "products") {
+              if (onProducts) onProducts(parsed.products || [], parsed.product_ids || []);
+              continue;
+            }
+
+            if (parsed.type === "done" && parsed.response) {
+              fullResponseMeta = parsed.response;
+              if (onDoneMetadata) onDoneMetadata(parsed.response);
+              continue;
+            }
 
             // Handle tool-call streaming event
             if (parsed.type === "tool_call" || parsed.tool_calls) {
@@ -86,6 +106,7 @@ export async function streamAIResponse({
 
             // Extract token from common LLM response formats (OpenAI, Anthropic, Gemini, Vercel AI SDK)
             const token =
+              parsed.token ||
               parsed.choices?.[0]?.delta?.content ||
               parsed.candidates?.[0]?.content?.parts?.[0]?.text ||
               parsed.delta?.text ||
