@@ -50,6 +50,7 @@ def search_node(state: ShopSenseState) -> ShopSenseState:
         db=state["db"],
         limit=12
     )
+    state["products"] = resolved.products
     state["product_ids"] = [p.id for p in resolved.products]
     return state
 
@@ -57,7 +58,16 @@ def search_node(state: ShopSenseState) -> ShopSenseState:
 def recommend_node(state: ShopSenseState) -> ShopSenseState:
     if state.get("intent") == "refuse":
         return state
-    state["response"] = AIOrchestrator(state["db"]).answer(state["message"], state.get("mode"), cart=state.get("cart"))
+    orch = AIOrchestrator(state["db"])
+    if state.get("products"):
+        state["response"] = orch._generate_ai_response(
+            message=state["message"],
+            products=state["products"][:4],
+            history=state.get("history"),
+            cart=state.get("cart")
+        )
+    else:
+        state["response"] = orch.answer(state["message"], state.get("mode"), history=state.get("history"), cart=state.get("cart"))
     return state
 
 

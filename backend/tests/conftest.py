@@ -2,6 +2,7 @@ import os
 import sys
 from collections.abc import Generator
 from pathlib import Path
+import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["JWT_SECRET"] = "test-secret"
@@ -26,13 +27,17 @@ def override_get_db() -> Generator[Session, None, None]:
 
 app.dependency_overrides[get_db] = override_get_db
 
+@pytest.fixture(autouse=True)
+def ensure_db_override():
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+    app.dependency_overrides[get_db] = override_get_db
+
 
 def reset_db() -> None:
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
-
-import pytest
 
 @pytest.fixture()
 def db_session() -> Generator[Session, None, None]:

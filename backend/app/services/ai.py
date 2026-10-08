@@ -224,14 +224,33 @@ def _build_gemini_contents(user: str, history: list[dict[str, str]] | None = Non
     return contents
 
 
+import threading
+import time
+
+_MODEL_CACHE_LOCK = threading.Lock()
+_GROQ_MODELS_CACHE: dict[str, tuple[float, list[str]]] = {}
+_GEMINI_MODELS_CACHE: dict[str, tuple[float, list[str]]] = {}
+_MODEL_CACHE_TTL = 3600.0  # 1 hour TTL cache to avoid blocking network discovery on every request
+
+
 def get_active_groq_models(api_key: str) -> list[str]:
     clean_key = api_key.strip().strip("'").strip('"')
+    if not clean_key:
+        return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+
+    now = time.time()
+    with _MODEL_CACHE_LOCK:
+        if clean_key in _GROQ_MODELS_CACHE:
+            ts, cached_models = _GROQ_MODELS_CACHE[clean_key]
+            if now - ts < _MODEL_CACHE_TTL and cached_models:
+                return list(cached_models)
+
     url = "https://api.groq.com/openai/v1/models"
     headers = {"Authorization": f"Bearer {clean_key}"}
 
     try:
         import httpx
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(timeout=3.0) as client:
             resp = client.get(url, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
@@ -241,11 +260,16 @@ def get_active_groq_models(api_key: str) -> list[str]:
                     if m.get("id") and m.get("active", True) is not False
                 ]
                 if active_ids:
+                    with _MODEL_CACHE_LOCK:
+                        _GROQ_MODELS_CACHE[clean_key] = (time.time(), active_ids)
                     return active_ids
     except Exception as err:
         print(f"Notice fetching Groq model list dynamically: {err}")
 
-    return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+    fallback = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+    with _MODEL_CACHE_LOCK:
+        _GROQ_MODELS_CACHE[clean_key] = (time.time(), fallback)
+    return fallback
 
 
 ACTIVE_GEMINI_MODELS = [
@@ -262,6 +286,16 @@ def get_active_gemini_models(api_key: str) -> list[str]:
     strictly prioritizing ACTIVE_GEMINI_MODELS (gemini-3.8-flash, gemini-3.5-flash-lite, gemini-3.1-pro-preview)
     and filtering out TTS, audio-only, and embedding models."""
     clean_key = api_key.strip().strip("'").strip('"')
+    if not clean_key:
+        return list(ACTIVE_GEMINI_MODELS)
+
+    now = time.time()
+    with _MODEL_CACHE_LOCK:
+        if clean_key in _GEMINI_MODELS_CACHE:
+            ts, cached_models = _GEMINI_MODELS_CACHE[clean_key]
+            if now - ts < _MODEL_CACHE_TTL and cached_models:
+                return list(cached_models)
+
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
     try:
         import httpx
@@ -288,11 +322,16 @@ def get_active_gemini_models(api_key: str) -> list[str]:
                         if other not in prioritized and not any(ex in other.lower() for ex in EXCLUDE_SUBSTRINGS):
                             prioritized.append(other)
                     if prioritized:
+                        with _MODEL_CACHE_LOCK:
+                            _GEMINI_MODELS_CACHE[clean_key] = (time.time(), prioritized)
                         return prioritized
     except Exception as err:
         print(f"Notice fetching Gemini model list dynamically: {err}")
 
-    return list(ACTIVE_GEMINI_MODELS)
+    fallback = list(ACTIVE_GEMINI_MODELS)
+    with _MODEL_CACHE_LOCK:
+        _GEMINI_MODELS_CACHE[clean_key] = (time.time(), fallback)
+    return fallback
 
 
 
@@ -1125,15 +1164,16 @@ class AIOrchestrator:
         history: list[dict[str, str]] | None,
         cart: list[dict[str, object]] | None = None
     ) -> Product | GenericProductRef | None:
+        if not history:
+            return None
         catalog_products = self.catalog.search("", limit=50)
-        if history:
-            for turn in reversed(history[-6:]):
-                content = (turn.get("content") or "").lower()
-                for p in catalog_products:
-                    # Match name or core model name
-                    model_words = [w for w in p.name.lower().split() if len(w) > 2 and w not in ["phone", "5g", "ram", "storage", "black", "blue"]]
-                    if p.name.lower() in content or (len(model_words) >= 2 and all(mw in content for mw in model_words[:2])):
-                        return p
+        for turn in reversed(history[-6:]):
+            content = (turn.get("content") or "").lower()
+            for p in catalog_products:
+                # Match name or core model name
+                model_words = [w for w in p.name.lower().split() if len(w) > 2 and w not in ["phone", "5g", "ram", "storage", "black", "blue"]]
+                if p.name.lower() in content or (len(model_words) >= 2 and all(mw in content for mw in model_words[:2])):
+                    return p
 
         # If no catalog product matched, extract live-search products from assistant history
         if history:

@@ -54,5 +54,15 @@ def build_graph():
     return graph.compile()
 
 
+_COMPILED_GRAPH = None
+
+
+def get_compiled_graph():
+    global _COMPILED_GRAPH
+    if _COMPILED_GRAPH is None:
+        _COMPILED_GRAPH = build_graph()
+    return _COMPILED_GRAPH
+
+
 def run_graph(state: ShopSenseState) -> ShopSenseState:
-    return build_graph().invoke(state)
+    return get_compiled_graph().invoke(state)
