@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.session import Base, get_db
 from app.main import app
 from app import models  # noqa: F401
+from app.models import conversation as _conv_models  # noqa: F401 — registers Conversation, Message, ConversationSummary
 
 engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=__import__("sqlalchemy.pool").pool.StaticPool)
 TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)

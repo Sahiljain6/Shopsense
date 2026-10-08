@@ -138,15 +138,15 @@ class ConversationService:
 
     @staticmethod
     def _auto_generate_title(conv: Conversation, user_message: str) -> None:
-        """Lightweight heuristic / LLM title generation."""
-        clean = " ".join(user_message.strip().split())
-        if clean:
-            # Capitalize and truncate nicely
-            words = clean.split()
-            candidate = " ".join(words[:6])
-            if len(candidate) > 40:
-                candidate = candidate[:37] + "..."
-            conv.title = candidate.capitalize()
+        """Lightweight heuristic title generation — retains all meaningful words."""
+        stop = {"i", "a", "an", "the", "for", "to", "do", "of", "is", "in", "at", "on", "and", "or", "am", "are"}
+        words = user_message.strip().split()
+        meaningful = [w for w in words if w.lower() not in stop]
+        candidates = meaningful[:8] if meaningful else words[:6]
+        candidate = " ".join(candidates)
+        if len(candidate) > 50:
+            candidate = candidate[:47] + "..."
+        conv.title = candidate.title()  # Title Case for readability
 
     @staticmethod
     def branch_conversation(
