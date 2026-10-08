@@ -21,6 +21,10 @@ services:
         fromDatabase:
           name: shopsense-db
           property: connectionString
+      - key: PINCODE_API_KEY
+        sync: false
+      - key: PINCODE_API_URL
+        sync: false
 
 databases:
   - name: shopsense-db

@@ -1,7 +1,10 @@
+import os
 import re
 import logging
 from typing import Any
 import httpx
+
+from app.core.config import get_settings
 
 logger = logging.getLogger("shopsense.logistics")
 
@@ -24,8 +27,9 @@ PINCODE_FALLBACKS: dict[str, dict[str, str]] = {
 
 
 def lookup_pincode(pincode: str) -> dict[str, Any]:
-    """Lookup an Indian 6-digit PIN code via the official Postal Pincode API,
-    resolving district, state, and estimated delivery timeline.
+    """Lookup an Indian 6-digit PIN code via the official Postal Pincode API
+    or a configured provider with API key, resolving district, state,
+    and estimated delivery timeline.
     """
     clean_pin = re.sub(r"\D", "", str(pincode).strip())
     if not re.match(r"^[1-9][0-9]{5}$", clean_pin):
@@ -35,7 +39,49 @@ def lookup_pincode(pincode: str) -> dict[str, Any]:
             "error": "Invalid PIN code. Indian postal codes must be exactly 6 digits starting with 1-9."
         }
 
-    url = f"https://api.postalpincode.in/pincode/{clean_pin}"
+    settings = get_settings()
+    api_key = (
+        getattr(settings, "pincode_api_key", "")
+        or os.getenv("PINCODE_API_KEY", "")
+        or os.getenv("POSTAL_PINCODE_API_KEY", "")
+        or os.getenv("POSTAL_API_KEY", "")
+    ).strip()
+
+    custom_url = (
+        getattr(settings, "pincode_api_url", "")
+        or os.getenv("PINCODE_API_URL", "")
+    ).strip()
+
+    # Determine endpoint URL
+    if custom_url:
+        if "{pincode}" in custom_url:
+            url = custom_url.replace("{pincode}", clean_pin)
+        elif "{pin}" in custom_url:
+            url = custom_url.replace("{pin}", clean_pin)
+        elif custom_url.endswith("/"):
+            url = f"{custom_url}{clean_pin}"
+        else:
+            url = custom_url
+    else:
+        url = f"https://api.postalpincode.in/pincode/{clean_pin}"
+
+    headers: dict[str, str] = {
+        "User-Agent": "Shopsense-Logistics/1.0",
+        "Accept": "application/json",
+    }
+    params: dict[str, str] = {}
+
+    if api_key:
+        headers["api-key"] = api_key
+        headers["x-api-key"] = api_key
+        headers["Authorization"] = f"Bearer {api_key}"
+        headers["X-RapidAPI-Key"] = api_key
+        params["api_key"] = api_key
+        params["apikey"] = api_key
+
+    if custom_url and ("{pincode}" not in custom_url and "{pin}" not in custom_url and not custom_url.endswith("/")):
+        params["pincode"] = clean_pin
+
     district = ""
     state = ""
     post_office = ""
@@ -43,17 +89,34 @@ def lookup_pincode(pincode: str) -> dict[str, Any]:
 
     try:
         with httpx.Client(timeout=4.0) as client:
-            resp = client.get(url)
+            resp = client.get(url, headers=headers, params=params if params else None)
             if resp.status_code == 200:
                 data = resp.json()
-                if isinstance(data, list) and len(data) > 0 and data[0].get("Status") == "Success":
-                    po_list = data[0].get("PostOffice") or []
-                    if po_list:
-                        first = po_list[0]
-                        district = first.get("District", "")
-                        state = first.get("State", "")
-                        post_office = first.get("Name", "")
-                        delivery_status = first.get("DeliveryStatus", "Deliverable")
+                if isinstance(data, list) and len(data) > 0:
+                    first_node = data[0] if isinstance(data[0], dict) else {}
+                    if first_node.get("Status") == "Success" or "PostOffice" in first_node:
+                        po_list = first_node.get("PostOffice") or []
+                        if po_list and isinstance(po_list, list) and len(po_list) > 0:
+                            first_po = po_list[0]
+                            district = first_po.get("District") or first_po.get("district") or ""
+                            state = first_po.get("State") or first_po.get("state") or ""
+                            post_office = first_po.get("Name") or first_po.get("name") or ""
+                            delivery_status = first_po.get("DeliveryStatus") or first_po.get("delivery_status") or "Deliverable"
+                elif isinstance(data, dict):
+                    po_list = data.get("PostOffice") or data.get("post_office") or data.get("places") or data.get("data")
+                    if isinstance(po_list, list) and len(po_list) > 0:
+                        first_po = po_list[0]
+                        if isinstance(first_po, dict):
+                            district = first_po.get("District") or first_po.get("district") or ""
+                            state = first_po.get("State") or first_po.get("state") or ""
+                            post_office = first_po.get("Name") or first_po.get("name") or ""
+                            delivery_status = first_po.get("DeliveryStatus") or first_po.get("delivery_status") or "Deliverable"
+                    if not district:
+                        district = data.get("district") or data.get("District") or data.get("city") or data.get("City") or ""
+                    if not state:
+                        state = data.get("state") or data.get("State") or ""
+                    if not post_office:
+                        post_office = data.get("post_office") or data.get("name") or data.get("Name") or ""
     except Exception as exc:
         logger.warning("Pincode API lookup notice for %s: %s", clean_pin, exc)
 

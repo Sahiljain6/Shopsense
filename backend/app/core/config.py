@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     google_vision_api_key: str = ""
     google_client_id: str = ""
 
+    pincode_api_key: str = ""
+    pincode_api_url: str = ""
+
     database_url: str = "sqlite:///./shopsense.db"
 
     jwt_secret: str = ""
