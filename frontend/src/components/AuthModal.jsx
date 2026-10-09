@@ -219,7 +219,7 @@ export default function AuthModal({
                     height: "20px",
                     width: "auto",
                     objectFit: "contain",
-                    filter: "drop-shadow(0 0 8px rgba(6, 182, 212, 0.7))",
+                    
                   }}
                 />
                 <span className="auth-modal-pill-text">
