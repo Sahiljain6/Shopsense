@@ -44,16 +44,14 @@
 }
 
 .chatbot-composer.fastshot-composer-card {
-  padding: 0.75rem 1.15rem;
-  background: #0f141f;
+  padding: 0.75rem 1.05rem;
+  background: #0b111b;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color var(--ss-dur-fast) ease;
 }
 
 .chatbot-composer.fastshot-composer-card:focus-within {
-  border-top-color: rgba(6, 182, 212, 0.4);
-  box-shadow: inset 0 1px 0 rgba(6, 182, 212, 0.3), 0 -4px 20px rgba(6, 182, 212, 0.08);
+  border-top-color: rgba(34, 211, 238, 0.5);
 }
 
 .composer-main-row {
@@ -65,12 +63,13 @@
 
 .composer-text-input {
   flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
-  font-size: 0.94rem;
+  font-size: 1rem;
   color: #f8fafc;
   background: transparent;
-  padding: 0.25rem 0;
+  padding: 0.35rem 0;
   letter-spacing: -0.01em;
 }
 .composer-text-input::placeholder {
@@ -213,15 +212,17 @@
 
 .composer-attach-btn {
   color: #94a3b8;
-  padding: 0.35rem;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   border: none;
   background: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.15s ease, transform 0.1s ease;
-  border-radius: 8px;
+  transition: color var(--ss-dur-fast) ease, background-color var(--ss-dur-fast) ease;
+  border-radius: 10px;
 }
 .composer-attach-btn:hover:not(:disabled) {
   color: #ffffff;
@@ -239,26 +240,25 @@
 }
 
 .composer-fastshot-send {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);
-  box-shadow: 0 3px 14px rgba(6, 182, 212, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.24);
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.18s var(--ss-ease-spring);
+  transition: filter var(--ss-dur-fast) ease, transform var(--ss-dur-fast) ease;
 }
 .composer-fastshot-send:hover:not(:disabled) {
-  transform: scale(1.06) translateY(-1px);
-  box-shadow: 0 5px 20px rgba(6, 182, 212, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  filter: brightness(1.08);
 }
 .composer-fastshot-send:active:not(:disabled) {
-  transform: scale(0.95);
+  transform: scale(0.98);
 }
 .composer-fastshot-send:disabled {
   opacity: 0.4;
