@@ -256,8 +256,8 @@
   position: relative;
   width: 100%;
   max-width: 880px;
-  max-height: min(90vh, calc(100vh - 2rem));
-  max-height: min(90dvh, calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+  max-height: min(90vh, calc(100vh - 3rem));
+  max-height: min(90dvh, calc(100dvh - 3rem));
   min-height: 0;
   overflow: hidden;
   padding: 0;
@@ -316,9 +316,9 @@
   min-width: 0;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 720px) {
   .modal-grid-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
