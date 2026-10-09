@@ -302,6 +302,16 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
           },
           onError: async (streamErr) => {
             if (streamErr.name === "AbortError") return;
+
+            // Flush the current partial text and cancel its timer before falling
+            // back. Otherwise a delayed partial update could overwrite the full
+            // fallback answer after it has arrived.
+            if (tokenBatchTimerRef.current) {
+              clearTimeout(tokenBatchTimerRef.current);
+              tokenBatchTimerRef.current = null;
+            }
+            flushTokenBatch();
+
             // Graceful fallback to standard /chat endpoint if stream is interrupted
             try {
               const fallbackResp = await sendChat(
@@ -331,6 +341,18 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
                 return next;
               });
             } catch (fallbackErr) {
+              setMessages((prev) => {
+                const next = [...prev];
+                const lastIdx = next.length - 1;
+                if (lastIdx >= 0 && next[lastIdx].role === "assistant") {
+                  next[lastIdx] = {
+                    ...next[lastIdx],
+                    text: accumulatedText || next[lastIdx].text,
+                    streaming: false,
+                  };
+                }
+                return next;
+              });
               onError(friendlyError(fallbackErr));
             }
           },
