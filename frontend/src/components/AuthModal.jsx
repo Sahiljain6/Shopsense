@@ -24,6 +24,9 @@ export default function AuthModal({
   const onCloseRef = useRef(onClose);
   const loadingRef = useRef(loading);
   const dialogTitleId = useId();
+  const fullNameId = useId();
+  const emailId = useId();
+  const passwordId = useId();
   const shouldReduceMotion = useReducedMotion();
 
   const setErrorMessage = useCallback(
@@ -361,10 +364,12 @@ export default function AuthModal({
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.18 }}
                   >
-                    <label className="input-label">Full Name</label>
+                    <label className="input-label" htmlFor={fullNameId}>Full Name</label>
                     <input
+                      id={fullNameId}
                       className="clean-input"
                       type="text"
+                      autoComplete="name"
                       placeholder="e.g. Alex Kumar"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
@@ -374,10 +379,12 @@ export default function AuthModal({
               </AnimatePresence>
 
               <div className="input-group">
-                <label className="input-label">Email address</label>
+                <label className="input-label" htmlFor={emailId}>Email address</label>
                 <input
+                  id={emailId}
                   className="clean-input"
                   type="email"
+                  autoComplete="email"
                   placeholder="you@example.com"
                   required
                   value={email}
@@ -386,11 +393,13 @@ export default function AuthModal({
               </div>
 
               <div className="input-group">
-                <label className="input-label">Password</label>
+                <label className="input-label" htmlFor={passwordId}>Password</label>
                 <div className="password-input-wrapper">
                   <input
+                    id={passwordId}
                     className="clean-input"
                     type={showPassword ? "text" : "password"}
+                    autoComplete={isRegister ? "new-password" : "current-password"}
                     placeholder="••••••••"
                     required
                     value={password}
@@ -401,7 +410,8 @@ export default function AuthModal({
                     className="password-toggle-btn"
                     onClick={() => setShowPassword((prev) => !prev)}
                     title={showPassword ? "Hide password" : "Show password"}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
                   >
                     <UiIcon name={showPassword ? "eye-off" : "eye"} size={17} />
                   </button>
