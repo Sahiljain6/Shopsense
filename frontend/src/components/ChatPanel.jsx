@@ -39,7 +39,7 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
   const warmUpTimerRef = useRef(null);
   const abortControllerRef = useRef(null);
   const isNearBottomRef = useRef(true);
-  const rAFRef = useRef(null);
+  const tokenBatchTimerRef = useRef(null);
 
   // Monitor scroll position without layout thrashing
   const handleScroll = useCallback((e) => {
@@ -79,8 +79,8 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
       if (warmUpTimerRef.current) {
         clearTimeout(warmUpTimerRef.current);
       }
-      if (rAFRef.current) {
-        cancelAnimationFrame(rAFRef.current);
+      if (tokenBatchTimerRef.current) {
+        clearTimeout(tokenBatchTimerRef.current);
       }
     };
   }, []);
@@ -222,11 +222,12 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
       let accumulatedText = "";
       let tokenBatchBuffer = "";
 
+      // Limit full Markdown + message-tree updates to about 30 FPS while
+      // buffering all tokens. Completion flushes the remaining text immediately.
       const flushTokenBatch = () => {
-        if (!tokenBatchBuffer) {
-          rAFRef.current = null;
-          return;
-        }
+        tokenBatchTimerRef.current = null;
+        if (!tokenBatchBuffer) return;
+
         accumulatedText += tokenBatchBuffer;
         tokenBatchBuffer = "";
         setMessages((prev) => {
@@ -240,13 +241,12 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
           }
           return next;
         });
-        rAFRef.current = null;
       };
 
       const handleToken = (token) => {
         tokenBatchBuffer += token;
-        if (!rAFRef.current) {
-          rAFRef.current = requestAnimationFrame(flushTokenBatch);
+        if (!tokenBatchTimerRef.current) {
+          tokenBatchTimerRef.current = setTimeout(flushTokenBatch, 32);
         }
       };
 
@@ -277,7 +277,12 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
             });
           },
           onComplete: (fullText, fullMeta) => {
-            if (rAFRef.current) cancelAnimationFrame(rAFRef.current);
+            if (tokenBatchTimerRef.current) {
+              clearTimeout(tokenBatchTimerRef.current);
+              tokenBatchTimerRef.current = null;
+            }
+            accumulatedText += tokenBatchBuffer;
+            tokenBatchBuffer = "";
             const finalText = fullText || accumulatedText;
             setMessages((prev) => {
               const next = [...prev];
@@ -335,7 +340,10 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
           onError(friendlyError(err));
         }
       } finally {
-        if (rAFRef.current) cancelAnimationFrame(rAFRef.current);
+        if (tokenBatchTimerRef.current) {
+          clearTimeout(tokenBatchTimerRef.current);
+          tokenBatchTimerRef.current = null;
+        }
         if (warmUpTimerRef.current) clearTimeout(warmUpTimerRef.current);
         setLoading(false);
         setIsWarmingUp(false);
