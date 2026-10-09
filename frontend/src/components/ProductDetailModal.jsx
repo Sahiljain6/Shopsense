@@ -89,11 +89,10 @@ export default function ProductDetailModal({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   return (
     <AnimatePresence>
-      <div className="modal-backdrop" onClick={onClose}>
+      {isOpen && (
+        <div className="modal-backdrop" onClick={onClose}>
         <motion.div
           ref={dialogRef}
           className="focused-product-modal"
@@ -247,7 +246,8 @@ export default function ProductDetailModal({
             </button>
           </div>
         </motion.div>
-      </div>
+        </div>
+      )}
     </AnimatePresence>
   );
 }
