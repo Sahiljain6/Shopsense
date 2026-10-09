@@ -33,15 +33,16 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  min-height: 40px;
   padding: 0.35rem 0.7rem;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: #e4e4e7;
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--ss-dur-fast) ease, border-color var(--ss-dur-fast) ease, color var(--ss-dur-fast) ease;
 }
 
 .nav-ambient-btn:hover {
@@ -52,8 +53,7 @@
 }
 
 .nav-ambient-btn.active {
-  background: linear-gradient(135deg, rgba(251, 188, 148, 0.25) 0%, rgba(232, 134, 84, 0.3) 100%);
-  border-color: #f49d70;
-  color: #ffedd5;
-  box-shadow: 0 0 12px rgba(244, 157, 112, 0.25);
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(34, 211, 238, 0.45);
+  color: #a5f3fc;
 }
