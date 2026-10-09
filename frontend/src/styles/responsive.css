@@ -6,12 +6,19 @@
   .app-container {
     padding: 0 0.75rem 1.5rem;
   }
+
+  .modal-grid-layout {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+
+  .modal-scroll-content {
+    padding-right: 1.5rem;
+    padding-left: 1.5rem;
+  }
 }
 
 @media (max-width: 768px) {
-  .modal-grid-layout {
-    grid-template-columns: 1fr;
-  }
   .modal-big-image-box {
     height: 220px;
   }
@@ -23,7 +30,81 @@
   }
 }
 
+@media (max-width: 720px) {
+  .modal-backdrop {
+    align-items: center;
+    padding:
+      max(0.5rem, env(safe-area-inset-top, 0px))
+      max(0.5rem, env(safe-area-inset-right, 0px))
+      max(0.5rem, env(safe-area-inset-bottom, 0px))
+      max(0.5rem, env(safe-area-inset-left, 0px));
+  }
+
+  .focused-product-modal {
+    width: 100%;
+    max-height: min(90vh, calc(100vh - 1rem));
+    max-height: min(
+      90dvh,
+      calc(100dvh - 1rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
+    );
+    border-radius: 18px;
+  }
+
+  .modal-scroll-content {
+    padding: 3.5rem 1rem 1.25rem;
+  }
+
+  .modal-grid-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+
+  .modal-left-column,
+  .modal-right-column {
+    min-width: 0;
+  }
+
+  .modal-big-image-box {
+    height: clamp(150px, 28dvh, 220px);
+  }
+
+  .modal-footer-cta {
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .modal-add-cart-btn {
+    min-height: 46px;
+    padding: 0.75rem 1rem;
+  }
+}
+
 @media (max-width: 640px) {
+  .modal-backdrop {
+    padding:
+      max(0.35rem, env(safe-area-inset-top, 0px))
+      max(0.35rem, env(safe-area-inset-right, 0px))
+      max(0.35rem, env(safe-area-inset-bottom, 0px))
+      max(0.35rem, env(safe-area-inset-left, 0px));
+  }
+
+  .modal-scroll-content {
+    padding-right: 0.85rem;
+    padding-left: 0.85rem;
+  }
+
+  .modal-product-title {
+    font-size: 1.25rem;
+  }
+
+  .modal-price-card {
+    padding: 0.75rem;
+  }
+
+  .modal-spec-row {
+    gap: 0.5rem;
+    padding: 0.45rem 0.55rem;
+  }
+
   .shopsense-navbar {
     padding: 0.75rem 1rem;
   }
