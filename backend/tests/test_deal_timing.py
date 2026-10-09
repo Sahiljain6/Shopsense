@@ -1,6 +1,6 @@
 import json
 import pytest
-from app.services.deal_timing import analyze_deal_timing
+from app.services.deal_timing import INDIAN_SALES_CALENDAR, analyze_deal_timing
 from app.services.ai import AIOrchestrator
 
 
@@ -9,7 +9,9 @@ def test_analyze_deal_timing_phones() -> None:
     assert res["product"] == "OnePlus 12"
     assert res["current_price"] == 54999
     assert res["estimated_all_time_low"] < 54999
-    assert "Sale" in res["next_sale_event"] or "Mega" in res["next_sale_event"]
+    # Upcoming calendar entries include events without "Sale" or "Mega" in the name.
+    # Validate against the configured calendar instead of assuming specific wording.
+    assert res["next_sale_event"] in {sale["name"] for sale in INDIAN_SALES_CALENDAR}
     assert res["approx_days_to_sale"] >= 0
     assert "WAIT" in res["verdict"] or "BUY NOW" in res["verdict"]
 
