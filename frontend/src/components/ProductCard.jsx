@@ -3,6 +3,7 @@ import { fetchPriceHistory, friendlyError } from "../api";
 import { addToCartStorage } from "../hooks/useCart";
 import { formatINR, formatRatingStars, generateBuyLinks } from "../utils/formatters";
 import ProductDetailModal from "./ProductDetailModal";
+import UiIcon from "./UiIcon";
 
 function ProductCard({ product }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -60,9 +61,9 @@ function ProductCard({ product }) {
                 onError={(e) => { e.target.style.display = "none"; }}
               />
             ) : (
-              <span className="product-card-fallback-icon">📦</span>
+              <span className="product-card-fallback-icon"><UiIcon name="package" size={40} strokeWidth={1.5} /></span>
             )}
-            <span className="product-deal-badge">⚡ Deal Verified</span>
+            <span className="product-deal-badge"><UiIcon name="zap" size={12} /> Deal Verified</span>
           </div>
           <div className="product-card-price-tag">{formattedPrice}</div>
         </div>
@@ -102,7 +103,7 @@ function ProductCard({ product }) {
               className="card-btn-secondary fastshot-btn-secondary"
               onClick={(e) => { e.stopPropagation(); handleOpenModal(); }}
             >
-              🔍 Details
+              <UiIcon name="search" size={14} /> Details
             </button>
 
             <button
