@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 export default function ProductDetailModal({
   isOpen,
@@ -16,6 +16,7 @@ export default function ProductDetailModal({
   const closeButtonRef = useRef(null);
   const onCloseRef = useRef(onClose);
   const titleId = useId();
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -99,10 +100,10 @@ export default function ProductDetailModal({
           aria-modal="true"
           aria-labelledby={titleId}
           tabIndex={-1}
-          initial={{ opacity: 0, scale: 0.94, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.94, y: 12 }}
-          transition={{ duration: 0.2 }}
+          initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.97, y: 8 }}
+          animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+          exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
+          transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.18 }}
           onClick={(event) => event.stopPropagation()}
         >
           <button
