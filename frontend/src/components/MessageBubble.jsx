@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import ProductCard from "./ProductCard";
 import MarkdownRenderer from "./MarkdownRenderer";
 import logoMarkUrl from "../assets/logo-mark.png";
+import UiIcon from "./UiIcon";
 
 function MessageBubble({ message }) {
   const [copied, setCopied] = useState(false);
@@ -62,7 +63,7 @@ function MessageBubble({ message }) {
                 title="Copy response to clipboard"
                 aria-label="Copy response"
               >
-                {copied ? "✓ Copied" : "📋 Copy"}
+                {copied ? <><UiIcon name="check" size={13} /> Copied</> : <><UiIcon name="copy" size={13} /> Copy</>}
               </button>
             </div>
           )}
