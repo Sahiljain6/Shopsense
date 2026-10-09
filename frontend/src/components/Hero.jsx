@@ -3,6 +3,7 @@ import { useCart } from "../hooks/useCart";
 import CartDrawer from "./CartDrawer";
 import HeaderBrandMark from "./HeaderBrandMark";
 import UserProfileMenu from "./UserProfileMenu";
+import UiIcon from "./UiIcon";
 
 export default function Hero({ authed, onLogout, onOpenAuth }) {
   const { cartItems, cartCount, cartTotal, removeFromCart, updateQty, clearCart } = useCart();
@@ -47,10 +48,10 @@ export default function Hero({ authed, onLogout, onOpenAuth }) {
             <span>Deal Radar Live</span>
           </span>
           <span className="nav-feature-pill" title="Amazon, Flipkart & Croma price comparison">
-            <span>⚖️ 3-Store Compare</span>
+            <span><UiIcon name="scale" size={13} /> 3-Store Compare</span>
           </span>
           <span className="nav-feature-pill" title="Verified spec sheets & bank EMI breakdown">
-            <span>💳 No-Cost EMI</span>
+            <span><UiIcon name="credit-card" size={13} /> No-Cost EMI</span>
           </span>
         </div>
 
@@ -64,7 +65,7 @@ export default function Hero({ authed, onLogout, onOpenAuth }) {
               title={`Cart (${cartCount} items)`}
               aria-label="Shopping Cart"
             >
-              <span className="cart-icon">🛒</span>
+              <span className="cart-icon"><UiIcon name="shopping-cart" size={17} /></span>
               <span className="cart-label">Cart</span>
               {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
             </button>
