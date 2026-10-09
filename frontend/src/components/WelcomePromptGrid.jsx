@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { POPULAR_PROMPTS } from "../utils/constants";
 import logoMarkUrl from "../assets/logo-mark.png";
 
@@ -10,13 +10,15 @@ const CATEGORY_TAGS = {
 };
 
 export default function WelcomePromptGrid({ onSelectPrompt }) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <div className="chat-welcome-state fastshot-welcome-card">
       <motion.div
         className="welcome-brand-mark"
-        initial={{ scale: 0.9, opacity: 0 }}
+        initial={shouldReduceMotion ? false : { scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.3 }}
+        transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.22 }}
       >
         <img
           src={logoMarkUrl}
@@ -27,7 +29,6 @@ export default function WelcomePromptGrid({ onSelectPrompt }) {
             height: "48px",
             width: "auto",
             objectFit: "contain",
-            filter: "drop-shadow(0 4px 18px rgba(6, 182, 212, 0.55))",
           }}
         />
       </motion.div>
@@ -46,11 +47,11 @@ export default function WelcomePromptGrid({ onSelectPrompt }) {
             type="button"
             className="welcome-chip fastshot-hero-chip"
             onClick={() => onSelectPrompt(item.query)}
-            initial={{ opacity: 0, y: 10 }}
+            initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, delay: index * 0.06 }}
-            whileHover={{ y: -3, scale: 1.01 }}
-            whileTap={{ scale: 0.98 }}
+            transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.18, delay: index * 0.035 }}
+            whileHover={shouldReduceMotion ? undefined : { y: -2 }}
+            whileTap={shouldReduceMotion ? undefined : { scale: 0.99 }}
           >
             <div className="hero-chip-top-row">
               <span className="hero-chip-icon">{item.icon}</span>
