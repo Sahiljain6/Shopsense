@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import ProductCard from "./ProductCard";
 import MarkdownRenderer from "./MarkdownRenderer";
 import logoMarkUrl from "../assets/logo-mark.png";
 
 function MessageBubble({ message }) {
   const [copied, setCopied] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
   const isUser = message.role === "user";
   const products = Array.isArray(message.products) ? message.products : [];
 
@@ -20,9 +21,9 @@ function MessageBubble({ message }) {
   return (
     <motion.div
       className={`chat-message-row ${isUser ? "user-row" : "assistant-row"}`}
-      initial={{ opacity: 0, y: 8 }}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+      transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
     >
       <div className="message-avatar-box">
         {isUser ? (
