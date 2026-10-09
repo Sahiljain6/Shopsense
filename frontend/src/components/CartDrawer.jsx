@@ -1,4 +1,5 @@
 ﻿import { motion, AnimatePresence } from "framer-motion";
+import UiIcon from "./UiIcon";
 
 export default function CartDrawer({
   isOpen,
@@ -39,7 +40,7 @@ export default function CartDrawer({
             {checkoutStep === "success" && "Order Confirmed!"}
           </h3>
           <button type="button" onClick={onClose} aria-label="Close cart">
-            ✕
+            <UiIcon name="x" size={18} />
           </button>
         </div>
 
@@ -47,7 +48,7 @@ export default function CartDrawer({
         {checkoutStep === "cart" &&
           (cartItems.length === 0 ? (
             <div className="cart-empty-state">
-              <span className="cart-empty-icon">🛒</span>
+              <span className="cart-empty-icon"><UiIcon name="shopping-cart" size={42} strokeWidth={1.5} /></span>
               <p>Your cart is empty</p>
               <p className="cart-empty-hint">Add products from chat recommendations</p>
             </div>
@@ -76,7 +77,7 @@ export default function CartDrawer({
                         onClick={() => removeFromCart(item.id)}
                         title="Remove"
                       >
-                        🗑️
+                        <UiIcon name="trash" size={15} />
                       </button>
                     </div>
                   </div>
@@ -112,7 +113,7 @@ export default function CartDrawer({
         {checkoutStep === "checkout" && (
           <div className="checkout-view-container">
             <div className="checkout-summary-card">
-              <div className="checkout-badge-pill">⚡ Razorpay Test Mode</div>
+              <div className="checkout-badge-pill"><UiIcon name="zap" size={13} /> Razorpay Test Mode</div>
               <p className="checkout-demo-description">
                 This is a live sandbox preview for the ShopSense demo. Transactions are simulated with no real charge.
               </p>
@@ -142,7 +143,7 @@ export default function CartDrawer({
                 className="cart-checkout-btn checkout-pay-btn"
                 onClick={onSimulateRazorpay}
               >
-                ⚡ Pay with Razorpay (₹{Number(cartTotal).toLocaleString("en-IN")})
+                <UiIcon name="zap" size={15} /> Pay with Razorpay (₹{Number(cartTotal).toLocaleString("en-IN")})
               </button>
               <button
                 type="button"
@@ -158,7 +159,7 @@ export default function CartDrawer({
         {/* STEP 3: ORDER CONFIRMED SUCCESS VIEW */}
         {checkoutStep === "success" && (
           <div className="checkout-success-view">
-            <div className="checkout-success-icon">🎉</div>
+            <div className="checkout-success-icon"><UiIcon name="check-circle" size={48} strokeWidth={1.5} /></div>
             <h4>Order Placed Successfully!</h4>
             <p className="checkout-order-code">
               Order ID: <code>{orderId}</code>
