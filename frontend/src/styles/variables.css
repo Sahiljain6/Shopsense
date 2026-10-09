@@ -109,7 +109,12 @@ button:disabled {
   opacity: 0.55;
 }
 
-:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--ss-focus-ring);
   outline-offset: 3px;
 }
