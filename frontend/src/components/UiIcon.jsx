@@ -6,6 +6,13 @@ const iconPaths = {
       <rect x="17" y="13" width="4" height="7" rx="1.5" />
     </>
   ),
+  "shopping-cart": (
+    <>
+      <path d="M3 3h2l2.2 11a2 2 0 0 0 2 1.6h8.7a2 2 0 0 0 1.9-1.5L22 7H6" />
+      <circle cx="10" cy="20" r="1.2" />
+      <circle cx="18" cy="20" r="1.2" />
+    </>
+  ),
   smartphone: (
     <>
       <rect x="6" y="2.5" width="12" height="19" rx="2" />
