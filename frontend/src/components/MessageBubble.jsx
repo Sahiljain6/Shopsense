@@ -101,11 +101,16 @@ function MessageBubble({ message }) {
 export default React.memo(MessageBubble, (prevProps, nextProps) => {
   const p = prevProps.message;
   const n = nextProps.message;
+
+  // Stream updates replace only the active message object. Stable earlier
+  // messages can skip Markdown and product-tree reconciliation entirely.
   return (
     p.text === n.text &&
     p.role === n.role &&
     p.model === n.model &&
     p.streaming === n.streaming &&
-    (p.products?.length || 0) === (n.products?.length || 0)
+    p.products === n.products &&
+    p.product_ids === n.product_ids &&
+    p.response === n.response
   );
 });
