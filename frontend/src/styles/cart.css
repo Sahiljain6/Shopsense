@@ -74,8 +74,10 @@
 }
 
 .cart-empty-icon {
-  font-size: 3rem;
-  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #67e8f9;
 }
 
 .cart-empty-state p {
@@ -181,9 +183,8 @@
 .cart-remove-btn {
   border: none !important;
   background: none !important;
-  font-size: 0.95rem !important;
-  opacity: 0.7;
-  transition: opacity 0.15s ease;
+  opacity: 0.78;
+  transition: opacity var(--ss-dur-fast) ease, color var(--ss-dur-fast) ease;
 }
 
 .cart-remove-btn:hover {
@@ -346,8 +347,10 @@
 }
 
 .checkout-success-icon {
-  font-size: 3.5rem;
-  animation: bounce 0.6s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #34d399;
 }
 
 .checkout-success-view h4 {
