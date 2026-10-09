@@ -78,6 +78,19 @@
   }
 }
 
+@media (max-height: 560px) and (min-width: 721px) {
+  .app-container {
+    gap: 1rem;
+  }
+
+  .chatbot-messages-stream {
+    min-height: min(300px, 38vh);
+    min-height: min(300px, 38dvh);
+    max-height: 55vh;
+    max-height: 55dvh;
+  }
+}
+
 @media (max-width: 640px) {
   .modal-backdrop {
     padding:
@@ -128,8 +141,11 @@
     border-radius: 12px;
   }
   .chatbot-messages-stream {
-    min-height: 380px;
-    padding: 1rem;
+    min-height: min(380px, 42vh);
+    min-height: min(380px, 42dvh);
+    max-height: 58vh;
+    max-height: 58dvh;
+    padding: 0.9rem;
   }
   .fastshot-prompts-grid {
     grid-template-columns: 1fr;
