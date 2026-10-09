@@ -582,23 +582,21 @@
   padding: 0.85rem 1.35rem;
   border-radius: 9999px;
   background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 18px rgba(6, 182, 212, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.24);
   color: #ffffff;
   font-size: 0.95rem;
   font-weight: 800;
   cursor: pointer;
-  transition: all 0.2s var(--ss-ease-spring);
+  transition: filter var(--ss-dur-fast) ease, transform var(--ss-dur-fast) ease;
 }
 
 .modal-add-cart-btn:hover {
-  filter: brightness(1.15);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(6, 182, 212, 0.6);
+  filter: brightness(1.08);
 }
 
 .modal-add-cart-btn.added {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.24);
 }
 
