@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { GoogleLogin } from "@react-oauth/google";
 import { login, register, googleLogin, setToken, friendlyError } from "../api";
 import logoMarkUrl from "../assets/logo-mark.png";
+import UiIcon from "./UiIcon";
 
 export default function AuthModal({
   isOpen,
@@ -18,6 +19,15 @@ export default function AuthModal({
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState(null);
+  const dialogRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const loadingRef = useRef(loading);
+  const dialogTitleId = useId();
+  const fullNameId = useId();
+  const emailId = useId();
+  const passwordId = useId();
+  const shouldReduceMotion = useReducedMotion();
 
   const setErrorMessage = useCallback(
     (msg) => {
@@ -40,17 +50,68 @@ export default function AuthModal({
     }
   }, [isOpen, initialMode, clearErrorMessage]);
 
-  // Handle ESC key to dismiss modal
   useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e) => {
-      if (e.key === "Escape" && !loading) {
-        onClose();
+    onCloseRef.current = onClose;
+    loadingRef.current = loading;
+  }, [onClose, loading]);
+
+  // Lock background scrolling and keep keyboard focus inside the dialog.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const previouslyFocused = document.activeElement;
+    const body = document.body;
+    const root = document.documentElement;
+    const previousBodyOverflow = body.style.overflow;
+    const previousRootOverflow = root.style.overflow;
+    const focusableSelector =
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    body.style.overflow = "hidden";
+    root.style.overflow = "hidden";
+    closeButtonRef.current?.focus({ preventScroll: true });
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape" && !loadingRef.current) {
+        event.preventDefault();
+        onCloseRef.current?.();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll(focusableSelector))
+        .filter((element) => element.getClientRects().length > 0);
+
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const focusOutside = !dialog.contains(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || focusOutside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || focusOutside)) {
+        event.preventDefault();
+        first.focus();
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, loading, onClose]);
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      body.style.overflow = previousBodyOverflow;
+      root.style.overflow = previousRootOverflow;
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus({ preventScroll: true });
+      }
+    };
+  }, [isOpen]);
 
   const isRegister = mode === "signup";
 
@@ -121,26 +182,29 @@ export default function AuthModal({
         <div
           className="auth-modal-backdrop"
           onClick={handleBackdropClick}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="auth-modal-title"
         >
           <motion.div
+            ref={dialogRef}
             className="auth-modal-card"
-            initial={{ opacity: 0, scale: 0.94, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.94, y: 16 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={dialogTitleId}
+            tabIndex={-1}
+            initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.98, y: 8 }}
+            animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, y: 8 }}
+            transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           >
             {/* Close Button */}
             <button
+              ref={closeButtonRef}
               type="button"
               className="auth-modal-close-btn"
               onClick={onClose}
               disabled={loading}
               aria-label="Close auth dialog"
             >
-              ✕
+              <UiIcon name="x" size={17} />
             </button>
 
             {/* Brand Header */}
@@ -155,7 +219,7 @@ export default function AuthModal({
                     height: "20px",
                     width: "auto",
                     objectFit: "contain",
-                    filter: "drop-shadow(0 0 8px rgba(6, 182, 212, 0.7))",
+                    
                   }}
                 />
                 <span className="auth-modal-pill-text">
@@ -175,7 +239,7 @@ export default function AuthModal({
                 </span>
               </div>
 
-              <h2 id="auth-modal-title" className="auth-modal-title">
+              <h2 id={dialogTitleId} className="auth-modal-title">
                 {isRegister ? "Create Account" : "Welcome Back"}
               </h2>
               <p className="auth-modal-subtitle">
@@ -300,10 +364,12 @@ export default function AuthModal({
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.18 }}
                   >
-                    <label className="input-label">Full Name</label>
+                    <label className="input-label" htmlFor={fullNameId}>Full Name</label>
                     <input
+                      id={fullNameId}
                       className="clean-input"
                       type="text"
+                      autoComplete="name"
                       placeholder="e.g. Alex Kumar"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
@@ -313,10 +379,12 @@ export default function AuthModal({
               </AnimatePresence>
 
               <div className="input-group">
-                <label className="input-label">Email address</label>
+                <label className="input-label" htmlFor={emailId}>Email address</label>
                 <input
+                  id={emailId}
                   className="clean-input"
                   type="email"
+                  autoComplete="email"
                   placeholder="you@example.com"
                   required
                   value={email}
@@ -325,11 +393,13 @@ export default function AuthModal({
               </div>
 
               <div className="input-group">
-                <label className="input-label">Password</label>
+                <label className="input-label" htmlFor={passwordId}>Password</label>
                 <div className="password-input-wrapper">
                   <input
+                    id={passwordId}
                     className="clean-input"
                     type={showPassword ? "text" : "password"}
+                    autoComplete={isRegister ? "new-password" : "current-password"}
                     placeholder="••••••••"
                     required
                     value={password}
@@ -340,8 +410,10 @@ export default function AuthModal({
                     className="password-toggle-btn"
                     onClick={() => setShowPassword((prev) => !prev)}
                     title={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
                   >
-                    {showPassword ? "👁️" : "🙈"}
+                    <UiIcon name={showPassword ? "eye-off" : "eye"} size={17} />
                   </button>
                 </div>
               </div>

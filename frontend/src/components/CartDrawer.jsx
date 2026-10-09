@@ -1,4 +1,6 @@
-﻿import { motion, AnimatePresence } from "framer-motion";
+﻿import { useEffect, useId, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import UiIcon from "./UiIcon";
 
 export default function CartDrawer({
   isOpen,
@@ -14,11 +16,78 @@ export default function CartDrawer({
   orderId,
   onSimulateRazorpay,
 }) {
-  if (!isOpen) return null;
+  const drawerRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const previouslyFocused = document.activeElement;
+    const body = document.body;
+    const root = document.documentElement;
+    const previousBodyOverflow = body.style.overflow;
+    const previousRootOverflow = root.style.overflow;
+    const focusableSelector =
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    body.style.overflow = "hidden";
+    root.style.overflow = "hidden";
+    closeButtonRef.current?.focus({ preventScroll: true });
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current?.();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const drawer = drawerRef.current;
+      if (!drawer) return;
+      const focusable = Array.from(drawer.querySelectorAll(focusableSelector))
+        .filter((element) => element.getClientRects().length > 0);
+
+      if (!focusable.length) {
+        event.preventDefault();
+        drawer.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const focusOutside = !drawer.contains(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || focusOutside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || focusOutside)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      body.style.overflow = previousBodyOverflow;
+      root.style.overflow = previousRootOverflow;
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus({ preventScroll: true });
+      }
+    };
+  }, [isOpen]);
 
   return (
     <AnimatePresence>
+      {isOpen && (
+      <>
       <motion.div
+        key="cart-overlay"
         className="cart-overlay"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -26,20 +95,26 @@ export default function CartDrawer({
         onClick={onClose}
       />
       <motion.div
+        key="cart-drawer"
+        ref={drawerRef}
         className="cart-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         initial={{ x: "100%" }}
         animate={{ x: 0 }}
         exit={{ x: "100%" }}
         transition={{ type: "spring", damping: 28, stiffness: 300 }}
       >
         <div className="cart-drawer-header">
-          <h3>
+          <h3 id={titleId}>
             {checkoutStep === "cart" && `Your Cart (${cartCount})`}
             {checkoutStep === "checkout" && "Demo Checkout"}
             {checkoutStep === "success" && "Order Confirmed!"}
           </h3>
-          <button type="button" onClick={onClose} aria-label="Close cart">
-            ✕
+          <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close cart">
+            <UiIcon name="x" size={18} />
           </button>
         </div>
 
@@ -47,7 +122,7 @@ export default function CartDrawer({
         {checkoutStep === "cart" &&
           (cartItems.length === 0 ? (
             <div className="cart-empty-state">
-              <span className="cart-empty-icon">🛒</span>
+              <span className="cart-empty-icon"><UiIcon name="shopping-cart" size={42} strokeWidth={1.5} /></span>
               <p>Your cart is empty</p>
               <p className="cart-empty-hint">Add products from chat recommendations</p>
             </div>
@@ -63,11 +138,11 @@ export default function CartDrawer({
                       </span>
                     </div>
                     <div className="cart-item-controls">
-                      <button type="button" onClick={() => updateQty(item.id, -1)}>
+                      <button type="button" onClick={() => updateQty(item.id, -1)} aria-label={`Decrease quantity of ${item.name}`}>
                         −
                       </button>
                       <span className="cart-item-qty">{item.qty}</span>
-                      <button type="button" onClick={() => updateQty(item.id, 1)}>
+                      <button type="button" onClick={() => updateQty(item.id, 1)} aria-label={`Increase quantity of ${item.name}`}>
                         +
                       </button>
                       <button
@@ -75,8 +150,9 @@ export default function CartDrawer({
                         className="cart-remove-btn"
                         onClick={() => removeFromCart(item.id)}
                         title="Remove"
+                        aria-label={`Remove ${item.name} from cart`}
                       >
-                        🗑️
+                        <UiIcon name="trash" size={15} />
                       </button>
                     </div>
                   </div>
@@ -112,7 +188,7 @@ export default function CartDrawer({
         {checkoutStep === "checkout" && (
           <div className="checkout-view-container">
             <div className="checkout-summary-card">
-              <div className="checkout-badge-pill">⚡ Razorpay Test Mode</div>
+              <div className="checkout-badge-pill"><UiIcon name="zap" size={13} /> Razorpay Test Mode</div>
               <p className="checkout-demo-description">
                 This is a live sandbox preview for the ShopSense demo. Transactions are simulated with no real charge.
               </p>
@@ -142,7 +218,7 @@ export default function CartDrawer({
                 className="cart-checkout-btn checkout-pay-btn"
                 onClick={onSimulateRazorpay}
               >
-                ⚡ Pay with Razorpay (₹{Number(cartTotal).toLocaleString("en-IN")})
+                <UiIcon name="zap" size={15} /> Pay with Razorpay (₹{Number(cartTotal).toLocaleString("en-IN")})
               </button>
               <button
                 type="button"
@@ -158,7 +234,7 @@ export default function CartDrawer({
         {/* STEP 3: ORDER CONFIRMED SUCCESS VIEW */}
         {checkoutStep === "success" && (
           <div className="checkout-success-view">
-            <div className="checkout-success-icon">🎉</div>
+            <div className="checkout-success-icon"><UiIcon name="check-circle" size={48} strokeWidth={1.5} /></div>
             <h4>Order Placed Successfully!</h4>
             <p className="checkout-order-code">
               Order ID: <code>{orderId}</code>
@@ -177,6 +253,8 @@ export default function CartDrawer({
           </div>
         )}
       </motion.div>
+      </>
+      )}
     </AnimatePresence>
   );
 }

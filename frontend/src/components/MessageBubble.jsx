@@ -1,11 +1,13 @@
 import React, { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import ProductCard from "./ProductCard";
 import MarkdownRenderer from "./MarkdownRenderer";
 import logoMarkUrl from "../assets/logo-mark.png";
+import UiIcon from "./UiIcon";
 
 function MessageBubble({ message }) {
   const [copied, setCopied] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
   const isUser = message.role === "user";
   const products = Array.isArray(message.products) ? message.products : [];
 
@@ -20,9 +22,9 @@ function MessageBubble({ message }) {
   return (
     <motion.div
       className={`chat-message-row ${isUser ? "user-row" : "assistant-row"}`}
-      initial={{ opacity: 0, y: 8 }}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+      transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
     >
       <div className="message-avatar-box">
         {isUser ? (
@@ -61,7 +63,7 @@ function MessageBubble({ message }) {
                 title="Copy response to clipboard"
                 aria-label="Copy response"
               >
-                {copied ? "✓ Copied" : "📋 Copy"}
+                {copied ? <><UiIcon name="check" size={13} /> Copied</> : <><UiIcon name="copy" size={13} /> Copy</>}
               </button>
             </div>
           )}
@@ -99,11 +101,16 @@ function MessageBubble({ message }) {
 export default React.memo(MessageBubble, (prevProps, nextProps) => {
   const p = prevProps.message;
   const n = nextProps.message;
+
+  // Stream updates replace only the active message object. Stable earlier
+  // messages can skip Markdown and product-tree reconciliation entirely.
   return (
     p.text === n.text &&
     p.role === n.role &&
     p.model === n.model &&
     p.streaming === n.streaming &&
-    (p.products?.length || 0) === (n.products?.length || 0)
+    p.products === n.products &&
+    p.product_ids === n.product_ids &&
+    p.response === n.response
   );
 });

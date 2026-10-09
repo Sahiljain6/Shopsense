@@ -7,14 +7,15 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.9rem 1.75rem;
-  background: #0d121c;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px 18px 0 0;
+  gap: 1rem;
+  padding: 0.85rem 1.5rem;
+  background: #0b111b;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 18px;
   color: #ffffff;
   position: relative;
   z-index: 40;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .navbar-left {
@@ -48,13 +49,6 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  transition: all 0.2s var(--ss-ease-spring);
-}
-
-.nav-feature-pill:hover {
-  color: #f1f5f9;
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(6, 182, 212, 0.3);
 }
 
 .nav-feature-pill.radar-active {
@@ -64,17 +58,11 @@
 }
 
 .nav-radar-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #38bdf8;
-  box-shadow: 0 0 8px #38bdf8;
-  animation: pulse-dot 2s infinite;
-}
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.85); }
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
 }
 
 .navbar-right {
@@ -89,22 +77,21 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+  min-height: 40px;
   padding: 0.4rem 0.85rem;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: #f1f5f9;
   font-size: 0.82rem;
   font-weight: 600;
-  transition: all 0.2s var(--ss-ease-spring);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: background-color var(--ss-dur-fast) ease, border-color var(--ss-dur-fast) ease, color var(--ss-dur-fast) ease;
 }
 
 .nav-cart-btn.fastshot-cart-pill:hover,
 .nav-cart-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(6, 182, 212, 0.4);
-  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(6, 182, 212, 0.35);
   color: #ffffff;
 }
 
@@ -134,14 +121,13 @@
   border-radius: 9999px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
-  transition: all 0.18s ease;
+  transition: color var(--ss-dur-fast) ease, background-color var(--ss-dur-fast) ease, border-color var(--ss-dur-fast) ease;
 }
 
 .navbar-logout-btn:hover {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.3);
-  transform: translateY(-1px);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
 }
 
 /* Guest Auth Buttons */
@@ -155,11 +141,12 @@
   font-size: 0.84rem;
   font-weight: 600;
   color: #cbd5e1;
+  min-height: 40px;
   padding: 0.42rem 0.95rem;
   border-radius: 9999px;
   background: transparent;
   border: 1px solid transparent;
-  transition: all 0.18s ease;
+  transition: color var(--ss-dur-fast) ease, background-color var(--ss-dur-fast) ease, border-color var(--ss-dur-fast) ease;
 }
 
 .nav-signin-btn:hover {
@@ -170,25 +157,24 @@
 
 .nav-signup-btn.fastshot-cta-btn,
 .nav-signup-btn {
-  padding: 0.45rem 1.25rem;
+  min-height: 40px;
+  padding: 0.45rem 1.1rem;
   border-radius: 9999px;
   font-size: 0.84rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 2px 14px rgba(6, 182, 212, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 2px 9px rgba(6, 182, 212, 0.22);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.18s var(--ss-ease-spring);
+  transition: filter var(--ss-dur-fast) ease, background-color var(--ss-dur-fast) ease;
 }
 
 .nav-signup-btn:hover {
-  filter: brightness(1.15);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  filter: brightness(1.08);
 }
 
 .nav-signup-btn:active {

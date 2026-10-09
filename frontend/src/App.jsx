@@ -53,11 +53,7 @@ export default function App() {
 
   return (
     <main className="app-shell ambient-mode-active">
-      <div className="ambient-stage" aria-hidden="true">
-        <div className="ambient-stage-glow ambient-glow-top" />
-        <div className="ambient-stage-glow ambient-glow-bottom" />
-        <div className="ambient-stage-grid" />
-      </div>
+      <div className="ambient-stage" aria-hidden="true" />
       <section className="app-container">
         <Hero
           authed={authed}

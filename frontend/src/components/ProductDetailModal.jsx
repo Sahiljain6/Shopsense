@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import UiIcon from "./UiIcon";
 
 export default function ProductDetailModal({
   isOpen,
@@ -16,6 +17,7 @@ export default function ProductDetailModal({
   const closeButtonRef = useRef(null);
   const onCloseRef = useRef(onClose);
   const titleId = useId();
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -87,11 +89,10 @@ export default function ProductDetailModal({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   return (
     <AnimatePresence>
-      <div className="modal-backdrop" onClick={onClose}>
+      {isOpen && (
+        <div className="modal-backdrop" onClick={onClose}>
         <motion.div
           ref={dialogRef}
           className="focused-product-modal"
@@ -99,10 +100,10 @@ export default function ProductDetailModal({
           aria-modal="true"
           aria-labelledby={titleId}
           tabIndex={-1}
-          initial={{ opacity: 0, scale: 0.94, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.94, y: 12 }}
-          transition={{ duration: 0.2 }}
+          initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.97, y: 8 }}
+          animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+          exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
+          transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.18 }}
           onClick={(event) => event.stopPropagation()}
         >
           <button
@@ -113,7 +114,7 @@ export default function ProductDetailModal({
             title="Close detail view"
             aria-label="Close product details"
           >
-            ✕
+            <UiIcon name="x" size={17} />
           </button>
 
           <div
@@ -133,7 +134,7 @@ export default function ProductDetailModal({
                       className="modal-big-img"
                     />
                   ) : (
-                    <span className="modal-fallback-icon">📦</span>
+                    <span className="modal-fallback-icon"><UiIcon name="package" size={54} strokeWidth={1.4} /></span>
                   )}
                 </div>
 
@@ -197,7 +198,7 @@ export default function ProductDetailModal({
 
                 {/* Ongoing Offers & Coupons */}
                 <div className="modal-section">
-                  <h4 className="modal-subheading">🏷️ Ongoing Offers & Coupon Codes</h4>
+                  <h4 className="modal-subheading"><UiIcon name="tag" size={16} /> Ongoing Offers & Coupon Codes</h4>
                   <div className="modal-offers-box">
                     <div className="offer-pill">
                       <span className="offer-code">HDFC1000</span>
@@ -219,7 +220,7 @@ export default function ProductDetailModal({
                 {/* Specifications */}
                 {product.attributes && Object.keys(product.attributes).length > 0 && (
                   <div className="modal-section">
-                    <h4 className="modal-subheading">⚙️ Technical Specifications</h4>
+                    <h4 className="modal-subheading"><UiIcon name="settings" size={16} /> Technical Specifications</h4>
                     <div className="modal-specs-table">
                       {Object.entries(product.attributes).map(([key, value]) => (
                         <div key={key} className="modal-spec-row">
@@ -245,7 +246,8 @@ export default function ProductDetailModal({
             </button>
           </div>
         </motion.div>
-      </div>
+        </div>
+      )}
     </AnimatePresence>
   );
 }
