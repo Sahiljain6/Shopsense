@@ -28,12 +28,16 @@
   --ss-surface-2: rgba(20, 26, 38, 0.55);
   --ss-surface-3: rgba(27, 35, 52, 0.65);
   --ss-surface-card: rgba(255, 255, 255, 0.04);
-  --ss-surface-card-hover: rgba(255, 255, 255, 0.08);
+  --ss-surface-card-hover: rgba(255, 255, 255, 0.06);
+  --ss-surface-solid-1: #0b111b;
+  --ss-surface-solid-2: #111b29;
+  --ss-surface-solid-3: #172334;
 
   /* Hairlines & Specular Highlights */
   --ss-border-glass: rgba(255, 255, 255, 0.08);
   --ss-border-glass-strong: rgba(255, 255, 255, 0.16);
-  --ss-border-focus: rgba(6, 182, 212, 0.55);
+  --ss-border-focus: rgba(34, 211, 238, 0.7);
+  --ss-focus-ring: #67e8f9;
   --ss-specular: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 
   /* Text & Contrast */
@@ -52,8 +56,8 @@
   /* Motion & Easing */
   --ss-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
   --ss-ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
-  --ss-dur-fast: 0.15s;
-  --ss-dur-normal: 0.24s;
+  --ss-dur-fast: 0.16s;
+  --ss-dur-normal: 0.2s;
 
   /* Legacy Compatibility Variables */
   --font-main: var(--font-body);
@@ -103,6 +107,15 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--ss-focus-ring);
+  outline-offset: 3px;
+}
+
+:where(button, input, textarea, select) {
+  touch-action: manipulation;
 }
 
 .hidden {
