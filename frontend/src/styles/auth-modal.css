@@ -257,6 +257,11 @@
   background: #0d1520;
 }
 
+.auth-modal-form .clean-input:focus-visible {
+  outline: 2px solid var(--ss-focus-ring);
+  outline-offset: 2px;
+}
+
 .auth-modal-form .password-input-wrapper {
   position: relative;
   display: flex;
@@ -265,17 +270,28 @@
 
 .auth-modal-form .password-toggle-btn {
   position: absolute;
-  right: 0.9rem;
+  right: 0.45rem;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
   background: transparent;
   border: none;
   font-size: 1rem;
-  opacity: 0.65;
+  opacity: 0.78;
   cursor: pointer;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--ss-dur-fast) ease, background-color var(--ss-dur-fast) ease;
 }
 
 .auth-modal-form .password-toggle-btn:hover {
   opacity: 1;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.auth-modal-form .password-input-wrapper .clean-input {
+  padding-right: 3.5rem;
 }
 
 /* Primary Submit Button */
