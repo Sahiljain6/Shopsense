@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import UiIcon from "./UiIcon";
 
 export default function ProductDetailModal({
   isOpen,
@@ -114,7 +115,7 @@ export default function ProductDetailModal({
             title="Close detail view"
             aria-label="Close product details"
           >
-            ✕
+            <UiIcon name="x" size={17} />
           </button>
 
           <div
@@ -134,7 +135,7 @@ export default function ProductDetailModal({
                       className="modal-big-img"
                     />
                   ) : (
-                    <span className="modal-fallback-icon">📦</span>
+                    <span className="modal-fallback-icon"><UiIcon name="package" size={54} strokeWidth={1.4} /></span>
                   )}
                 </div>
 
@@ -198,7 +199,7 @@ export default function ProductDetailModal({
 
                 {/* Ongoing Offers & Coupons */}
                 <div className="modal-section">
-                  <h4 className="modal-subheading">🏷️ Ongoing Offers & Coupon Codes</h4>
+                  <h4 className="modal-subheading"><UiIcon name="tag" size={16} /> Ongoing Offers & Coupon Codes</h4>
                   <div className="modal-offers-box">
                     <div className="offer-pill">
                       <span className="offer-code">HDFC1000</span>
@@ -220,7 +221,7 @@ export default function ProductDetailModal({
                 {/* Specifications */}
                 {product.attributes && Object.keys(product.attributes).length > 0 && (
                   <div className="modal-section">
-                    <h4 className="modal-subheading">⚙️ Technical Specifications</h4>
+                    <h4 className="modal-subheading"><UiIcon name="settings" size={16} /> Technical Specifications</h4>
                     <div className="modal-specs-table">
                       {Object.entries(product.attributes).map(([key, value]) => (
                         <div key={key} className="modal-spec-row">
