@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { POPULAR_PROMPTS } from "../utils/constants";
 import logoMarkUrl from "../assets/logo-mark.png";
+import UiIcon from "./UiIcon";
 
 const CATEGORY_TAGS = {
   "Best Earbuds": "Audio",
@@ -54,7 +55,7 @@ export default function WelcomePromptGrid({ onSelectPrompt }) {
             whileTap={shouldReduceMotion ? undefined : { scale: 0.99 }}
           >
             <div className="hero-chip-top-row">
-              <span className="hero-chip-icon">{item.icon}</span>
+              <span className="hero-chip-icon"><UiIcon name={item.icon} size={22} strokeWidth={1.8} /></span>
               <span className="hero-chip-category-pill">
                 {CATEGORY_TAGS[item.title] || "Shopping"}
               </span>
