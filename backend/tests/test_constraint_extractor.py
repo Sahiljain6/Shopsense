@@ -108,3 +108,13 @@ def test_to_dict_converts_tuples_to_json_friendly_lists():
     assert value["category"] == "Audio"
     assert value["use_cases"] == ["gaming"]
     assert isinstance(value["required_features"], list)
+
+
+def test_handles_indian_comma_grouping_and_lakh_decimal():
+    indian_grouping = extract_constraints("Find a laptop under ₹1,50,000")
+    lakh_decimal = extract_constraints("Find a laptop with a budget of 1.5 lakh")
+
+    assert indian_grouping.budget_max == 150000
+    assert lakh_decimal.budget_max == 150000
+    assert indian_grouping.budget_currency == "INR"
+    assert lakh_decimal.budget_currency == "INR"
