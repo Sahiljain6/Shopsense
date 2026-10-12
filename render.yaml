@@ -14,7 +14,7 @@ services:
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: CORS_ORIGINS
-        value: "http://localhost:3000"
+        value: "http://localhost:3000,http://localhost:5173,https://shopsense-theta.vercel.app,https://shopsense.vercel.app,https://shopsense-4444.vercel.app,https://shopsense-4444-git-main-sahil-jain-s-projects.vercel.app,https://shopsense-nv1k3jgjm-sahil-jain-s-projects.vercel.app,https://shopsense-gmeelq7ml-sahil-jain-s-projects.vercel.app"
       - key: ENABLE_MULTI_AGENT
         value: "false"
       - key: DATABASE_URL

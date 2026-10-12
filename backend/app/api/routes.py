@@ -79,8 +79,21 @@ def register(request: Request, payload: UserCreate, db: Session = Depends(get_db
 def login(request: Request, response: Response, payload: UserLogin, db: Session = Depends(get_db)) -> Token:
     try:
         user = db.scalar(select(User).where(User.email == payload.email))
-        if user is None or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if user is None:
+            raise HTTPException(
+                status_code=401,
+                detail="No account found with this email. Please switch to Create Account to register.",
+            )
+        if not user.hashed_password:
+            raise HTTPException(
+                status_code=401,
+                detail="This account was registered using Google. Please click 'Continue with Google'.",
+            )
+        if not verify_password(payload.password, user.hashed_password):
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect password. Please verify your password and try again.",
+            )
         access_token = create_access_token(user.email, user=user)
         refresh_token = create_refresh_token(user.email, user_id=user.id)
         csrf = set_auth_cookies(response, access_token, refresh_token)

@@ -20,7 +20,7 @@ from app.core.auth_types import (
 from app.db.session import get_db
 from app.models.entities import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt", "bcrypt_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 # In-memory fast O(1) state cache (0 DB queries required for auth checks)

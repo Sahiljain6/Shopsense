@@ -267,7 +267,24 @@ export default function AuthModal({
                   <line x1="12" y1="8" x2="12" y2="12" />
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
-                <span>{localError}</span>
+                <div className="auth-modal-error-content">
+                  <span>{localError}</span>
+                  {!isRegister &&
+                    (localError.toLowerCase().includes("no account") ||
+                      localError.toLowerCase().includes("create account") ||
+                      localError.toLowerCase().includes("invalid credentials")) && (
+                      <button
+                        type="button"
+                        className="auth-error-action-btn"
+                        onClick={() => {
+                          setMode("signup");
+                          clearErrorMessage();
+                        }}
+                      >
+                        Create Account →
+                      </button>
+                    )}
+                </div>
               </div>
             )}
 
@@ -435,6 +452,21 @@ export default function AuthModal({
                 )}
               </button>
             </form>
+
+            {/* Mode Switch Helper */}
+            <div className="auth-modal-switch-prompt">
+              <span>{isRegister ? "Already have an account?" : "Don't have an account?"}</span>
+              <button
+                type="button"
+                className="auth-modal-switch-btn"
+                onClick={() => {
+                  setMode(isRegister ? "signin" : "signup");
+                  clearErrorMessage();
+                }}
+              >
+                {isRegister ? "Sign In" : "Create Account"}
+              </button>
+            </div>
 
             {/* Legal compliance links for Google OAuth & Users */}
             <div style={{ textAlign: "center", fontSize: "0.76rem", color: "#64748b", marginTop: "0.25rem" }}>
