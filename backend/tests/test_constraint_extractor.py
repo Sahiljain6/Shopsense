@@ -82,6 +82,14 @@ def test_extracts_preferred_and_excluded_brands():
 
     assert result.preferred_brands == ("Samsung",)
     assert result.excluded_brands == ("Xiaomi",)
+    assert result.preferred_features == ()
+    assert result.excluded_features == ()
+
+
+def test_extracts_required_features_label():
+    result = extract_constraints("Required features: 5G, NFC and AMOLED")
+
+    assert result.required_features == ("5g", "nfc", "amoled")
 
 
 def test_extracts_delivery_postal_code():
