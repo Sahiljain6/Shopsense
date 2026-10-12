@@ -92,7 +92,7 @@ _AMOUNT_TOKEN = (
 )
 _AMOUNT_RE = re.compile(
     r"(?P<currency>₹|rs\.?|inr\b|\$|usd\b)?\s*"
-    r"(?P<number>\d{1,3}(?:,\d{3})+|\d+)"
+    r"(?P<number>\d{1,2}(?:,\d{2})*,\d{3}|\d{1,3}(?:,\d{3})+|\d+)"
     r"(?P<decimal>\.\d+)?\s*(?P<unit>lakhs?|lacs?|k\b|thousand\b|million\b)?",
     re.I,
 )
