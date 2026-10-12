@@ -7,7 +7,7 @@ changing the public chat API.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Mapping, Sequence
 
@@ -50,17 +50,16 @@ INTENT_DESCRIPTIONS: Mapping[ShoppingIntent, str] = {
 }
 
 
-_WORD = r"\b"
 _PATTERNS: dict[str, re.Pattern[str]] = {
     "gift": re.compile(r"\b(gift|gifts|birthday|anniversary|raksha ?bandhan|present for|for my (?:friend|mother|father|sister|brother|partner|wife|husband))\b", re.I),
-    "finance": re.compile(r"\b(emi|equated monthly installment|monthly instalment|monthly installment|installments?|instalments?|interest rate|annual interest|down payment|total repayment|total payable|affordability|finance options?|loan cost|calculate.{0,20}\bpayment)\b", re.I),
+    "finance": re.compile(r"\b(emi|equated monthly installment|monthly instalment|monthly installment|installments?|instalments?|interest rate|annual interest|down payment|total repayment|total payable|total cost|affordab(?:ility|le)|finance options?|loan cost|calculate.{0,20}\bpayment)\b", re.I),
     "delivery": re.compile(r"\b(deliver(?:y|ed|able)?|shipping|ship to|arrival date|arrive|dispatch|pincode|pin code|postal code|tracking my order|where is my order)\b", re.I),
     "review": re.compile(r"\b(review|reviews|reviewers|ratings?|sentiment|pros and cons|complaints?|customer feedback|worth buying based on)\b", re.I),
     "deal": re.compile(r"\b(deal|deals|discount|discounts|offer|offers|coupon|promo code|price drop|on sale|sale price|best price|cashback|save money)\b", re.I),
     "compare": re.compile(r"\b(compare|comparison|versus|\bvs\.?\b|which is better|difference between|cheaper overall|side.by.side)\b", re.I),
-    "recommend": re.compile(r"\b(recommend|recommendation|recommendations|suggest|suggestion|suggestions|which .* should i buy|what should i buy|best .* for|find me|show me .* under|looking for|gift ideas)\b", re.I),
+    "recommend": re.compile(r"\b(recommend|recommendation|recommendations|suggest|suggestion|suggestions|which .* should i buy|what should i buy|best .* for|find(?: me)?|show me .* under|looking for|gift ideas)\b", re.I),
     "product_info": re.compile(r"\b(specifications?|features?|compatib(?:le|ility)|supports?|support for|battery life|processor|ram|storage|dimensions|warranty|what does .* have|tell me about this product)\b", re.I),
-    "ambiguous": re.compile(r"^(?:which one is best|what about it|compare it with that one|find the best one|calculate the payment|is it good|what about that|and this one)\??$", re.I),
+    "ambiguous": re.compile(r"^(?:which one is best|what about .+|compare it with that one|find the best one|calculate the payment|is it good|and this one)\??$", re.I),
     "shopping_context": re.compile(r"\b(shop|shopping|buy|buying|purchase|product|products|laptop|phone|smartphone|headphones|earbuds|monitor|chair|camera|keyboard|mouse|price|budget|brand|oled|lcd|gift|catalog|store|retailer|e-?commerce)\b", re.I),
     "out_of_scope": re.compile(r"\b(write (?:a |an )?(?:program|script|essay|poem|story)|debug (?:this|my|the) code|reverse a linked list|solve (?:this )?(?:equation|derivative)|history of ancient rome|homework|generate python code|build a website)\b", re.I),
     "coding": re.compile(r"\b(?:write|generate|create|build|debug|fix|refactor)\b.{0,45}\b(?:code|python|javascript|typescript|program|script|algorithm|api|backend|frontend|function|component)\b", re.I),
@@ -141,6 +140,15 @@ def classify_intent(
     elif _PATTERNS["deal"].search(lowered):
         primary = ShoppingIntent.DEAL_SEARCH
         reason = "The request asks for offers, discounts, or price-saving opportunities."
+    elif _PATTERNS["compare"].search(lowered) and _PATTERNS["recommend"].search(lowered):
+        compare_match = _PATTERNS["compare"].search(lowered)
+        recommend_match = _PATTERNS["recommend"].search(lowered)
+        if recommend_match and compare_match and recommend_match.start() < compare_match.start():
+            primary = ShoppingIntent.PRODUCT_RECOMMENDATION
+            reason = "The primary action is finding or recommending options, with comparison as a secondary task."
+        else:
+            primary = ShoppingIntent.PRODUCT_COMPARISON
+            reason = "The primary action is comparing alternatives."
     elif _PATTERNS["compare"].search(lowered):
         primary = ShoppingIntent.PRODUCT_COMPARISON
         reason = "The request explicitly asks to compare alternatives."
