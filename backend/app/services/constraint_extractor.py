@@ -235,6 +235,7 @@ def _extract_feature_groups(text: str) -> tuple[tuple[str, ...], tuple[str, ...]
 
     required_patterns = (
         r"\bmust[- ]have\s+(.+?)(?=\s*,?\s*(?:prefer(?:ably)?|ideally|nice to have|bonus if|without|avoid|don't want|do not want|no\s+|under\b|below\b|budget\b)|[.!?;\n]|$)",
+        r"\brequired features?\s*(?:are|:)?\s+(.+?)(?=[.!?;\n]|$)",
         r"\bessential(?: feature)?s?\s*(?:are|:)?\s+(.+?)(?=[.!?;\n]|$)",
         r"\bnon[- ]negotiable(?:s)?\s*(?:are|:)?\s+(.+?)(?=[.!?;\n]|$)",
         r"\brequires?\s+(.+?)(?=[.!?;\n]|$)",
