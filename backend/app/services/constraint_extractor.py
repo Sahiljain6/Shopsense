@@ -87,7 +87,7 @@ _BRANDS = (
 
 _AMOUNT_TOKEN = (
     r"(?:(?:₹|(?<![A-Za-z])rs\.?|(?<![A-Za-z])inr\b|\$|(?<![A-Za-z])usd\b)\s*)?"
-    r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+    r"(?:\d{1,2}(?:,\d{2})*,\d{3}|\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
     r"(?:\s*(?:lakhs?|lacs?|k\b|thousand\b|million\b))?"
 )
 _AMOUNT_RE = re.compile(
@@ -201,7 +201,20 @@ def _clean_feature(value: str) -> str | None:
         return None
     # Keep useful technical tokens, but remove incidental sentence punctuation.
     value = value.strip(" .")
-    return value.lower() if len(value) >= 2 else None
+    normalized = value.lower()
+    generic_product_suffix = re.compile(
+        r"\s+(?:phones?|mobiles?|laptops?|notebooks?|headphones?|earbuds?|"
+        r"earphones?|keyboards?|watches?)$",
+        re.I,
+    )
+    for brand in _BRANDS:
+        if normalized == brand.lower() or (
+            normalized.startswith(brand.lower() + " ")
+            and generic_product_suffix.search(normalized)
+            and generic_product_suffix.sub("", normalized).strip() == brand.lower()
+        ):
+            return None
+    return normalized if len(normalized) >= 2 else None
 
 
 def _split_features(value: str) -> tuple[str, ...]:
