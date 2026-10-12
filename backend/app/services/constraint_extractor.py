@@ -92,7 +92,7 @@ _AMOUNT_TOKEN = (
 )
 _AMOUNT_RE = re.compile(
     r"(?P<currency>₹|rs\.?|inr\b|\$|usd\b)?\s*"
-    r"(?P<number>\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+    r"(?P<number>\d{1,3}(?:,\d{3})+|\d+)"
     r"(?P<decimal>\.\d+)?\s*(?P<unit>lakhs?|lacs?|k\b|thousand\b|million\b)?",
     re.I,
 )
@@ -221,18 +221,18 @@ def _extract_feature_groups(text: str) -> tuple[tuple[str, ...], tuple[str, ...]
     excluded: list[str] = []
 
     required_patterns = (
-        r"\bmust[- ]have\s+([^.!?;\n]+)",
-        r"\bessential(?: feature)?s?\s*(?:are|:)?\s+([^.!?;\n]+)",
-        r"\bnon[- ]negotiable(?:s)?\s*(?:are|:)?\s+([^.!?;\n]+)",
-        r"\brequires?\s+([^.!?;\n]+)",
-        r"\bwith\s+([^.!?;\n]+)",
+        r"\bmust[- ]have\s+(.+?)(?=\s*,?\s*(?:prefer(?:ably)?|ideally|nice to have|bonus if|without|avoid|don't want|do not want|no\s+|under\b|below\b|budget\b)|[.!?;\n]|$)",
+        r"\bessential(?: feature)?s?\s*(?:are|:)?\s+(.+?)(?=[.!?;\n]|$)",
+        r"\bnon[- ]negotiable(?:s)?\s*(?:are|:)?\s+(.+?)(?=[.!?;\n]|$)",
+        r"\brequires?\s+(.+?)(?=[.!?;\n]|$)",
+        r"\bwith\s+(.+?)(?=,|;|[.!?;\n]|\b(?:prefer(?:ably)?|ideally|nice to have|bonus if|without|avoid|don't want|do not want|no\s+|under\b|below\b|up to\b|budget\b)|$)",
     )
     preferred_patterns = (
-        r"\bprefer(?:red|ably)?\s+([^.!?;\n]+)",
-        r"\bwould like\s+([^.!?;\n]+)",
-        r"\bnice to have\s+([^.!?;\n]+)",
-        r"\bideally\s+([^.!?;\n]+)",
-        r"\bbonus if\s+([^.!?;\n]+)",
+        r"\bprefer(?:red|ably)?\s+(.+?)(?=\s*,?\s*(?:without|avoid|don't want|do not want|no\s+|under\b|below\b|budget\b)|[.!?;\n]|$)",
+        r"\bwould like\s+(.+?)(?=[.!?;\n]|$)",
+        r"\bnice to have\s+(.+?)(?=[.!?;\n]|$)",
+        r"\bideally\s+(.+?)(?=[.!?;\n]|$)",
+        r"\bbonus if\s+(.+?)(?=[.!?;\n]|$)",
     )
     excluded_patterns = (
         r"\b(?:avoid|without|don't want|do not want|not interested in|exclude)\s+([^.!?;\n]+)",
