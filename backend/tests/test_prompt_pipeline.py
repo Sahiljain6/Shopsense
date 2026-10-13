@@ -163,3 +163,15 @@ def test_answer_returns_clarification_for_genuinely_ambiguous_reference(db_sessi
 
     assert response.clarification
     assert response.answer == response.clarification
+
+
+def test_agent_router_uses_intent_taxonomy_and_clarification_route():
+    from app.services.agents.nodes import orchestrator_node
+
+    comparison = orchestrator_node({"message": "Compare iPhone 16 vs Galaxy S24", "history": []})
+    assert comparison["intent"] == "compare"
+    assert comparison["shopping_intent"] == ShoppingIntent.PRODUCT_COMPARISON.value
+
+    ambiguous = orchestrator_node({"message": "which one is best", "history": []})
+    assert ambiguous["intent"] == "clarify"
+    assert ambiguous["response"].clarification
