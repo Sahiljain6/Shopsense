@@ -1,6 +1,7 @@
 from langgraph.graph import END, StateGraph
 from app.services.agents.nodes import (
     compare_node,
+    clarify_node,
     deal_specialist_node,
     guardrail_node,
     orchestrator_node,
@@ -14,6 +15,8 @@ from app.services.agents.state import ShopSenseState
 
 def _route(state: ShopSenseState) -> str:
     intent = state.get("intent", "recommend")
+    if intent == "clarify":
+        return "clarify"
     if intent == "compare":
         return "compare"
     if intent == "review":
@@ -29,6 +32,7 @@ def build_graph():
     graph.add_node("search", search_node)
     graph.add_node("recommend", recommend_node)
     graph.add_node("compare", compare_node)
+    graph.add_node("clarify", clarify_node)
     graph.add_node("review", review_node)
     graph.add_node("photo_inspector", photo_inspector_node)
     graph.add_node("deal_specialist", deal_specialist_node)
@@ -41,6 +45,7 @@ def build_graph():
         {
             "recommend": "recommend",
             "compare": "compare",
+            "clarify": "clarify",
             "review": "review",
             "photo_inspector": "photo_inspector",
         }
@@ -49,6 +54,7 @@ def build_graph():
     graph.add_edge("deal_specialist", "guardrail")
     graph.add_edge("recommend", "guardrail")
     graph.add_edge("compare", "guardrail")
+    graph.add_edge("clarify", "guardrail")
     graph.add_edge("review", "guardrail")
     graph.add_edge("guardrail", END)
     return graph.compile()
