@@ -13,6 +13,7 @@ from app.schemas.api import ChatResponse
 from app.services.catalog import CatalogService
 from app.services.live_search import search_live_deals
 from app.services.prompts import MODIFIERS
+from app.services.constraint_extractor import extract_constraints
 from app.services.intent_classifier import ShoppingIntent, classify_intent
 from app.services.prompt_pipeline import (
     build_prompt_context,
@@ -747,17 +748,10 @@ class AIOrchestrator:
     def _execute_search_catalog(self, category: str | None = None, budget: float | None = None, keywords: str = "") -> str:
         """Search catalog and return product data as JSON string with deduplication and sanitization."""
         from app.services.search import resolve_products
-        query_parts = []
-        if category:
-            query_parts.append(category.lower())
-        if keywords:
-            query_parts.append(keywords)
-        query = " ".join(query_parts) or ""
-
         constraints = getattr(self, "_active_constraints", None)
+        if constraints is not None and constraints.category:
+            category = constraints.category
         if constraints is not None:
-            if constraints.category:
-                category = constraints.category
             currency = (constraints.budget_currency or "INR").upper()
             if currency == "USD":
                 # Catalog prices are INR; do not apply a USD number as an INR ceiling.
@@ -765,6 +759,12 @@ class AIOrchestrator:
             elif constraints.budget_max is not None:
                 budget = constraints.budget_max if budget is None else min(float(budget), constraints.budget_max)
 
+        query_parts = []
+        if category:
+            query_parts.append(category.lower())
+        if keywords:
+            query_parts.append(keywords)
+        query = " ".join(query_parts) or ""
         if budget is not None:
             query += f" under {budget:.0f}"
 
@@ -1160,8 +1160,12 @@ class AIOrchestrator:
             # LLM is offline / no API key configured — resolve catalog products before generic fallback
             from app.services.search import resolve_products
             resolved = resolve_products(message=message, history=history, cart=cart, db=self.db, limit=8)
-            if resolved.products:
-                ranked = self._rank_products(resolved.products)[:3]
+            fallback_products = filter_and_rank_products(
+                resolved.products,
+                getattr(self, "_active_constraints", extract_constraints(message)),
+            )
+            if fallback_products:
+                ranked = self._rank_products(fallback_products)[:3]
                 return self._structured_response(ranked)
 
             return self._general_ai_response(message, history, cart=cart)
@@ -1552,6 +1556,13 @@ class AIOrchestrator:
         cart: list[dict[str, object]] | None = None
     ) -> ChatResponse:
 
+        prompt_plan = build_prompt_context(message, history)
+        products = filter_and_rank_products(products, prompt_plan.constraints)
+        if not products:
+            return ChatResponse(
+                answer="No catalog products matched all of the explicit requirements. "
+                "I won't silently relax your budget or must-have features; try broadening one constraint."
+            )
         ids = [product.id for product in products]
 
         product_context = []
@@ -1707,6 +1718,7 @@ RESPONSE RULES:
                 fallback_products = self.catalog.search(search_query, limit=8)
                 if budget is not None:
                     fallback_products = [p for p in fallback_products if p.price <= budget]
+                fallback_products = filter_and_rank_products(fallback_products, extract_constraints(message))
                 if fallback_products:
                     return self._structured_response(fallback_products)
 
