@@ -100,6 +100,10 @@ class PromptPlan:
 def _bounded_constraints(constraints: ShoppingConstraints) -> dict[str, Any]:
     """Limit extracted text before embedding it in a system prompt."""
     data = constraints.to_dict()
+    for key in ("budget_min", "budget_max", "budget_target"):
+        value = data.get(key)
+        if isinstance(value, float) and value.is_integer():
+            data[key] = int(value)
     for key in (
         "use_cases",
         "required_features",
