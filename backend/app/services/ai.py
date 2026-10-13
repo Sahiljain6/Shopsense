@@ -13,33 +13,49 @@ from app.schemas.api import ChatResponse
 from app.services.catalog import CatalogService
 from app.services.live_search import search_live_deals
 from app.services.prompts import MODIFIERS
+from app.services.intent_classifier import ShoppingIntent, classify_intent
+from app.services.prompt_pipeline import (
+    build_prompt_context,
+    clarification_question,
+    filter_and_rank_products,
+    validate_chat_response,
+)
 from app.services.trust_engine import generate_trust_pros_cons
 
 
 def select_modifiers(message: str, requested_mode: str | None = None) -> list[str]:
     lowered = message.lower()
-
-    base = requested_mode if requested_mode in MODIFIERS else (
-        "compare" if "compare" in lowered
-        else "review_digest" if "review" in lowered
-        else "recommend"
-    )
+    if requested_mode in MODIFIERS:
+        base = requested_mode
+    else:
+        intent = classify_intent(message).intent
+        intent_modes = {
+            ShoppingIntent.PRODUCT_COMPARISON: "compare",
+            ShoppingIntent.PRODUCT_REVIEW_SUMMARY: "review_digest",
+            ShoppingIntent.DEAL_SEARCH: "deal_hunter",
+            ShoppingIntent.GIFT_RECOMMENDATION: "gift_mode",
+            ShoppingIntent.FINANCE_OR_EMI: "budget_optimizer",
+            ShoppingIntent.PRODUCT_INFORMATION: "spec_nerd",
+            ShoppingIntent.DELIVERY_OR_LOGISTICS: "quick_answer",
+            ShoppingIntent.PRODUCT_RECOMMENDATION: "recommend",
+            ShoppingIntent.GENERAL_SHOPPING_QUERY: "recommend",
+            ShoppingIntent.CLARIFICATION_REQUIRED: "quick_answer",
+            ShoppingIntent.OUT_OF_SCOPE: "quick_answer",
+        }
+        base = intent_modes.get(intent, "recommend")
 
     selected = [base]
-
     keyword_map = {
         "budget_optimizer": ["budget", "under", "cheap", "below", "upto", "lakh"],
         "gift_mode": ["gift", "birthday", "rakshabandhan"],
-        "deal_hunter": ["deal", "value"],
-        "spec_nerd": ["spec", "ram", "processor"],
-        "quick_answer": ["quick", "one line"]
+        "deal_hunter": ["deal", "value", "offer", "discount", "coupon"],
+        "spec_nerd": ["spec", "ram", "processor", "battery", "display"],
+        "quick_answer": ["quick", "one line", "short answer"],
     }
-
     for modifier, words in keyword_map.items():
         if modifier != base and any(word in lowered for word in words):
             selected.append(modifier)
-
-    return selected
+    return list(dict.fromkeys(selected))
 
 
 INJECTION_DELIMITERS = [
@@ -161,8 +177,14 @@ def check_shopping_guardrail(message: str) -> str | None:
     return None
 
 
-def needs_clarification(message: str) -> str | None:
-    return None
+def needs_clarification(
+    message: str,
+    history: list[dict[str, str]] | None = None,
+) -> str | None:
+    result = classify_intent(message, history)
+    if result.intent != ShoppingIntent.CLARIFICATION_REQUIRED:
+        return None
+    return clarification_question(message, result.intent)
 
 
 from app.services.search import clean_search_terms, extract_budget, normalize_query
@@ -732,7 +754,18 @@ class AIOrchestrator:
             query_parts.append(keywords)
         query = " ".join(query_parts) or ""
 
-        if budget:
+        constraints = getattr(self, "_active_constraints", None)
+        if constraints is not None:
+            if constraints.category:
+                category = constraints.category
+            currency = (constraints.budget_currency or "INR").upper()
+            if currency == "USD":
+                # Catalog prices are INR; do not apply a USD number as an INR ceiling.
+                budget = None
+            elif constraints.budget_max is not None:
+                budget = constraints.budget_max if budget is None else min(float(budget), constraints.budget_max)
+
+        if budget is not None:
             query += f" under {budget:.0f}"
 
         # Pass conversation history and cart context
@@ -743,6 +776,7 @@ class AIOrchestrator:
 
         if budget is not None:
             products = [p for p in products if p.price <= budget]
+        products = filter_and_rank_products(products, constraints)
 
         # De-duplicate products across multiple tool calls
         self._tool_products = getattr(self, "_tool_products", [])
@@ -1050,6 +1084,8 @@ class AIOrchestrator:
         self._tool_products = []
         self._current_history = history
         self._current_cart = cart
+        self._active_prompt_plan = build_prompt_context(message, history, mode)
+        self._active_constraints = self._active_prompt_plan.constraints
 
         # Explicit Comparison Pre-Check ("X vs Y" / "Compare X and Y")
         comp_match = re.search(r'(?:compare\s+)?(.+?)\s+(?:vs\.?|versus|compared\s+to)\s+(.+)', message, re.IGNORECASE)
@@ -1111,6 +1147,7 @@ class AIOrchestrator:
             "   - Provide '### 🎯 The Bottom Line' with clear decision criteria.\n"
             "4. Follow-Up Question: End with a single, thoughtful follow-up question (e.g., asking what they value most between battery, camera, or specific ecosystem) only if helpful to narrow down their choice.\n"
         )
+        system_prompt += "\n\n" + self._active_prompt_plan.prompt_addendum
 
         answer = self._chat_with_tools(system_prompt, message, history)
 
@@ -1241,7 +1278,12 @@ class AIOrchestrator:
         if small_talk:
             return ChatResponse(answer=small_talk)
 
-        # 3. Live Barcode / GTIN Lookup API Trigger (specific pattern — keep as pre-check)
+        # 3. Clarify only genuinely ambiguous references; do not guess a product.
+        clarification = needs_clarification(message, history)
+        if clarification:
+            return ChatResponse(answer=clarification, clarification=clarification)
+
+        # 4. Live Barcode / GTIN Lookup API Trigger (specific pattern — keep as pre-check)
         barcode_match = re.search(r'\b(?:barcode\s*)?(\d{8,14})\b', message, re.IGNORECASE)
         if barcode_match:
             code = barcode_match.group(1)
@@ -1450,36 +1492,31 @@ class AIOrchestrator:
         cart: list[dict[str, object]] | None = None,
         model: str | None = None,
     ) -> ChatResponse:
-
+        """Run the configured answer path, then validate its public response."""
         try:
             if not get_settings().enable_multi_agent:
-                resp = self.answer(message, mode, history, cart=cart)
-                resp.model = model or "Sonnet 4.5"
-                return resp
+                response = self.answer(message, mode, history, cart=cart)
+            else:
+                from app.services.agents.graph import run_graph
 
-            from app.services.agents.graph import run_graph
+                data = run_graph({
+                    "message": message,
+                    "mode": mode,
+                    "db": self.db,
+                    "cart": cart,
+                    "history": history,
+                    "model": model,
+                })
+                response = data.get("response")
+                if not isinstance(response, ChatResponse):
+                    response = self.answer(message, mode, history, cart=cart)
+        except Exception as err:
+            logger.exception("Agent orchestration failed; using single-agent fallback: %s", err)
+            response = self.answer(message, mode, history, cart=cart)
 
-            data = run_graph({
-                "message": message,
-                "mode": mode,
-                "db": self.db,
-                "cart": cart,
-                "model": model,
-            })
-
-            if isinstance(data.get("response"), ChatResponse):
-                resp = data["response"]
-                resp.model = model or "Sonnet 4.5"
-                return resp
-
-            resp = self.answer(message, mode, history, cart=cart)
-            resp.model = model or "Sonnet 4.5"
-            return resp
-
-        except Exception:
-            resp = self.answer(message, mode, history, cart=cart)
-            resp.model = model or "Sonnet 4.5"
-            return resp
+        response.model = model or "Sonnet 4.5"
+        intent = build_prompt_context(message, history, mode).intent
+        return validate_chat_response(response, self.db, intent)
 
     def _rank_products(
         self,
@@ -1570,6 +1607,8 @@ RESPONSE RULES:
                 f"{cart_summary}\n"
                 "CRITICAL RULE FOR CART CONTEXT: Only reference the user's cart when it is directly relevant to the user's request (e.g. recommending matching accessories for cart items, checking for duplicate purchases, or when the user explicitly asks about their cart). Do NOT force-mention the cart on unrelated queries.\n"
                 "Recommend only real products provided in the catalog context. Use the conversation history to understand context like budget or brand."
+                + "\n\n"
+                + build_prompt_context(message, history).prompt_addendum
             ),
             user=prompt,
             history=history
@@ -1642,6 +1681,8 @@ RESPONSE RULES:
                 "You MUST NEVER write programming code (Python, JS, HTML, etc.), debug code, solve general math/science homework, or write creative essays. "
                 "If the user asks for code or off-topic non-shopping tasks, politely decline and ask what product they'd like to shop for.\n"
                 "If live web deal links are provided in the prompt, recommend them with their price and source link."
+                + "\n\n"
+                + build_prompt_context(message, history).prompt_addendum
             ),
             user=prompt,
             history=history
