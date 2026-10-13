@@ -57,3 +57,14 @@ graph TD
 ## 4. Quality & Testing Infrastructure
 - **Frontend**: Node.js test runner (`node --test`) validating formatting utilities, API error mappings, and schema constants.
 - **Backend**: Comprehensive Pytest suite covering authentication, injection defense, agent routing, and finance/logistics calculations (80+ passing tests).
+
+
+## Prompt-Specific Shopping Response Pipeline
+
+The chat orchestration uses a deterministic intent classifier and a constraint extractor before forming provider prompts. The current turn is classified into a supported shopping task (recommendation, comparison, deals, reviews, finance/EMI, gifts, delivery, product information, general shopping, clarification, or out-of-scope). A task-specific contract is appended to the existing system prompt; this does not require a second model call.
+
+Explicit INR constraints such as a maximum/minimum budget, required features, excluded features, preferred/excluded brands, category, and use case are extracted from the current user message. Catalog candidates are filtered against hard constraints and stably re-ranked by supported preferences. USD figures are not treated as INR catalog ceilings. Required specifications must be evidenced by the product's description or attributes; unknown details are not silently treated as verified.
+
+The multi-agent graph uses the same intent taxonomy, passes recent conversation history to its routing/search nodes, and routes genuinely ambiguous references to a one-question clarification node. The final response boundary normalizes blank/oversized responses, de-duplicates product IDs, removes stale product references when the database is available, keeps reason/pro/con maps aligned to valid IDs, and repairs raw Markdown comparison tables into readable product sections.
+
+Regression coverage lives in backend/tests/test_intent_classifier.py, backend/tests/test_constraint_extractor.py, and backend/tests/test_prompt_pipeline.py. The new prompt pipeline is deterministic and introduces no separate LLM invocation.
