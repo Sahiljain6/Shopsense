@@ -293,7 +293,11 @@ def _repair_comparison_table(answer: str) -> str:
     return "\n".join(lines[:first] + rendered + lines[last + 1:]).strip()
 
 
-def validate_chat_response(response: ChatResponse, db: Any = None) -> ChatResponse:
+def validate_chat_response(
+    response: ChatResponse,
+    db: Any = None,
+    intent: ShoppingIntent | None = None,
+) -> ChatResponse:
     """Normalize the public response and remove invalid/stale product references."""
     answer = response.answer if isinstance(response.answer, str) else ""
     answer = "".join(char for char in answer if char in "\n\r\t" or ord(char) >= 32).strip()
@@ -302,10 +306,8 @@ def validate_chat_response(response: ChatResponse, db: Any = None) -> ChatRespon
     if len(answer) > 20000:
         answer = answer[:19999].rsplit(" ", 1)[0].rstrip() + "…"
 
-    if any("comparison" in directive for directive in [_INTENT_DIRECTIVES[ShoppingIntent.PRODUCT_COMPARISON]]):
-        # Intentionally format-repair only below when classification is available
-        # from response text; a prompt's task directive remains the source of intent.
-        pass
+    if intent == ShoppingIntent.PRODUCT_COMPARISON:
+        answer = _repair_comparison_table(answer)
 
     ids: list[int] = []
     for value in response.product_ids or []:
