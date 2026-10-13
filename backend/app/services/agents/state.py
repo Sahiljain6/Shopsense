@@ -6,6 +6,8 @@ from app.schemas.api import ChatResponse
 class ShopSenseState(TypedDict, total=False):
     message: str
     mode: str | None
+    history: list[dict[str, str]]
+    shopping_intent: str
     db: Session
     cart: list[dict[str, Any]]
     intent: str
