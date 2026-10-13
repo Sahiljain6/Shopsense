@@ -59,7 +59,7 @@ _PATTERNS: dict[str, re.Pattern[str]] = {
     "compare": re.compile(r"\b(compare|comparison|versus|\bvs\.?\b|which is better|difference between|cheaper overall|side.by.side)\b", re.I),
     "recommend": re.compile(r"\b(recommend|recommendation|recommendations|suggest|suggestion|suggestions|which .* should i buy|what should i buy|best .* for|find(?: me)?|show me .* under|looking for|gift ideas)\b", re.I),
     "product_info": re.compile(r"\b(specifications?|features?|compatib(?:le|ility)|supports?|support for|battery life|processor|ram|storage|dimensions|warranty|what does .* have|tell me about this product)\b", re.I),
-    "ambiguous": re.compile(r"^(?:which one is best|what about .+|compare it with that one|find the best one|calculate the payment|is it good|and this one)\??$", re.I),
+    "ambiguous": re.compile(r"^(?:which one is best|compare it with that one|find the best one|calculate the payment|is it good|and this one|what about (?:it|this|that|this one|that one|the other one))\??$", re.I),
     "shopping_context": re.compile(r"\b(shop|shopping|buy|buying|purchase|product|products|laptop|phone|smartphone|headphones|earbuds|monitor|chair|camera|keyboard|mouse|price|budget|brand|oled|lcd|gift|catalog|store|retailer|e-?commerce)\b", re.I),
     "out_of_scope": re.compile(r"\b(write (?:a |an )?(?:program|script|essay|poem|story)|debug (?:this|my|the) code|reverse a linked list|solve (?:this )?(?:equation|derivative)|history of ancient rome|homework|generate python code|build a website)\b", re.I),
     "coding": re.compile(r"\b(?:write|generate|create|build|debug|fix|refactor)\b.{0,45}\b(?:code|python|javascript|typescript|program|script|algorithm|api|backend|frontend|function|component)\b", re.I),
