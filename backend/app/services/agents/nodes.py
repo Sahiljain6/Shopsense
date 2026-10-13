@@ -1,7 +1,10 @@
 import logging
 from app.models.entities import Product
 from app.schemas.api import ChatResponse
-from app.services.ai import AIOrchestrator, is_direct_prompt_injection, needs_clarification
+from app.services.ai import AIOrchestrator, check_shopping_guardrail, is_direct_prompt_injection, needs_clarification
+from app.services.constraint_extractor import extract_constraints
+from app.services.intent_classifier import ShoppingIntent, classify_intent
+from app.services.prompt_pipeline import build_prompt_context, filter_and_rank_products
 from app.services.search import resolve_products
 from app.services.agents.state import ShopSenseState
 
@@ -27,39 +30,81 @@ def orchestrator_node(state: ShopSenseState) -> ShopSenseState:
         )
         return state
 
-    message = state["message"].lower()
-    if state.get("image_bytes") or any(w in message for w in ["photo mismatch", "image mismatch", "picture mismatch", "mismatch in photo"]):
+    message = state["message"]
+    scope_refusal = check_shopping_guardrail(message)
+    if scope_refusal:
+        state["intent"] = "refuse"
+        state["response"] = ChatResponse(answer=scope_refusal)
+        return state
+
+    lowered = message.lower()
+    if state.get("image_bytes") or any(w in lowered for w in ["photo mismatch", "image mismatch", "picture mismatch", "mismatch in photo"]):
         state["intent"] = "photo_deal"
-    elif needs_clarification(message):
+        state["shopping_intent"] = ShoppingIntent.PRODUCT_RECOMMENDATION.value
+        return state
+
+    result = classify_intent(message, state.get("history"))
+    state["shopping_intent"] = result.intent.value
+    clarification = needs_clarification(message, state.get("history"))
+    if clarification:
         state["intent"] = "clarify"
-    elif "compare" in message:
+        state["response"] = ChatResponse(answer=clarification, clarification=clarification)
+    elif result.intent == ShoppingIntent.PRODUCT_COMPARISON:
         state["intent"] = "compare"
-    elif "review" in message:
+    elif result.intent == ShoppingIntent.PRODUCT_REVIEW_SUMMARY:
         state["intent"] = "review"
     else:
+        # Specialist intents still go through AIOrchestrator.answer so existing
+        # finance, delivery, deal timing, currency, and weather tools remain active.
         state["intent"] = "recommend"
     return state
 
 
 def search_node(state: ShopSenseState) -> ShopSenseState:
-    if state.get("intent") == "refuse":
+    if state.get("intent") in {"refuse", "clarify"}:
+        return state
+    specialist_intents = {
+        ShoppingIntent.DEAL_SEARCH.value,
+        ShoppingIntent.FINANCE_OR_EMI.value,
+        ShoppingIntent.DELIVERY_OR_LOGISTICS.value,
+        ShoppingIntent.PRODUCT_INFORMATION.value,
+    }
+    if state.get("shopping_intent") in specialist_intents:
+        state["products"] = []
+        state["product_ids"] = []
         return state
     resolved = resolve_products(
         message=state["message"],
+        history=state.get("history"),
         cart=state.get("cart"),
         db=state["db"],
         limit=12
     )
-    state["products"] = resolved.products
-    state["product_ids"] = [p.id for p in resolved.products]
+    plan = build_prompt_context(state["message"], state.get("history"), state.get("mode"))
+    filtered = filter_and_rank_products(resolved.products, plan.constraints)
+    resolved_products = filtered
+    state["products"] = resolved_products
+    state["product_ids"] = [p.id for p in resolved_products]
     return state
 
 
 def recommend_node(state: ShopSenseState) -> ShopSenseState:
-    if state.get("intent") == "refuse":
+    if state.get("intent") in {"refuse", "clarify"}:
         return state
     orch = AIOrchestrator(state["db"])
-    if state.get("products"):
+    specialist_intents = {
+        ShoppingIntent.DEAL_SEARCH.value,
+        ShoppingIntent.FINANCE_OR_EMI.value,
+        ShoppingIntent.DELIVERY_OR_LOGISTICS.value,
+        ShoppingIntent.PRODUCT_INFORMATION.value,
+        ShoppingIntent.OUT_OF_SCOPE.value,
+    }
+    if state.get("shopping_intent") in specialist_intents:
+        state["response"] = orch.answer(
+            state["message"], state.get("mode"),
+            history=state.get("history"), cart=state.get("cart")
+        )
+    elif state.get("products"):
         state["response"] = orch._generate_ai_response(
             message=state["message"],
             products=state["products"][:4],
@@ -67,21 +112,43 @@ def recommend_node(state: ShopSenseState) -> ShopSenseState:
             cart=state.get("cart")
         )
     else:
-        state["response"] = orch.answer(state["message"], state.get("mode"), history=state.get("history"), cart=state.get("cart"))
+        state["response"] = orch.answer(
+            state["message"], state.get("mode"),
+            history=state.get("history"), cart=state.get("cart")
+        )
     return state
 
 
 def compare_node(state: ShopSenseState) -> ShopSenseState:
     if state.get("intent") == "refuse":
         return state
-    state["response"] = AIOrchestrator(state["db"]).answer(state["message"], "compare", cart=state.get("cart"))
+    state["response"] = AIOrchestrator(state["db"]).answer(
+        state["message"], "compare", history=state.get("history"), cart=state.get("cart")
+    )
     return state
 
 
 def review_node(state: ShopSenseState) -> ShopSenseState:
     if state.get("intent") == "refuse":
         return state
-    state["response"] = AIOrchestrator(state["db"]).answer(state["message"], "review_digest", cart=state.get("cart"))
+    state["response"] = AIOrchestrator(state["db"]).answer(
+        state["message"], "review_digest", history=state.get("history"), cart=state.get("cart")
+    )
+    return state
+
+
+
+def clarify_node(state: ShopSenseState) -> ShopSenseState:
+    """Preserve the one-question clarification selected by the orchestrator."""
+    if state.get("intent") == "refuse":
+        return state
+    existing = state.get("response")
+    if isinstance(existing, ChatResponse) and existing.clarification:
+        return state
+    question = needs_clarification(state.get("message", ""), state.get("history"))
+    if not question:
+        question = "Which product or shopping category are you referring to?"
+    state["response"] = ChatResponse(answer=question, clarification=question)
     return state
 
 
