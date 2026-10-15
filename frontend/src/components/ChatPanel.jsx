@@ -409,21 +409,6 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
           onClick={() => scrollToBottom(true)}
           title="Jump to latest messages"
           aria-label="Jump to latest messages"
-          style={{
-            position: "absolute",
-            bottom: "80px",
-            right: "24px",
-            zIndex: 30,
-            background: "rgba(15, 23, 42, 0.9)",
-            border: "1px solid rgba(6, 182, 212, 0.4)",
-            color: "#67e8f9",
-            borderRadius: "9999px",
-            padding: "0.4rem 0.85rem",
-            fontSize: "0.78rem",
-            fontWeight: 600,
-            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.4)",
-            cursor: "pointer",
-          }}
         >
           ↓ Jump to latest
         </button>
