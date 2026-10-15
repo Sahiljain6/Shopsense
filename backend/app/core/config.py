@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     huggingface_api_key: str = ""
 
     scraperapi_key: str = ""
+    serpapi_api_key: str = ""
+    serpapi_location: str = "Mumbai, Maharashtra, India"
     google_vision_api_key: str = ""
     google_client_id: str = ""
 
