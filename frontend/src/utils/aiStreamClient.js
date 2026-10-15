@@ -88,6 +88,7 @@ export async function streamAIResponse({
   onToken,
   onStatus,
   onProducts,
+  onLiveDeals,
   onToolCall,
   onDoneMetadata,
   onComplete,
@@ -154,6 +155,11 @@ export async function streamAIResponse({
 
             if (parsed.type === "products") {
               if (onProducts) onProducts(parsed.products || [], parsed.product_ids || []);
+              continue;
+            }
+
+            if (parsed.type === "live_deals") {
+              if (onLiveDeals) onLiveDeals(parsed.live_deals || []);
               continue;
             }
 

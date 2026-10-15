@@ -203,6 +203,7 @@ export async function streamChat({
   onToken,
   onStatus,
   onProducts,
+  onLiveDeals,
   onComplete,
   onError,
 }) {
@@ -225,6 +226,7 @@ export async function streamChat({
     onToken,
     onStatus,
     onProducts,
+    onLiveDeals,
     onComplete,
     onError,
   });

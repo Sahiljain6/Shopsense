@@ -529,6 +529,11 @@ async def chat_stream(
                 prods_json = [p.model_dump() for p in response.products]
                 yield f"data: {json.dumps({'type': 'products', 'products': prods_json, 'product_ids': response.product_ids})}\n\n"
 
+            # Deliver current retailer listings separately so the UI can render product cards.
+            if response.live_deals:
+                deals_json = [deal.model_dump() for deal in response.live_deals]
+                yield f"data: {json.dumps({'type': 'live_deals', 'live_deals': deals_json})}\n\n"
+
             # 6. Send final completion event
             resp_dict = response.model_dump()
             resp_dict["products"] = [p.model_dump() for p in response.products]

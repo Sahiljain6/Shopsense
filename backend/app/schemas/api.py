@@ -107,10 +107,34 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
 
 
+class LiveDeal(BaseModel):
+    """A current retailer listing returned by a shopping-search provider."""
+
+    title: str
+    price: float | None = None
+    old_price: float | None = None
+    currency: str = "INR"
+    source: str = "Google Shopping"
+    url: str
+    image_url: str | None = None
+    rating: float | None = None
+    reviews: int | None = None
+    discount_percentage: float | None = None
+    snippet: str = ""
+    retrieved_at: str | None = None
+    provider: str = "SerpApi Google Shopping"
+    is_live: bool = True
+    trust_score: int | None = None
+    badge: str | None = None
+    is_verified: bool = False
+    warning: str | None = None
+
+
 class ChatResponse(BaseModel):
     answer: str
     product_ids: list[int] = Field(default_factory=list)
     products: list[ProductRead] = Field(default_factory=list)
+    live_deals: list[LiveDeal] = Field(default_factory=list)
     reasons: dict[str, str] = Field(default_factory=dict)
     pros: dict[str, list[str]] = Field(default_factory=dict)
     cons: dict[str, list[str]] = Field(default_factory=dict)

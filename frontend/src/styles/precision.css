@@ -575,3 +575,51 @@ button:active:not(:disabled), a:active { transform: scale(0.985); }
     font-size: 0.65rem;
   }
 }
+
+
+/* Live Google Shopping results are distinct from the local seeded catalog. */
+.live-deal-card { cursor: default; }
+.live-deal-card .product-card-image-box { position: relative; }
+.live-deal-card .product-card-img { object-fit: contain; }
+.live-deal-pricing-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin: -0.25rem 0 0.1rem;
+  font-size: 0.76rem;
+}
+.live-deal-old-price { color: #9aa8ba; text-decoration: line-through; }
+.live-deal-discount { color: #7ce6b0; font-weight: 700; }
+.live-deal-rating { margin: 0.1rem 0; color: #f6c768; font-size: 0.78rem; }
+.live-deal-trust-note {
+  display: block;
+  margin: 0.15rem 0;
+  color: #b7c3d2;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+.live-deal-actions { margin-top: 0.25rem; }
+.live-deal-visit-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 42px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #285064;
+  border-radius: 9px;
+  color: #91e6f3;
+  background: #102632;
+  font-size: 0.8rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+.live-deal-visit-link:hover { background: #153543; border-color: #38738a; }
+.live-deal-visit-link:focus-visible { outline: 2px solid #67e8f9; outline-offset: 2px; }
+.live-deal-freshness {
+  margin: 0.45rem 0 0;
+  color: #8795a7;
+  font-size: 0.67rem;
+  line-height: 1.45;
+}
