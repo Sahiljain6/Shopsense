@@ -1250,7 +1250,9 @@ class AIOrchestrator:
         last_prod = self._find_last_product(history, cart)
         context_prod_clause = (
             f"8. PREVIOUSLY DISCUSSED ITEM: {last_prod.name} (Brand: {last_prod.brand}). "
-            "If the user refers to 'this', 'it', or asks for deals, specs, or accessories on the previous item, they mean this product.\n"
+            "Use this item only when the user refers to it implicitly (for example, 'this', 'it', or 'that one') "
+            "or explicitly asks about this previously discussed item. If the current message names a different product or model, "
+            "the current message ALWAYS overrides prior conversation context.\n"
             if last_prod else ""
         )
 
@@ -1312,6 +1314,14 @@ class AIOrchestrator:
         answer = self._chat_with_tools(system_prompt, message, history)
 
         if answer is None:
+            if self._live_search_prefetched:
+                response = self._general_ai_response(message, history, cart=cart)
+                response.live_deals = [
+                    LiveDeal.model_validate(deal)
+                    for deal in getattr(self, "_live_deals", [])
+                ]
+                return response
+
             if getattr(self, "_tool_products", None) and len(self._tool_products) >= 2:
                 p1, p2 = self._tool_products[0], self._tool_products[1]
                 comp_answer = self._synthesize_comparison_answer(p1, p2)
@@ -1619,35 +1629,28 @@ class AIOrchestrator:
             except Exception as err:
                 print(f"Chat URL auto-scrape notice: {err}")
 
-        # 6. Follow-up: Specific Product Context Resolution (matching cover, offers/discounts on this product)
+        # 6. Contextual accessory follow-ups only.
+        # Price/deal/offer requests must use live search; never return fabricated bank
+        # discounts, exchange bonuses, or coupon codes from conversation history.
         lowered_msg = message.lower()
-        followup_kws = [
-            "matching cover", "back cover", "phone cover", "case for this", "cover for it",
-            "matching case", "tempered glass", "screen guard",
-            "offer", "offers", "discount", "discounts", "coupon", "coupons", "cashback", "emi"
+        accessory_followup_kws = [
+            "matching cover", "back cover", "phone cover", "case for this", "case for it",
+            "cover for it", "matching case", "tempered glass", "screen guard"
         ]
-        if any(kw in lowered_msg for kw in followup_kws):
+        refers_to_previous_item = bool(re.search(
+            r"\b(this|it|that one|same product|previous product|one you (?:recommended|suggested))\b",
+            lowered_msg,
+        ))
+        if any(kw in lowered_msg for kw in accessory_followup_kws) and refers_to_previous_item:
             last_prod = self._find_last_product(history, cart)
             if last_prod:
                 p_ids = [last_prod.id] if getattr(last_prod, "id", None) is not None else []
-                if any(okw in lowered_msg for okw in ["offer", "offers", "discount", "discounts", "coupon", "coupons", "cashback", "emi"]):
-                    return ChatResponse(
-                        answer=(
-                            f"### 🏷️ Ongoing Deals & Bank Offers for **{last_prod.name}**\n\n"
-                            f"• **Bank Discount**: Instant 10% discount (up to ₹1,500) on HDFC & ICICI Credit/Debit Cards.\n"
-                            f"• **No-Cost EMI**: Available up to 6 months with zero down payment.\n"
-                            f"• **Exchange Bonus**: Up to ₹3,000 extra exchange value on your old device.\n"
-                            f"• **Coupon Code**: Apply `SHOPSENSE1000` at checkout for ₹1,000 extra savings.\n\n"
-                            f"*(Verified live offers across Amazon India & Flipkart)*"
-                        ),
-                        product_ids=p_ids
-                    )
                 return ChatResponse(
                     answer=(
                         f"### 🛡️ Recommended Matching Accessories for **{last_prod.name}**\n\n"
-                        f"• **Matte Protective Back Cover / Shockproof Case** (₹399) — Precision cutouts, raised camera protection & anti-fingerprint grip.\n"
-                        f"• **9H Curved Tempered Glass Screen Guard** (₹299) — Full-screen scratch & drop protection.\n"
-                        f"• **Fast Charging Wall Adapter & USB Cable** (₹1,299) — Official fast charging support for {last_prod.brand}."
+                        f"• **Protective case / cover** — confirm model compatibility before buying.\n"
+                        f"• **Screen protector** — choose one specifically listed for the exact model.\n"
+                        f"• **Charging accessory** — check the manufacturer's supported charging standard."
                     ),
                     product_ids=p_ids
                 )
@@ -1876,6 +1879,15 @@ RESPONSE RULES:
                     lines.append(f"• **[{d['store']}]** [{d['title']}]({d['url']}){price_info}")
                 return ChatResponse(answer="\n".join(lines))
 
+            if should_use_live_search(message):
+                return ChatResponse(
+                    answer=(
+                        "I couldn't retrieve current retailer listings for this request right now, so I won't invent "
+                        "prices, ratings, discounts, or coupon codes. Please retry in a moment or verify the final "
+                        "price, availability, and offers on the retailer's checkout page."
+                    )
+                )
+
             # Fallback 2: Intelligent Catalog Search Matching with strict budget filtering
             keywords = ["keyboard", "earbuds", "phone", "iphone", "samsung", "apple", "laptop", "macbook", "audio", "watch", "gaming", "tws"]
             lowered = message.lower()
@@ -1934,30 +1946,6 @@ RESPONSE RULES:
                         "• **Best Budget TKL (Under ₹2,500)**: **Cosmic Byte CB-GK-16 Firefly** (₹2,199) — Outemu Blue tactile clicky switches, per-key RGB.\n"
                         "• **Best Durable Gaming (Under ₹3,500)**: **Redragon K552 Kumara RGB** (₹2,790) — Metal base, red linear switches, splash-proof.\n"
                         "• **Best Wireless & Typing (Under ₹8,000)**: **Keychron K2 V2 Wireless** (₹7,999) — Hot-swappable Gateron Brown, Mac/Win support, 4000mAh battery."
-                    )
-                )
-
-            # Fallback 5: Generic Retailer / Deal Intent Query
-            if any(w in lowered for w in ["offer", "offers", "deal", "deals", "discount", "discounts", "coupon", "coupons", "flipkart", "amazon", "croma"]):
-                last_prod = self._find_last_product(history, cart)
-                if last_prod:
-                    p_ids = [last_prod.id] if getattr(last_prod, "id", None) is not None else []
-                    return ChatResponse(
-                        answer=(
-                            f"### 🏷️ Ongoing Deals & Offers for **{last_prod.name}**\n\n"
-                            f"• **Bank Discount**: Instant 10% discount (up to ₹1,500) on HDFC & ICICI Credit/Debit Cards.\n"
-                            f"• **No-Cost EMI**: Available up to 6 months with zero down payment.\n"
-                            f"• **Exchange Bonus**: Up to ₹3,000 extra exchange value on your old device.\n"
-                            f"• **Coupon Code**: Apply `SHOPSENSE1000` at checkout for ₹1,000 extra savings.\n\n"
-                            f"*(Verified live offers across Amazon India & Flipkart)*"
-                        ),
-                        product_ids=p_ids
-                    )
-                return ChatResponse(
-                    answer=(
-                        "🛍️ **Ongoing E-Commerce Deals & Retailer Offers**\n\n"
-                        "To help you find the best live bank discounts, exchange offers, and coupon codes on **Flipkart**, **Amazon India**, or **Croma**, which product or category are you looking for?\n\n"
-                        "• Try asking: *\"Flipkart offers on phones under 15000\"*, *\"Amazon deals on earbuds\"*, or *\"Deals on mechanical keyboards\"*."
                     )
                 )
 
