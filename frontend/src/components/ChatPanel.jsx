@@ -151,7 +151,8 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
               role: "assistant",
               text: response.answer || "Here's what I found from your photo.",
               response,
-              products
+              products,
+              liveDeals: response.live_deals || []
             }
           ]);
         } catch (err) {
@@ -215,6 +216,7 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
           streaming: true,
           model: selectedModel,
           products: [],
+          liveDeals: [],
         },
       ]);
 
@@ -276,6 +278,19 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
               return next;
             });
           },
+          onLiveDeals: (liveDeals) => {
+            setMessages((prev) => {
+              const next = [...prev];
+              const lastIdx = next.length - 1;
+              if (lastIdx >= 0 && next[lastIdx].role === "assistant") {
+                next[lastIdx] = {
+                  ...next[lastIdx],
+                  liveDeals: liveDeals || [],
+                };
+              }
+              return next;
+            });
+          },
           onComplete: (fullText, fullMeta) => {
             if (tokenBatchTimerRef.current) {
               clearTimeout(tokenBatchTimerRef.current);
@@ -293,6 +308,7 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
                   text: finalText || "Here is what I found:",
                   streaming: false,
                   products: fullMeta?.products || next[lastIdx].products || [],
+                  liveDeals: fullMeta?.live_deals || next[lastIdx].liveDeals || [],
                   response: fullMeta || {},
                   model: fullMeta?.model || selectedModel,
                 };
@@ -334,6 +350,7 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
                     text: fallbackResp.answer || "Here is what I found:",
                     streaming: false,
                     products: prods,
+                    liveDeals: fallbackResp.live_deals || [],
                     response: fallbackResp,
                     model: fallbackResp.model || selectedModel,
                   };
