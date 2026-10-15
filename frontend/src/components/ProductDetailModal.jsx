@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
+import { formatProductAttributeLabel, formatProductAttributeValue } from "../utils/productAttributes.js";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import UiIcon from "./UiIcon";
 
@@ -89,10 +91,17 @@ export default function ProductDetailModal({
     };
   }, [isOpen]);
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="modal-backdrop" onClick={onClose}>
+        <motion.div
+          className="modal-backdrop"
+          onClick={onClose}
+          initial={shouldReduceMotion ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.16 }}
+        >
         <motion.div
           ref={dialogRef}
           className="focused-product-modal"
@@ -100,10 +109,10 @@ export default function ProductDetailModal({
           aria-modal="true"
           aria-labelledby={titleId}
           tabIndex={-1}
-          initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.97, y: 8 }}
+          initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.985, y: 6 }}
           animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-          exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
-          transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.18 }}
+          exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985, y: 6 }}
+          transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.17, ease: [0.22, 1, 0.36, 1] }}
           onClick={(event) => event.stopPropagation()}
         >
           <button
@@ -132,6 +141,8 @@ export default function ProductDetailModal({
                       src={product.image_url}
                       alt={product.name}
                       className="modal-big-img"
+                      loading="eager"
+                      decoding="async"
                     />
                   ) : (
                     <span className="modal-fallback-icon"><UiIcon name="package" size={54} strokeWidth={1.4} /></span>
@@ -224,8 +235,8 @@ export default function ProductDetailModal({
                     <div className="modal-specs-table">
                       {Object.entries(product.attributes).map(([key, value]) => (
                         <div key={key} className="modal-spec-row">
-                          <span className="modal-spec-key">{key}:</span>
-                          <span className="modal-spec-val">{String(value)}</span>
+                          <span className="modal-spec-key">{formatProductAttributeLabel(key)}:</span>
+                          <span className="modal-spec-val">{formatProductAttributeValue(value)}</span>
                         </div>
                       ))}
                     </div>
@@ -246,8 +257,9 @@ export default function ProductDetailModal({
             </button>
           </div>
         </motion.div>
-        </div>
+        </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
