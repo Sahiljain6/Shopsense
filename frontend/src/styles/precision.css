@@ -472,7 +472,13 @@ button:active:not(:disabled), a:active { transform: scale(0.985); }
   .welcome-desc { max-width: 48ch; }
   .welcome-chips.fastshot-prompts-grid { margin: 0; }
   .welcome-chip.fastshot-hero-chip { min-height: 144px; }
-  .chatbot-messages-stream { min-height: min(460px, 56dvh); max-height: 64dvh; padding: 1rem; }
+  .chatbot-messages-stream {
+    min-height: min(460px, 56vh);
+    min-height: min(460px, 56dvh);
+    max-height: 64vh;
+    max-height: 64dvh;
+    padding: 1rem;
+  }
   .message-content-box { max-width: calc(100% - 40px); }
   .user-row .message-content-box { max-width: 88%; }
 }
@@ -484,7 +490,9 @@ button:active:not(:disabled), a:active { transform: scale(0.985); }
   .nav-cart-btn .cart-label { display: none; }
   .chatbot-widget-container { border-radius: 14px; }
   .chatbot-messages-stream {
+    min-height: min(430px, 55vh);
     min-height: min(430px, 55dvh);
+    max-height: 62vh;
     max-height: 62dvh;
     padding: 0.85rem 0.7rem;
     gap: 1rem;
