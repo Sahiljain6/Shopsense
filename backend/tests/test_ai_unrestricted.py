@@ -222,7 +222,7 @@ def test_tool_calling_search_catalog(monkeypatch, db_session) -> None:
     assert all(pid in response.reasons for pid in [str(p) for p in response.product_ids])
 
 
-def test_find_last_product_resolves_live_search_item(db_session) -> None:
+def test_find_last_product_resolves_live_search_item(monkeypatch, db_session) -> None:
     """Test that follow-ups reference live-search-sourced items not in the catalog."""
     from app.services.ai import AIOrchestrator, GenericProductRef
 
@@ -245,11 +245,41 @@ def test_find_last_product_resolves_live_search_item(db_session) -> None:
     assert last_prod.price == 19999.0
     assert last_prod.id is None
 
-    # Follow-up asking for offers on this product must resolve to the live-search item
+    # Follow-up should search for the resolved item instead of inventing fixed promotions.
+    monkeypatch.setattr(
+        "app.services.ai.search_live_deals",
+        lambda *args, **kwargs: [
+            {
+                "title": "OnePlus Nord CE4 Lite 5G — Amazon India",
+                "price": 19999.0,
+                "price_str": "₹19,999",
+                "old_price": 22999.0,
+                "currency": "INR",
+                "store": "Amazon India",
+                "source": "Amazon India",
+                "url": "https://www.amazon.in/dp/B0D1XYZ",
+                "image_url": None,
+                "rating": 4.4,
+                "reviews": 1000,
+                "discount_percentage": 13,
+                "snippet": "Test listing for the contextual follow-up.",
+                "retrieved_at": "2026-10-15T00:00:00Z",
+                "provider": "Test fixture",
+                "is_live": True,
+                "trust_score": 85,
+                "badge": "Authorized Electronics",
+                "is_verified": True,
+                "warning": None,
+            }
+        ],
+    )
+    monkeypatch.setattr(orchestrator, "_chat_with_tools", lambda *args, **kwargs: None)
+    monkeypatch.setattr(orchestrator, "_chat", lambda *args, **kwargs: None)
     followup_resp = orchestrator.answer("what are the bank offers on this?", history=history)
     assert followup_resp is not None
     assert "OnePlus Nord CE4" in followup_resp.answer
-    assert "Bank Discount" in followup_resp.answer
+    assert "SHOPSENSE1000" not in followup_resp.answer
+    assert "Bank Discount" not in followup_resp.answer
     # product_ids should not contain None
     assert None not in followup_resp.product_ids
 
