@@ -1,4 +1,6 @@
-﻿export const CART_QUERIES = [
+﻿export const CHAT_INPUT_MAX_LENGTH = 4000;
+
+export const CART_QUERIES = [
   "show my cart",
   "view cart",
   "open cart",
