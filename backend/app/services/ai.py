@@ -1329,11 +1329,11 @@ class AIOrchestrator:
             if fallback_products:
                 ranked = self._rank_products(fallback_products)[:3]
                 response = self._structured_response(ranked)
-                response.live_deals = list(getattr(self, "_live_deals", []))
+                response.live_deals = [LiveDeal.model_validate(deal) for deal in getattr(self, "_live_deals", [])]
                 return response
 
             response = self._general_ai_response(message, history, cart=cart)
-            response.live_deals = list(getattr(self, "_live_deals", []))
+            response.live_deals = [LiveDeal.model_validate(deal) for deal in getattr(self, "_live_deals", [])]
             return response
 
         # Build product_ids from any tools that were called
