@@ -39,6 +39,7 @@
 }
 
 html { background: var(--ss-canvas); scroll-behavior: auto; }
+button { min-height: 44px; }
 body {
   overflow-x: hidden;
   background: var(--ss-canvas);
@@ -122,7 +123,9 @@ body {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
 }
 .chatbot-messages-stream {
+  min-height: min(470px, 52vh);
   min-height: min(470px, 52dvh);
+  max-height: 68vh;
   max-height: 68dvh;
   padding: clamp(1rem, 2.5vw, 1.75rem);
   gap: 1.3rem;
@@ -157,7 +160,7 @@ body {
   border-top-left-radius: 4px;
 }
 .message-copy-btn {
-  min-height: 36px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -466,7 +469,7 @@ button:active:not(:disabled), a:active { transform: scale(0.985); }
   .shopsense-navbar.fastshot-navbar, .shopsense-navbar { padding: 0.65rem 0.75rem; border-radius: 12px; }
   .navbar-center-links { display: none; }
   .navbar-right { gap: 0.4rem; }
-  .nav-signin-btn, .nav-signup-btn { min-height: 42px; padding-inline: 0.7rem; font-size: 0.78rem; }
+  .nav-signin-btn, .nav-signup-btn { min-height: 44px; padding-inline: 0.7rem; font-size: 0.78rem; }
   .nav-cart-btn .cart-label { display: none; }
   .chatbot-widget-container { border-radius: 14px; }
   .chatbot-messages-stream {
