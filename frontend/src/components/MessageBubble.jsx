@@ -94,7 +94,7 @@ function MessageBubble({ message }) {
 
         {(products.length > 0 || liveDeals.length > 0) && (
           <div ref={productGridRef} className="message-product-cards-grid">
-            {products.map((product) => (
+            {liveDeals.length === 0 && products.map((product) => (
               <ProductCard
                 key={product.id}
                 product={product}
