@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -462,13 +463,21 @@ async def chat_stream(
 
     async def event_generator():
         try:
+            stream_started = time.perf_counter()
             # 1. Initial status event
             yield f"data: {json.dumps({'type': 'status', 'status': 'Analyzing query...'})}\n\n"
-            await asyncio.sleep(0.01)
 
-            # 2. Execute orchestrator inside worker thread so we don't block the async event loop
+            # 2. Provider model discovery is non-blocking; measure setup separately.
+            init_started = time.perf_counter()
             orch = AIOrchestrator(db)
+            logger.info(
+                "chat_stream_timing stage=orchestrator_init duration_ms=%.1f provider=%s model=%s",
+                (time.perf_counter() - init_started) * 1000,
+                orch.provider or "none",
+                orch.model or "none",
+            )
             loop = asyncio.get_running_loop()
+            inference_started = time.perf_counter()
             response: ChatResponse = await loop.run_in_executor(
                 None,
                 lambda: orch.answer_via_agents(
@@ -479,13 +488,27 @@ async def chat_stream(
                     model=payload.model,
                 )
             )
+            logger.info(
+                "chat_stream_timing stage=answer_ready duration_ms=%.1f provider=%s model=%s answer_chars=%d",
+                (time.perf_counter() - inference_started) * 1000,
+                orch.provider or "none",
+                orch.model or "none",
+                len(response.answer or ""),
+            )
 
             # 3. Resolve products immediately
+            product_resolution_started = time.perf_counter()
             if response.product_ids and not response.products:
                 prod_entities = CatalogService(db).get_many(response.product_ids)
                 response.products = [_product_read(p) for p in prod_entities]
+            logger.info(
+                "chat_stream_timing stage=product_resolution duration_ms=%.1f product_count=%d",
+                (time.perf_counter() - product_resolution_started) * 1000,
+                len(response.products or []),
+            )
 
-            # 4. Stream tokens progressively
+            # 4. The provider returns a complete answer today; do not add artificial chunk waits.
+            token_delivery_started = time.perf_counter()
             full_text = response.answer or ""
             words = full_text.split(" ")
             chunk_size = 4
@@ -494,7 +517,12 @@ async def chat_stream(
                 if i + chunk_size < len(words):
                     chunk += " "
                 yield f"data: {json.dumps({'type': 'token', 'token': chunk, 'chunk': chunk})}\n\n"
-                await asyncio.sleep(0.015)
+            logger.info(
+                "chat_stream_timing stage=token_delivery duration_ms=%.1f word_count=%d total_ms=%.1f",
+                (time.perf_counter() - token_delivery_started) * 1000,
+                len(words),
+                (time.perf_counter() - stream_started) * 1000,
+            )
 
             # 5. Send resolved products event
             if response.products:
