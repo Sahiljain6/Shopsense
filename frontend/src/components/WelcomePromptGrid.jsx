@@ -15,6 +15,7 @@ export default function WelcomePromptGrid({ onSelectPrompt }) {
 
   return (
     <div className="chat-welcome-state fastshot-welcome-card">
+      <div className="welcome-intro-column">
       <motion.div
         className="welcome-brand-mark"
         initial={shouldReduceMotion ? false : { scale: 0.96, opacity: 0 }}
@@ -40,6 +41,8 @@ export default function WelcomePromptGrid({ onSelectPrompt }) {
       <p className="welcome-desc">
         ShopSense AI connects live pricing across Amazon, Flipkart & Croma, verified specifications, and instant EMI calculations for India.
       </p>
+
+      </div>
 
       <div className="welcome-chips fastshot-prompts-grid">
         {POPULAR_PROMPTS.map((item, index) => (

@@ -1,0 +1,545 @@
+/*
+ * ShopSense — Precision Commerce
+ * A final presentation layer over the existing domain CSS.
+ * No dependencies, DOM overlays, or continuous decorative effects.
+ */
+:root {
+  color-scheme: dark;
+  --ss-canvas: #07090e;
+  --ss-surface-1: #0b111b;
+  --ss-surface-2: #111724;
+  --ss-surface-3: #172131;
+  --ss-surface-card: #101722;
+  --ss-surface-card-hover: #141d29;
+  --ss-cyan-300: #67e8f9;
+  --ss-cyan-400: #22d3ee;
+  --ss-cyan-500: #06b6d4;
+  --ss-cyan-600: #0891b2;
+  --ss-cyan-glow: rgba(6, 182, 212, 0.16);
+  --ss-cyan-glow-strong: rgba(6, 182, 212, 0.24);
+  --ss-amber-400: #fbbf24;
+  --ss-amber-500: #f59e0b;
+  --ss-text-white: #ffffff;
+  --ss-text-primary: #f1f5f9;
+  --ss-text-secondary: #cbd5e1;
+  --ss-text-muted: #a6b3c5;
+  --ss-text-tertiary: #8290a3;
+  --ss-border-glass: rgba(203, 213, 225, 0.11);
+  --ss-border-glass-strong: rgba(203, 213, 225, 0.18);
+  --ss-border-focus: rgba(34, 211, 238, 0.72);
+  --ss-focus-ring: #67e8f9;
+  --ss-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.2);
+  --ss-shadow-md: 0 10px 26px rgba(0, 0, 0, 0.28);
+  --ss-shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.38);
+  --ss-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ss-ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ss-dur-fast: 150ms;
+  --ss-dur-normal: 200ms;
+  --ss-dur-enter: 250ms;
+}
+
+html { background: var(--ss-canvas); scroll-behavior: auto; }
+button { min-height: 44px; }
+body {
+  overflow-x: hidden;
+  background: var(--ss-canvas);
+  color: var(--ss-text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.app-shell { isolation: isolate; }
+.ambient-stage { background: var(--ss-canvas); }
+.app-shell .app-container {
+  width: 100%;
+  max-width: 1200px;
+  padding: 0 clamp(0.75rem, 2.4vw, 1.35rem) 2rem;
+  gap: clamp(0.85rem, 1.8vw, 1.25rem);
+}
+
+/* Header: clear brand, quiet status, obvious next action */
+.shopsense-navbar.fastshot-navbar,
+.shopsense-navbar {
+  width: calc(100% - 1rem);
+  max-width: 1168px;
+  margin: 0.75rem auto 0;
+  padding: 0.7rem clamp(0.8rem, 2vw, 1.35rem);
+  gap: 0.8rem;
+  border: 1px solid #202a38;
+  border-radius: 14px;
+  background: #0b111b;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.navbar-left, .navbar-right { min-width: 0; }
+.navbar-center-links { flex-wrap: wrap; justify-content: center; gap: 0.45rem; }
+.nav-feature-pill {
+  min-height: 30px;
+  padding: 0.28rem 0.62rem;
+  color: #b7c2d2;
+  background: #101722;
+  border-color: #263141;
+}
+.nav-feature-pill.radar-active {
+  color: #8ee8f6;
+  border-color: #245365;
+  background: #0d202b;
+}
+.nav-radar-dot { box-shadow: none; }
+.nav-cart-btn, .nav-cart-btn.fastshot-cart-pill,
+.nav-signin-btn, .nav-signup-btn, .nav-signup-btn.fastshot-cta-btn {
+  min-height: 44px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+.nav-cart-btn, .nav-cart-btn.fastshot-cart-pill {
+  background: #111a27;
+  border-color: #2a3646;
+}
+.nav-cart-btn .cart-badge {
+  min-width: 22px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.35rem;
+  background: #fbbf24;
+  color: #101722;
+  box-shadow: none;
+}
+.nav-signup-btn.fastshot-cta-btn, .nav-signup-btn {
+  background: #087f99;
+  border-color: #1594ad;
+}
+
+/* Conversation frame */
+.chatbot-widget-container {
+  position: relative;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0.25rem auto 0;
+  border: 1px solid #202b39;
+  border-radius: 18px;
+  background: #0b111b;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+}
+.chatbot-messages-stream {
+  min-height: min(470px, 52vh);
+  min-height: min(470px, 52dvh);
+  max-height: 68vh;
+  max-height: 68dvh;
+  padding: clamp(1rem, 2.5vw, 1.75rem);
+  gap: 1.3rem;
+  scrollbar-color: #344253 transparent;
+}
+.chat-message-row { gap: 0.75rem; }
+.avatar-circle { width: 36px; height: 36px; border-radius: 11px; }
+.ai-avatar { background: #102b38; border-color: #205064; }
+.message-content-box {
+  flex: 1;
+  min-width: 0;
+  max-width: calc(100% - 44px);
+  gap: 0.45rem;
+}
+.user-row .message-content-box { flex: 0 1 auto; max-width: min(86%, 680px); }
+.message-header-row { flex-wrap: wrap; row-gap: 0.25rem; }
+.message-sender-name { color: #aab7c9; }
+.message-bubble-body {
+  padding: 0.95rem clamp(0.9rem, 1.8vw, 1.2rem);
+  border-radius: 13px;
+  font-size: 0.94rem;
+  line-height: 1.68;
+}
+.user-bubble.fastshot-user-bubble, .user-bubble {
+  background: #102b38;
+  border-color: #24495a;
+  border-top-right-radius: 4px;
+}
+.assistant-bubble.fastshot-assistant-bubble, .assistant-bubble {
+  background: #101722;
+  border-color: #222d3c;
+  border-top-left-radius: 4px;
+}
+.message-copy-btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  color: #c0cad8;
+  background: #111a27;
+  border-color: #2a3646;
+}
+.message-model-tag {
+  color: #8ee8f6;
+  background: #0d202b;
+  border-color: #245365;
+  padding: 0.18rem 0.5rem;
+}
+
+/* Asymmetric welcome: purpose on the left, discovery choices on the right */
+.chat-welcome-state.fastshot-welcome-card, .chat-welcome-state {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  align-items: center;
+  gap: clamp(1.1rem, 3vw, 2.5rem);
+  padding: clamp(1.25rem, 3.3vw, 2.5rem) clamp(0.15rem, 1vw, 0.5rem);
+  text-align: left;
+}
+.welcome-intro-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+.welcome-brand-mark {
+  width: 48px;
+  height: 48px;
+  margin: 0 0 0.25rem;
+  justify-content: flex-start;
+}
+.welcome-title {
+  max-width: 17ch;
+  font-size: clamp(1.7rem, 3vw, 2.25rem);
+  line-height: 1.12;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+.welcome-title-accent { color: #67e8f9; }
+.welcome-desc {
+  max-width: 38ch;
+  color: #b1bdce;
+  font-size: 0.91rem;
+  line-height: 1.7;
+}
+.welcome-chips.fastshot-prompts-grid {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+.welcome-chip.fastshot-hero-chip {
+  min-width: 0;
+  min-height: 148px;
+  padding: 0.95rem;
+  gap: 0.75rem;
+  border-radius: 12px;
+  border-color: #263141;
+  background: #101722;
+  box-shadow: none;
+}
+.welcome-chip.fastshot-hero-chip:hover {
+  background: #141e2b;
+  border-color: #315267;
+  transform: translateY(-2px);
+}
+.hero-chip-icon {
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  color: #76d9e9;
+  background: #102532;
+  border: 1px solid #213f4e;
+  border-radius: 9px;
+}
+.hero-chip-category-pill {
+  padding: 0.18rem 0.48rem;
+  color: #a7dce8;
+  background: #11232d;
+  border-color: #254453;
+  font-size: 0.62rem;
+}
+.hero-chip-title { font-size: 0.93rem; letter-spacing: -0.015em; }
+.hero-chip-sub { color: #a6b3c5; font-size: 0.76rem; line-height: 1.48; }
+.hero-chip-hover-arrow { opacity: 1; transform: none; color: #81e2f0; margin-top: auto; }
+.welcome-chip.fastshot-hero-chip:hover .hero-chip-hover-arrow { transform: translateX(2px); }
+
+/* Product cards: predictable media space and clean price/action hierarchy */
+.message-product-cards-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+.chat-product-card.fastshot-product-card, .chat-product-card {
+  min-width: 0;
+  padding: 0.85rem;
+  gap: 0.8rem;
+  background: #101722;
+  border: 1px solid #263141;
+  border-radius: 14px;
+  box-shadow: none;
+}
+.chat-product-card.fastshot-product-card:hover {
+  background: #131d29;
+  border-color: #315267;
+  transform: translateY(-2px);
+}
+.product-card-top-row {
+  height: 152px;
+  flex: 0 0 152px;
+  border-radius: 10px;
+  border-color: #202b39;
+  background: #080d14;
+}
+.product-card-img { padding: 0.8rem; object-fit: contain; }
+.product-deal-badge { background: #171a1d; border-color: #514222; color: #f6d67a; }
+.product-card-price-tag {
+  background: #0e202a;
+  border-color: #245064;
+  color: #8ee8f6;
+  font-size: 0.86rem;
+}
+.product-card-brand-tag { color: #7fe0ef; font-size: 0.67rem; }
+.product-card-title { font-size: 1rem; line-height: 1.4; letter-spacing: -0.015em; }
+.product-card-feature-line { color: #adb9ca; font-size: 0.81rem; line-height: 1.55; }
+.stock-pill { padding: 0.18rem 0.48rem; border-color: #205343; background: #102a23; }
+.buy-link-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.45rem 0.62rem;
+  border-radius: 8px;
+  background: #0c131d;
+  font-size: 0.72rem;
+}
+.card-btn-secondary.fastshot-btn-secondary, .card-btn-secondary,
+.card-btn-primary.fastshot-btn-primary, .card-btn-primary {
+  min-height: 44px;
+  border-radius: 9px;
+  box-shadow: none !important;
+}
+.card-btn-secondary.fastshot-btn-secondary, .card-btn-secondary {
+  background: #151d29;
+  border-color: #303b4a;
+  color: #d4dce7;
+}
+.card-btn-primary.fastshot-btn-primary, .card-btn-primary {
+  background: #087f99 !important;
+  border-color: #168eaa;
+}
+.card-btn-primary.added, .card-btn-primary.fastshot-btn-primary.added {
+  background: #12684f !important;
+  border-color: #2a8a6d;
+}
+
+/* Details, forms and cart */
+.modal-price-card, .checkout-summary-card {
+  background: #0b111b;
+  border-color: #263141;
+  border-radius: 12px;
+  box-shadow: none;
+}
+.modal-section-label, .benchmark-title { color: #aab7c9; }
+.modal-description { color: #b1bdce; line-height: 1.65; }
+.modal-spec-row { background: #101722; border-color: #263141; }
+.modal-spec-key { color: #b1bdce; }
+.modal-spec-val { color: #edf2f8; }
+.modal-offers-box .offer-pill { background: #0e202a; border-color: #234553; }
+.modal-offers-box .offer-code { background: #0b111b; }
+
+.chatbot-composer.fastshot-composer-card {
+  padding: 0.85rem clamp(0.75rem, 2vw, 1.1rem);
+  background: #0b111b;
+  border-top-color: #202b39;
+}
+.chatbot-composer.fastshot-composer-card:focus-within { border-top-color: #315267; }
+.composer-main-row { gap: 0.55rem; }
+.composer-text-input { min-height: 44px; font-size: 0.96rem; color: #f1f5f9; }
+.composer-text-input::placeholder { color: #a0aec0; opacity: 1; }
+.composer-model-pill { min-height: 40px; border-color: #2a3646; background: #111a27; }
+.model-dot { box-shadow: none; }
+.model-dropdown-menu {
+  background: #101722;
+  border-color: #303b4a;
+  border-radius: 12px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.42);
+}
+.model-option-item { min-height: 44px; border-radius: 8px; }
+.composer-attach-btn, .composer-fastshot-send { width: 44px; height: 44px; flex: 0 0 44px; }
+.composer-fastshot-send { background: #087f99; border-color: #168eaa; box-shadow: none; }
+.chat-attachment-bar {
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  gap: 0.75rem;
+  background: #0e202a;
+  border-top-color: #234553;
+  color: #d9f3f7;
+}
+.cart-drawer { background: #0b111b; border-left-color: #263141; box-shadow: -12px 0 32px rgba(0, 0, 0, 0.32); }
+.cart-drawer-header { padding: 1rem 1.2rem; border-bottom-color: #263141; }
+.cart-drawer-header button, .cart-item-controls button { min-width: 44px; min-height: 44px; }
+.cart-item-row { background: #101722; border-color: #263141; }
+.cart-item-row:hover { border-color: #315267; }
+.cart-total-section { background: #0b111b; border-top-color: #263141; }
+.cart-checkout-btn, .cart-clear-btn, .auth-modal-submit-btn {
+  min-height: 46px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+.cart-checkout-btn, .auth-modal-submit-btn { background: #087f99; border-color: #168eaa; }
+.auth-modal-backdrop { background: rgba(3, 7, 13, 0.86); animation: none; }
+.auth-modal-card {
+  background: #101722;
+  border-color: #2a3544;
+  border-radius: 16px;
+  box-shadow: 0 20px 46px rgba(0, 0, 0, 0.42);
+}
+.auth-modal-close-btn { width: 44px; height: 44px; background: #151d29; border-color: #303b4a; }
+.auth-modal-tabs { background: #0b111b; border-color: #263141; }
+.auth-tab-btn { min-height: 40px; border-radius: 8px; }
+.auth-tab-btn.active { background: #1b2a37; box-shadow: none; }
+.auth-modal-form .clean-input { background: #0b111b; border-color: #303b4a; }
+.auth-modal-form .clean-input::placeholder { color: #8f9db0; }
+.auth-modal-switch-prompt { flex-wrap: wrap; color: #a6b3c5; }
+.auth-modal-switch-btn { min-height: 36px; color: #8ee8f6; }
+.auth-modal-divider span { color: #a0aec0; }
+.auth-modal-error { color: #fecaca; background: #28181d; border-color: #62313a; }
+
+.rich-markdown-container { color: #e3eaf3; line-height: 1.68; }
+.markdown-paragraph { color: #e3eaf3; }
+.markdown-italic { color: #ccd6e4; }
+.markdown-code { color: #8ee8f6; background: #0b111b; border-color: #2a4653; }
+.markdown-table-wrapper { background: #0b111b; border-color: #2a3544; box-shadow: none; }
+.markdown-table th { background: #151e2b; border-bottom-color: #344255; }
+.markdown-table td { border-bottom-color: #263141; }
+.markdown-table tr:nth-child(even) { background: #0d141e; }
+
+/* Existing class hook retained; visual styles live in the stylesheet now. */
+.jump-to-latest-btn {
+  position: absolute;
+  right: 1rem;
+  bottom: 5rem;
+  z-index: 30;
+  min-height: 44px;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid #315267;
+  border-radius: 10px;
+  background: #111a27;
+  color: #8ee8f6;
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+/* A single shared IntersectionObserver reveals product grids as they enter view. */
+.ss-reveal-pending { opacity: 0; transform: translateY(8px); }
+.ss-reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 180ms ease-out, transform 180ms var(--ss-ease-soft);
+}
+
+@keyframes ss-product-card-reveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ss-reveal-visible > .chat-product-card {
+  animation: ss-product-card-reveal 180ms var(--ss-ease-soft) both;
+}
+.ss-reveal-visible > .chat-product-card:nth-child(2) { animation-delay: 30ms; }
+.ss-reveal-visible > .chat-product-card:nth-child(3) { animation-delay: 60ms; }
+.ss-reveal-visible > .chat-product-card:nth-child(4) { animation-delay: 90ms; }
+
+/* Constrain active-state animation to opacity and transform, never layout. */
+.nav-cart-btn, .nav-signin-btn, .nav-signup-btn, .message-copy-btn,
+.welcome-chip, .chat-product-card, .card-btn-primary, .card-btn-secondary,
+.buy-link-chip, .composer-attach-btn, .composer-fastshot-send, .cart-item-row,
+.cart-checkout-btn, .cart-clear-btn, .auth-modal-close-btn, .auth-modal-submit-btn,
+.modal-close-btn, .modal-store-btn, .modal-add-cart-btn, .cart-drawer,
+.auth-modal-card, .fastshot-chip, .model-option-item {
+  transition-property: transform, opacity !important;
+  transition-duration: var(--ss-dur-fast) !important;
+  transition-timing-function: var(--ss-ease-soft) !important;
+}
+button:active:not(:disabled), a:active { transform: scale(0.985); }
+
+@media (max-width: 900px) {
+  .navbar-center-links { gap: 0.35rem; }
+  .nav-feature-pill { font-size: 0.68rem; }
+  .chatbot-widget-container { max-width: 100%; }
+}
+@media (max-width: 760px) {
+  .chat-welcome-state.fastshot-welcome-card, .chat-welcome-state {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    padding: 1.25rem 0.1rem;
+  }
+  .welcome-intro-column { max-width: 42rem; }
+  .welcome-title { max-width: 20ch; font-size: clamp(1.7rem, 5.5vw, 2.1rem); }
+  .welcome-desc { max-width: 48ch; }
+  .welcome-chips.fastshot-prompts-grid { margin: 0; }
+  .welcome-chip.fastshot-hero-chip { min-height: 144px; }
+  .chatbot-messages-stream {
+    min-height: min(460px, 56vh);
+    min-height: min(460px, 56dvh);
+    max-height: 64vh;
+    max-height: 64dvh;
+    padding: 1rem;
+  }
+  .message-content-box { max-width: calc(100% - 40px); }
+  .user-row .message-content-box { max-width: 88%; }
+}
+@media (max-width: 560px) {
+  .shopsense-navbar.fastshot-navbar, .shopsense-navbar { padding: 0.65rem 0.75rem; border-radius: 12px; }
+  .navbar-center-links { display: none; }
+  .navbar-right { gap: 0.4rem; }
+  .nav-signin-btn, .nav-signup-btn { min-height: 44px; padding-inline: 0.7rem; font-size: 0.78rem; }
+  .nav-cart-btn .cart-label { display: none; }
+  .chatbot-widget-container { border-radius: 14px; }
+  .chatbot-messages-stream {
+    min-height: min(430px, 55vh);
+    min-height: min(430px, 55dvh);
+    max-height: 62vh;
+    max-height: 62dvh;
+    padding: 0.85rem 0.7rem;
+    gap: 1rem;
+  }
+  .avatar-circle { width: 32px; height: 32px; }
+  .message-content-box { max-width: calc(100% - 38px); }
+  .message-bubble-body { padding: 0.8rem 0.85rem; font-size: 0.91rem; }
+  .message-product-cards-grid { grid-template-columns: minmax(0, 1fr); }
+  .product-card-top-row { height: 170px; flex-basis: 170px; }
+  .card-btn-secondary.fastshot-btn-secondary, .card-btn-secondary,
+  .card-btn-primary.fastshot-btn-primary, .card-btn-primary {
+    padding-inline: 0.45rem;
+    font-size: 0.76rem;
+  }
+  .buy-link-chip { flex: 1 1 calc(50% - 0.35rem); }
+  .chatbot-composer.fastshot-composer-card { padding: 0.7rem; }
+  .composer-main-row { align-items: stretch; flex-wrap: wrap; gap: 0.45rem; }
+  .composer-text-input { flex: 1 1 100%; width: 100%; min-height: 42px; padding: 0.35rem 0.15rem; }
+  .composer-action-cluster { width: 100%; justify-content: flex-end; gap: 0.35rem; }
+  .composer-model-wrapper { margin-right: auto; min-width: 0; }
+  .model-dropdown-menu { right: auto; left: 0; width: min(270px, calc(100vw - 2.5rem)); }
+  .cart-item-row { align-items: flex-start; flex-direction: column; gap: 0.75rem; }
+  .cart-item-controls { width: 100%; justify-content: flex-end; margin-left: 0; }
+  .modal-grid-layout { grid-template-columns: minmax(0, 1fr); }
+  .modal-footer-cta { padding-inline: 1rem; }
+  .auth-modal-card { padding: 1.5rem 1.1rem; }
+  .auth-modal-close-btn { top: 0.6rem; right: 0.6rem; }
+  .auth-modal-header { padding-top: 1rem; }
+  .auth-modal-switch-prompt { text-align: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ss-reveal-pending, .ss-reveal-visible {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  button:active:not(:disabled), a:active,
+  .welcome-chip.fastshot-hero-chip:hover,
+  .chat-product-card.fastshot-product-card:hover {
+    transform: none;
+  }
+}

@@ -376,10 +376,10 @@ export default function AuthModal({
                 {isRegister && (
                   <motion.div
                     className="input-group"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.18 }}
+                    initial={shouldReduceMotion ? false : { opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                    transition={{ duration: shouldReduceMotion ? 0 : 0.16 }}
                   >
                     <label className="input-label" htmlFor={fullNameId}>Full Name</label>
                     <input
