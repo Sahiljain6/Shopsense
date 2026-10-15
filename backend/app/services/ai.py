@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import time
+from functools import wraps
 from sqlalchemy.orm import Session
 from ollama import Client
 from openai import OpenAI
@@ -357,8 +358,107 @@ def get_active_gemini_models(api_key: str) -> list[str]:
     return fallback
 
 
+_MODEL_REFRESH_PENDING: set[tuple[str, str]] = set()
+_GROQ_DEFAULT_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+
+
+def _refresh_active_models_in_background(provider: str, api_key: str) -> None:
+    """Refresh provider model availability without blocking a chat request."""
+    pending_key = (provider, api_key)
+    try:
+        if provider == "groq":
+            get_active_groq_models(api_key)
+        elif provider == "gemini":
+            get_active_gemini_models(api_key)
+    except Exception as err:
+        logging.getLogger("shopsense.ai").debug(
+            "Provider model cache refresh failed provider=%s error_type=%s",
+            provider,
+            type(err).__name__,
+        )
+    finally:
+        with _MODEL_CACHE_LOCK:
+            _MODEL_REFRESH_PENDING.discard(pending_key)
+
+
+def get_active_models_nonblocking(provider: str, api_key: str) -> list[str]:
+    """Return cached/default models immediately and refresh stale discovery in a daemon thread.
+
+    Chat requests must not wait on a separate model-list API request. Cold caches
+    use the same safe defaults as the existing discovery fallback; successful
+    discovery is cached for subsequent requests.
+    """
+    clean_key = api_key.strip().strip("'").strip('"')
+    if provider == "gemini":
+        fallback = list(ACTIVE_GEMINI_MODELS)
+        cache = _GEMINI_MODELS_CACHE
+    elif provider == "groq":
+        fallback = list(_GROQ_DEFAULT_MODELS)
+        cache = _GROQ_MODELS_CACHE
+    else:
+        raise ValueError(f"Unsupported model-discovery provider: {provider}")
+
+    if not clean_key:
+        return fallback
+
+    now = time.time()
+    pending_key = (provider, clean_key)
+    should_refresh = False
+    with _MODEL_CACHE_LOCK:
+        cached = cache.get(clean_key)
+        if cached and cached[1]:
+            models = list(cached[1])
+            stale = now - cached[0] >= _MODEL_CACHE_TTL
+        else:
+            models = fallback
+            stale = True
+
+        if stale and pending_key not in _MODEL_REFRESH_PENDING:
+            _MODEL_REFRESH_PENDING.add(pending_key)
+            should_refresh = True
+
+    if should_refresh:
+        try:
+            threading.Thread(
+                target=_refresh_active_models_in_background,
+                args=(provider, clean_key),
+                name=f"shopsense-model-refresh-{provider}",
+                daemon=True,
+            ).start()
+        except RuntimeError as err:
+            with _MODEL_CACHE_LOCK:
+                _MODEL_REFRESH_PENDING.discard(pending_key)
+            logging.getLogger("shopsense.ai").debug(
+                "Unable to start provider model refresh provider=%s error_type=%s",
+                provider,
+                type(err).__name__,
+            )
+
+    return models
+
+
 
 logger = logging.getLogger("shopsense.ai")
+
+
+def _measure_ai_stage(stage: str):
+    """Log coarse provider-stage timings without prompts, history, or credentials."""
+    def decorate(function):
+        @wraps(function)
+        def wrapped(self, *args, **kwargs):
+            started = time.perf_counter()
+            try:
+                return function(self, *args, **kwargs)
+            finally:
+                logger.info(
+                    "ai_latency stage=%s duration_ms=%.1f provider=%s model=%s",
+                    stage,
+                    (time.perf_counter() - started) * 1000,
+                    getattr(self, "provider", None) or "none",
+                    getattr(self, "model", None) or "none",
+                )
+        return wrapped
+    return decorate
 
 # ---------- Tool-Calling Definitions ----------
 
@@ -524,7 +624,7 @@ class AIOrchestrator:
         elif gemini_key and gemini_key.strip():
             self.provider = "gemini"
             self.gemini_api_key = gemini_key.strip().strip("'").strip('"')
-            self.active_gemini_models = get_active_gemini_models(self.gemini_api_key)
+            self.active_gemini_models = get_active_models_nonblocking("gemini", self.gemini_api_key)
             self.model = (
                 settings.gemini_model
                 if (settings.gemini_model and not any(r in settings.gemini_model.lower() for r in ["tts", "embedding", "2.5-flash"]))
@@ -538,7 +638,7 @@ class AIOrchestrator:
                 api_key=clean_key
             )
             self.provider = "groq"
-            self.active_models = get_active_groq_models(clean_key)
+            self.active_models = get_active_models_nonblocking("groq", clean_key)
             self.model = self.active_models[0] if self.active_models else "llama-3.3-70b-versatile"
 
         elif self.hf_token:
@@ -556,6 +656,7 @@ class AIOrchestrator:
             self.provider = "ollama"
             self.model = settings.ollama_model
 
+    @_measure_ai_stage("provider_text_call")
     def _chat(
         self,
         system: str,
@@ -869,6 +970,7 @@ class AIOrchestrator:
 
     # ---------- Tool-Calling Chat ----------
 
+    @_measure_ai_stage("provider_tool_chain")
     def _chat_with_tools(
         self,
         system: str,
@@ -1488,6 +1590,7 @@ class AIOrchestrator:
         # 7. PRIMARY PATH: Tool-calling — let the LLM decide what to do
         return self._tool_calling_answer(message, history, cart, mode)
 
+    @_measure_ai_stage("answer_pipeline")
     def answer_via_agents(
         self,
         message: str,
