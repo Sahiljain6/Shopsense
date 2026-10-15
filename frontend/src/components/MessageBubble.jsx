@@ -1,15 +1,23 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import ProductCard from "./ProductCard";
 import MarkdownRenderer from "./MarkdownRenderer";
 import logoMarkUrl from "../assets/logo-mark.png";
 import UiIcon from "./UiIcon";
+import { observeScrollReveal } from "../utils/scrollReveal.js";
 
 function MessageBubble({ message }) {
   const [copied, setCopied] = useState(false);
   const shouldReduceMotion = useReducedMotion();
+  const productGridRef = useRef(null);
   const isUser = message.role === "user";
   const products = Array.isArray(message.products) ? message.products : [];
+  const hasProducts = products.length > 0;
+
+  useEffect(() => {
+    if (!hasProducts || !productGridRef.current) return undefined;
+    return observeScrollReveal(productGridRef.current);
+  }, [hasProducts]);
 
   const handleCopy = () => {
     if (message.text) {
@@ -83,7 +91,7 @@ function MessageBubble({ message }) {
         </div>
 
         {products.length > 0 && (
-          <div className="message-product-cards-grid">
+          <div ref={productGridRef} className="message-product-cards-grid">
             {products.map((product) => (
               <ProductCard
                 key={product.id}
