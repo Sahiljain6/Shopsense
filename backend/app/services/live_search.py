@@ -1,6 +1,24 @@
+"""Live shopping search for ShopSense.
+
+SerpApi's Google Shopping engine is preferred when SERPAPI_API_KEY is configured.
+DuckDuckGo remains a no-key fallback. Prices are search snapshots, not checkout guarantees.
+"""
+import ipaddress
+import logging
+import os
 import re
+import threading
+import time
 import warnings
+from datetime import datetime, timezone
+from urllib.parse import urlparse
+
 import httpx
+
+from app.core.config import get_settings
+from app.services.trust_engine import evaluate_store_trust, filter_and_rank_trustworthy_deals
+
+logger = logging.getLogger("shopsense.live_search")
 
 try:
     with warnings.catch_warnings():
@@ -14,112 +32,295 @@ except ImportError:
     DDGS = None
     HAS_DDG = False
 
+SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
+CACHE_TTL_SECONDS = 15 * 60
+_CACHE_LOCK = threading.Lock()
+_DEAL_CACHE: dict[str, tuple[float, list[dict[str, object]]]] = {}
 
-from app.services.trust_engine import evaluate_store_trust, filter_and_rank_trustworthy_deals
-
-# E-commerce store domains whitelist
 ALLOWED_STORES = [
     "amazon.in", "amazon.com", "flipkart.com", "croma.com",
     "reliancedigital.in", "tatacliq.com", "myntra.com", "jiomart.com",
-    "vijaysales.com", "shopclues.com", "snapdeal.com", "meesho.com", "oneplus.in", "samsung.com"
+    "vijaysales.com", "shopclues.com", "snapdeal.com", "meesho.com",
+    "oneplus.in", "samsung.com",
 ]
-
-# Blacklisted non-shopping sites
 BLOCKED_DOMAINS = [
     "youtube.com", "netflix.com", "diffchecker.com", "text-compare.com",
-    "draftable.com", "wikipedia.org", "facebook.com", "twitter.com", "reddit.com", "instagram.com"
+    "draftable.com", "wikipedia.org", "facebook.com", "twitter.com",
+    "reddit.com", "instagram.com",
 ]
-
-
 LIVE_SEARCH_TRIGGER_KEYWORDS = [
     "price", "prices", "deal", "deals", "discount", "discounts", "offer", "offers",
     "coupon", "coupons", "sale", "amazon", "flipkart", "croma", "buy online",
     "how much", "rate", "cost", "available", "availability", "latest price",
-    "today's", "todays", "in stock", "live deal"
+    "latest", "current price", "current prices", "today's", "todays", "in stock",
+    "live deal", "live price", "right now",
 ]
 
 
 def should_use_live_search(query: str) -> bool:
-    """Determine whether a query genuinely requires external live web search.
-    Gated to pricing, deals, coupons, availability, and specific retailer requests.
-    Excludes greetings, feature questions, guides, and generic catalog lookups.
-    """
+    """Return True only for shopping queries that benefit from current retailer data."""
     if not query or len(query.strip()) < 3:
         return False
     lowered = query.lower()
-
-    # Skip conversational small-talk, guides, and generic technical queries
     conversational_skip = [
         "hi", "hello", "hey", "what is", "explain", "how do", "which type of",
         "difference between", "who are you", "what can you do", "help me choose",
-        "why should", "pros and cons", "guide"
+        "why should", "pros and cons", "guide",
     ]
-    if any(s in lowered for s in conversational_skip) and not any(k in lowered for k in ["price", "deal", "offer", "amazon", "flipkart"]):
+    if any(s in lowered for s in conversational_skip) and not any(
+        k in lowered for k in ["price", "deal", "offer", "amazon", "flipkart", "latest", "current"]
+    ):
         return False
+    return any(keyword in lowered for keyword in LIVE_SEARCH_TRIGGER_KEYWORDS)
 
-    return any(kw in lowered for kw in LIVE_SEARCH_TRIGGER_KEYWORDS)
+
+def _safe_external_url(value: object) -> str | None:
+    """Allow public HTTP(S) links only; never fetch local URLs."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    try:
+        parsed = urlparse(raw)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return None
+        if parsed.username or parsed.password:
+            return None
+        hostname = parsed.hostname.lower().rstrip(".")
+        if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".local"):
+            return None
+        try:
+            address = ipaddress.ip_address(hostname)
+            if not address.is_global:
+                return None
+        except ValueError:
+            pass
+        return raw[:2048]
+    except (ValueError, TypeError):
+        return None
 
 
-def search_live_deals(query: str, max_results: int = 5, force: bool = False) -> list[dict[str, str | int | bool | None]]:
-    """Search live web specifically for Indian e-commerce products (Amazon.in, Flipkart, Croma)
-    and prices in INR (₹). Strictly excludes non-shopping websites and queries that don't need live search.
-    """
-    clean_query = re.sub(r"^(search me|give me|find me|fetch link:?|show me|recommend|suggest)\s*", "", query.strip(), flags=re.IGNORECASE)
+def _as_number(value: object) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (float, int)):
+        return float(value) if value >= 0 else None
+    match = re.search(r"(\d[\d,]*(?:\.\d+)?)", str(value))
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
 
-    # Don't search live web for non-product / conversational queries
-    if len(clean_query) < 3 or any(w in clean_query.lower() for w in ["how are you", "who are you", "what can you do", "hi", "hello", "code"]):
+
+def _retrieved_at() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _normalise_serpapi_result(item: dict[str, object], retrieved_at: str) -> dict[str, object] | None:
+    title = str(item.get("title") or "").strip()[:180]
+    if not title:
+        return None
+    url = _safe_external_url(item.get("link")) or _safe_external_url(item.get("product_link"))
+    if not url:
+        return None
+
+    price = _as_number(item.get("extracted_price"))
+    if price is None:
+        price = _as_number(item.get("price"))
+    old_price = _as_number(item.get("extracted_old_price"))
+    if old_price is None:
+        old_price = _as_number(item.get("old_price"))
+    source = str(item.get("source") or "Google Shopping").strip()[:100]
+    image_url = _safe_external_url(item.get("thumbnail")) or _safe_external_url(item.get("serpapi_thumbnail"))
+    rating = _as_number(item.get("rating"))
+    reviews = _as_number(item.get("reviews"))
+    store_trust = evaluate_store_trust(source or url)
+    discount = round((old_price - price) / old_price * 100, 1) if old_price and price is not None and old_price > price else None
+
+    return {
+        "title": title,
+        "price": price,
+        "price_str": str(item.get("price") or (f"₹{price:,.2f}" if price is not None else "")),
+        "old_price": old_price,
+        "currency": "INR",
+        "source": source,
+        "store": source,
+        "url": url,
+        "image_url": image_url,
+        "rating": rating,
+        "reviews": int(reviews) if reviews is not None else None,
+        "discount_percentage": discount,
+        "snippet": str(item.get("snippet") or item.get("description") or "")[:300],
+        "retrieved_at": retrieved_at,
+        "provider": "SerpApi Google Shopping",
+        "is_live": True,
+        "trust_score": int(store_trust["trust_score"]),
+        "badge": str(store_trust["badge"]),
+        "is_verified": bool(store_trust["is_verified"]),
+        "warning": store_trust.get("warning"),
+    }
+
+
+def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, object]]]:
+    """Return request status and results; never log a request URL containing the key."""
+    settings = get_settings()
+    api_key = (getattr(settings, "serpapi_api_key", "") or os.getenv("SERPAPI_API_KEY") or "").strip().strip("'").strip('"')
+    if not api_key:
+        return False, []
+
+    location = (
+        getattr(settings, "serpapi_location", "")
+        or os.getenv("SERPAPI_LOCATION")
+        or "Mumbai, Maharashtra, India"
+    ).strip()
+    params = {
+        "engine": "google_shopping",
+        "q": query,
+        "api_key": api_key,
+        "gl": "in",
+        "hl": "en",
+        "location": location,
+        "output": "json",
+        "no_cache": "false",
+    }
+    try:
+        response = httpx.get(SERPAPI_ENDPOINT, params=params, timeout=9.0)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or payload.get("error"):
+            logger.warning("SerpApi Google Shopping returned an API error; using fallback search.")
+            return False, []
+        fetched_at = _retrieved_at()
+        normalized: list[dict[str, object]] = []
+        seen: set[str] = set()
+        for item in payload.get("shopping_results") or []:
+            if not isinstance(item, dict):
+                continue
+            result = _normalise_serpapi_result(item, fetched_at)
+            if not result:
+                continue
+            dedupe_key = str(result.get("url") or result.get("title")).lower()
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            normalized.append(result)
+            if len(normalized) >= max(1, min(max_results, 20)):
+                break
+        return True, normalized
+    except (httpx.HTTPError, ValueError, TypeError) as error:
+        logger.warning("SerpApi Google Shopping request failed (%s); trying fallback search.", type(error).__name__)
+        return False, []
+
+
+def _search_ddg(query: str, max_results: int) -> list[dict[str, object]]:
+    """No-key fallback search. This source may not provide product images."""
+    if not HAS_DDG or DDGS is None:
         return []
+    search_term = f"{query} price buy online india amazon flipkart croma"
+    raw_deals: list[dict[str, object]] = []
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            with DDGS() as ddgs:
+                raw_results = list(ddgs.text(search_term, max_results=max_results * 4))
+        fetched_at = _retrieved_at()
+        for item in raw_results:
+            url = _safe_external_url(item.get("href") or item.get("link"))
+            title = str(item.get("title") or "").strip()
+            snippet = str(item.get("body") or item.get("snippet") or "")
+            if not url or not title:
+                continue
+            lowered_url = url.lower()
+            if any(domain in lowered_url for domain in BLOCKED_DOMAINS):
+                continue
+            if not any(domain in lowered_url for domain in ALLOWED_STORES):
+                continue
+            match = re.search(r"(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d+)?)", f"{title} {snippet}", re.IGNORECASE)
+            price = _as_number(match.group(1)) if match else None
+            store = (
+                "Amazon India" if "amazon.in" in lowered_url else
+                "Flipkart" if "flipkart.com" in lowered_url else
+                "Croma" if "croma.com" in lowered_url else
+                "Reliance Digital" if "reliancedigital.in" in lowered_url else
+                str(evaluate_store_trust(url)["store_name"])
+            )
+            trust = evaluate_store_trust(store)
+            raw_deals.append({
+                "title": title[:180],
+                "price": price,
+                "price_str": match.group(0) if match else "",
+                "old_price": None,
+                "currency": "INR",
+                "source": store,
+                "store": store,
+                "url": url,
+                "image_url": None,
+                "rating": None,
+                "reviews": None,
+                "discount_percentage": None,
+                "snippet": snippet[:300],
+                "retrieved_at": fetched_at,
+                "provider": "DuckDuckGo fallback",
+                "is_live": True,
+                "trust_score": int(trust["trust_score"]),
+                "badge": str(trust["badge"]),
+                "is_verified": bool(trust["is_verified"]),
+                "warning": trust.get("warning"),
+            })
+    except Exception as error:
+        logger.warning("Fallback product search failed (%s).", type(error).__name__)
+    return filter_and_rank_trustworthy_deals(raw_deals, min_trust_score=30)[:max_results]
 
+
+def search_live_deals(
+    query: str,
+    max_results: int = 5,
+    force: bool = False,
+) -> list[dict[str, object]]:
+    """Search shopping results with a cache-first SerpApi path and a DuckDuckGo fallback.
+
+    The local 15-minute cache protects the free API quota. The force flag bypasses
+    the intent gate, not the cache. Retailer checkout prices can change.
+    """
+    clean_query = re.sub(
+        r"^(search me|give me|find me|fetch link:?|show me|recommend|suggest)\s*",
+        "",
+        (query or "").strip(),
+        flags=re.IGNORECASE,
+    )
+    clean_query = re.sub(r"[\r\n\t]+", " ", clean_query).strip()[:140]
+    if len(clean_query) < 3:
+        return []
+    if clean_query.lower() in {"hi", "hello", "hey", "how are you", "who are you", "what can you do"}:
+        return []
+    if re.search(r"\b(code|coding|programming|debugging)\b", clean_query, re.IGNORECASE):
+        return []
     if not force and not should_use_live_search(clean_query):
         return []
 
-    search_term = f"{clean_query} price buy online india amazon flipkart croma"
-    raw_deals: list[dict[str, str | None]] = []
+    settings = get_settings()
+    api_key = (getattr(settings, "serpapi_api_key", "") or os.getenv("SERPAPI_API_KEY") or "").strip()
+    location = getattr(settings, "serpapi_location", "") or os.getenv("SERPAPI_LOCATION") or "Mumbai, Maharashtra, India"
+    provider_key = "serpapi" if api_key else "ddg"
+    cache_key = "|".join((provider_key, location.lower(), re.sub(r"\s+", " ", clean_query.lower())))
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        cached = _DEAL_CACHE.get(cache_key)
+        if cached and now - cached[0] < CACHE_TTL_SECONDS:
+            return [dict(item) for item in cached[1][:max(1, max_results)]]
+        if cached:
+            _DEAL_CACHE.pop(cache_key, None)
 
-    if HAS_DDG and DDGS is not None:
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=RuntimeWarning)
-                with DDGS() as ddgs:
-                    raw_results = list(ddgs.text(search_term, max_results=max_results * 4))
-                for item in raw_results:
-                    link = (item.get("href") or item.get("link") or "").lower()
-                    title = item.get("title") or ""
-                    snippet = item.get("body") or item.get("snippet") or ""
+    if api_key:
+        succeeded, deals = _search_serpapi(clean_query, max_results=max(1, min(max_results, 20)))
+        if not succeeded:
+            deals = _search_ddg(clean_query, max_results)
+    else:
+        succeeded = False
+        deals = _search_ddg(clean_query, max_results)
 
-                    if not link or not title:
-                        continue
-
-                    # Reject non-shopping sites
-                    if any(blocked in link for blocked in BLOCKED_DOMAINS):
-                        continue
-
-                    # Strictly require allowed e-commerce domains
-                    if not any(allowed in link for allowed in ALLOWED_STORES):
-                        continue
-
-                    # Determine store name
-                    store_name = (
-                        "Amazon India" if "amazon.in" in link
-                        else "Flipkart" if "flipkart.com" in link
-                        else "Croma" if "croma.com" in link
-                        else "Reliance Digital" if "reliancedigital.in" in link
-                        else evaluate_store_trust(link)["store_name"]
-                    )
-
-                    price_match = re.search(r"(?:₹|Rs\.?|INR)\s*([\d,]+)", f"{title} {snippet}")
-                    price_str = price_match.group(0) if price_match else None
-
-                    raw_deals.append({
-                        "title": title[:120],
-                        "url": link,
-                        "snippet": snippet,
-                        "price_str": price_str,
-                        "store": store_name
-                    })
-        except Exception as error:
-            print(f"Live DDG web search notice: {type(error).__name__}: {error}")
-
-    # Apply trust ranking & filtering
-    trustworthy_deals = filter_and_rank_trustworthy_deals(raw_deals, min_trust_score=30)
-    return trustworthy_deals[:max_results]
+    if (api_key and succeeded) or not api_key:
+        with _CACHE_LOCK:
+            _DEAL_CACHE[cache_key] = (time.monotonic(), [dict(item) for item in deals])
+    return [dict(item) for item in deals[:max(1, max_results)]]
