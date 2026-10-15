@@ -80,19 +80,61 @@ def test_gemini_provider_preserves_conversation_history(monkeypatch, db_session)
     assert captured_payloads[0]["contents"] == contents
 
 
-def test_offer_followup_resolves_last_product(db_session) -> None:
-    """Regression test: asking 'tell me some offer going on this' resolves against the last discussed phone."""
+def test_explicit_live_deal_query_does_not_reuse_stale_product_or_invent_offers(monkeypatch, db_session):
+    """A new named product must override older chat history, even when offers are requested."""
     from app.main import auto_seed_catalog
+
     auto_seed_catalog(db_session)
+    history = [
+        {
+            "role": "assistant",
+            "content": (
+                "Ongoing Deals & Bank Offers for Redragon K552 Kumara RGB Mechanical Gaming Keyboard"
+            ),
+        }
+    ]
 
-    history = [{"role": "assistant", "content": "I recommend the Motorola Moto G34 5G (₹11,999)."}]
-
+    # Simulate unavailable live-search/LLM providers without making external requests.
+    monkeypatch.setattr("app.services.ai.search_live_deals", lambda *args, **kwargs: [])
     orchestrator = AIOrchestrator(db_session)
+    monkeypatch.setattr(orchestrator, "_chat_with_tools", lambda *args, **kwargs: None)
+    monkeypatch.setattr(orchestrator, "_chat", lambda *args, **kwargs: None)
+
+    response = orchestrator.answer(
+        "Find the latest prices and best deals for Sony WH-1000XM5 headphones in India. "
+        "Show current prices, original prices, discounts, retailer names, ratings, and direct purchase links.",
+        history=history,
+    )
+
+    assert response is not None
+    assert "couldn't retrieve current retailer listings" in response.answer
+    assert "Redragon" not in response.answer
+    assert "SHOPSENSE1000" not in response.answer
+    assert "Bank Discount" not in response.answer
+    assert not response.product_ids
+
+
+def test_implicit_offer_followup_does_not_make_up_fixed_promotions(monkeypatch, db_session):
+    """When live offers cannot be fetched, a contextual follow-up must not invent promotions."""
+    from app.main import auto_seed_catalog
+
+    auto_seed_catalog(db_session)
+    history = [
+        {"role": "user", "content": "Recommend a phone under ₹15,000"},
+        {"role": "assistant", "content": "I recommend the Motorola Moto G34 5G (₹11,999)."},
+    ]
+    monkeypatch.setattr("app.services.ai.search_live_deals", lambda *args, **kwargs: [])
+    orchestrator = AIOrchestrator(db_session)
+    monkeypatch.setattr(orchestrator, "_chat_with_tools", lambda *args, **kwargs: None)
+    monkeypatch.setattr(orchestrator, "_chat", lambda *args, **kwargs: None)
+
     response = orchestrator.answer("tell me some offer going on this", history=history)
 
     assert response is not None
-    assert "Motorola Moto G34" in response.answer or "Bank Discount" in response.answer or "Offers" in response.answer
-    assert response.product_ids
+    assert "couldn't retrieve current retailer listings" in response.answer
+    assert "SHOPSENSE1000" not in response.answer
+    assert "Bank Discount" not in response.answer
+    assert not response.product_ids
 
 
 def test_unmatched_query_with_failed_llm_returns_honest_clarification(monkeypatch, db_session) -> None:
