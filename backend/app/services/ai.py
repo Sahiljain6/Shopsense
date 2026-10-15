@@ -1218,11 +1218,20 @@ class AIOrchestrator:
         self._active_prompt_plan = build_prompt_context(message, history, mode)
         self._active_constraints = self._active_prompt_plan.constraints
 
+        last_prod = self._find_last_product(history, cart)
+        uses_previous_reference = bool(re.search(
+            r"\b(this|it|that one|same product|previous product|one you (?:recommended|suggested))\b",
+            message.lower(),
+        ))
+        live_search_query = message
+        if self._live_search_prefetched and last_prod and uses_previous_reference:
+            live_search_query = f"{last_prod.name} {message}"
+
         # Prefetch live listings on pricing/deal questions so product cards do not
-        # depend on the model choosing to call its search tool. The service caches
-        # results briefly to avoid spending one search credit on repeated queries.
+        # depend on the model choosing to call its search tool. Use resolved context
+        # for implicit follow-ups, but never overwrite a product explicitly named now.
         if self._live_search_prefetched:
-            self._live_deals = search_live_deals(message, max_results=5, force=True)
+            self._live_deals = search_live_deals(live_search_query, max_results=5, force=True)
 
         # Explicit Comparison Pre-Check ("X vs Y" / "Compare X and Y")
         comp_match = re.search(r'(?:compare\s+)?(.+?)\s+(?:vs\.?|versus|compared\s+to)\s+(.+)', message, re.IGNORECASE)
@@ -1247,7 +1256,6 @@ class AIOrchestrator:
                 self._tool_products = comp_products
 
         cart_summary = self._get_cart_summary_text(cart)
-        last_prod = self._find_last_product(history, cart)
         context_prod_clause = (
             f"8. PREVIOUSLY DISCUSSED ITEM: {last_prod.name} (Brand: {last_prod.brand}). "
             "Use this item only when the user refers to it implicitly (for example, 'this', 'it', or 'that one') "
@@ -1315,7 +1323,12 @@ class AIOrchestrator:
 
         if answer is None:
             if self._live_search_prefetched:
-                response = self._general_ai_response(message, history, cart=cart)
+                response = self._general_ai_response(
+                    message,
+                    history,
+                    cart=cart,
+                    live_deals_override=self._live_deals,
+                )
                 response.live_deals = [
                     LiveDeal.model_validate(deal)
                     for deal in getattr(self, "_live_deals", [])
@@ -1641,7 +1654,10 @@ class AIOrchestrator:
             r"\b(this|it|that one|same product|previous product|one you (?:recommended|suggested))\b",
             lowered_msg,
         ))
-        if any(kw in lowered_msg for kw in accessory_followup_kws) and refers_to_previous_item:
+        is_short_followup = len(lowered_msg.split()) <= 4
+        if any(kw in lowered_msg for kw in accessory_followup_kws) and (
+            refers_to_previous_item or is_short_followup
+        ):
             last_prod = self._find_last_product(history, cart)
             if last_prod:
                 p_ids = [last_prod.id] if getattr(last_prod, "id", None) is not None else []
@@ -1827,7 +1843,8 @@ RESPONSE RULES:
         self,
         message: str,
         history: list[dict[str, str]] | None = None,
-        cart: list[dict[str, object]] | None = None
+        cart: list[dict[str, object]] | None = None,
+        live_deals_override: list[dict[str, object]] | None = None,
     ) -> ChatResponse:
 
         # 1. Conversational / Small Talk Intercept using single shared implementation
@@ -1844,7 +1861,11 @@ RESPONSE RULES:
                 return self._generate_ai_response(message, top_phones, history)
 
         # Fetch 100% free real-time live web product deals via DuckDuckGo (strict e-commerce only)
-        live_deals = search_live_deals(message, max_results=3)
+        live_deals = (
+            live_deals_override
+            if live_deals_override is not None
+            else search_live_deals(message, max_results=3)
+        )
 
         live_context_str = ""
         if live_deals:
@@ -1873,7 +1894,19 @@ RESPONSE RULES:
         if answer is None:
             # Fallback 1: Return live Indian e-commerce deals formatted directly
             if live_deals:
-                lines = ["### 🇮🇳 Top Live Deals Found in India:\n"]
+                references_previous_item = bool(re.search(
+                    r"\b(this|it|that one|same product|previous product|one you (?:recommended|suggested))\b",
+                    message.lower(),
+                ))
+                previous_product = self._find_last_product(history, cart) if references_previous_item else None
+                if previous_product:
+                    lines = [
+                        f"### 🇮🇳 Retailer offer search results for **{previous_product.name}**:\n",
+                        "These are retailer search results, not confirmation of a product-specific promotion. "
+                        "Check eligibility and the final amount at checkout.\n",
+                    ]
+                else:
+                    lines = ["### 🇮🇳 Top Live Deals Found in India:\n"]
                 for d in live_deals:
                     price_info = f" — **{d['price_str']}**" if d.get('price_str') else ""
                     lines.append(f"• **[{d['store']}]** [{d['title']}]({d['url']}){price_info}")
