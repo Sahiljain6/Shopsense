@@ -88,7 +88,7 @@ function LiveDealCard({ deal }) {
             rel="noopener noreferrer nofollow"
             className="live-deal-visit-link"
           >
-            View at {source} <UiIcon name="external-link" size={14} />
+            View at {source} <UiIcon name="arrow-up-right" size={14} />
           </a>
         </div>
 
