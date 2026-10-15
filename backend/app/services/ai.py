@@ -1882,7 +1882,7 @@ RESPONSE RULES:
             if should_use_live_search(message):
                 return ChatResponse(
                     answer=(
-                        "I couldn't retrieve current retailer listings for this request right now, so I won't invent "
+                        "I couldn't retrieve current retailer listings from Amazon India, Flipkart, or Croma for this request right now, so I won't invent "
                         "prices, ratings, discounts, or coupon codes. Please retry in a moment or verify the final "
                         "price, availability, and offers on the retailer's checkout page."
                     )
