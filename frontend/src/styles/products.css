@@ -246,7 +246,7 @@
   position: fixed;
   inset: 0;
   background: rgba(4, 6, 12, 0.85);
-  z-index: 1000;
+  z-index: 1200;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -269,7 +269,7 @@
   background: #0e131e;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 24px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .modal-close-btn {
@@ -278,10 +278,10 @@
   right: 1rem;
   font-size: 1.1rem;
   color: #94a3b8;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  width: 40px;
-  height: 40px;
+  background: #151d2b;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -345,9 +345,11 @@
 }
 
 .modal-big-img {
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  padding: 0.5rem;
+  object-fit: contain;
 }
 
 .modal-fallback-icon {
@@ -390,11 +392,12 @@
   font-weight: 700;
   text-decoration: none;
   text-align: center;
-  transition: background-color var(--ss-dur-fast) ease, border-color var(--ss-dur-fast) ease;
+  transition: background-color var(--ss-dur-fast) ease, border-color var(--ss-dur-fast) ease, transform var(--ss-dur-fast) ease;
 }
 
 .modal-store-btn:hover {
   background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
 }
 
 .modal-right-column {
@@ -622,3 +625,27 @@
   box-shadow: 0 2px 10px rgba(16, 185, 129, 0.24);
 }
 
+
+
+/* Deliberate, inexpensive feedback: transform only; no continuous animation. */
+.modal-close-btn:active,
+.modal-store-btn:active,
+.modal-add-cart-btn:active {
+  transform: scale(0.985);
+}
+
+.modal-close-btn {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-close-btn,
+  .modal-store-btn,
+  .modal-add-cart-btn {
+    transition: none !important;
+  }
+
+  .modal-store-btn:hover {
+    transform: none;
+  }
+}
