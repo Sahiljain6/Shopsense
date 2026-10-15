@@ -543,3 +543,35 @@ button:active:not(:disabled), a:active { transform: scale(0.985); }
     transform: none;
   }
 }
+
+
+/* Character counter for the chat prompt limit. Fixed row avoids typing-time layout shifts. */
+.composer-input-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 18px;
+  margin-top: 0.3rem;
+  color: #a6b3c5;
+  font-size: 0.7rem;
+  line-height: 1.25;
+}
+
+.composer-character-count {
+  flex: 0 0 auto;
+  color: #a6b3c5;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.composer-character-count.is-at-limit {
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+@media (max-width: 420px) {
+  .composer-input-meta {
+    font-size: 0.65rem;
+  }
+}

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import ModelDropdown from "./ModelDropdown";
+import { CHAT_INPUT_MAX_LENGTH } from "../utils/constants";
 
 export default function ComposerInput({
   isLoggedIn,
@@ -22,10 +23,11 @@ export default function ComposerInput({
   const currentText = isControlled ? externalInputText : internalText;
 
   const handleChange = (e) => {
+    const nextValue = e.target.value.slice(0, CHAT_INPUT_MAX_LENGTH);
     if (isControlled) {
-      externalSetInputText(e.target.value);
+      externalSetInputText(nextValue);
     } else {
-      setInternalText(e.target.value);
+      setInternalText(nextValue);
     }
   };
 
@@ -71,8 +73,10 @@ export default function ComposerInput({
           autoComplete="off"
           value={currentText}
           onChange={handleChange}
+          maxLength={CHAT_INPUT_MAX_LENGTH}
           disabled={!isLoggedIn || Boolean(attachedFile)}
           aria-label={isLoggedIn ? "Chat input" : "Log in to use chat"}
+          aria-describedby="composer-character-count"
         />
 
         <div className="composer-action-cluster">
@@ -139,6 +143,16 @@ export default function ComposerInput({
             )}
           </motion.button>
         </div>
+      </div>
+      <div className="composer-input-meta">
+        <span>Detailed shopping prompts supported</span>
+        <span
+          id="composer-character-count"
+          className={currentText.length >= CHAT_INPUT_MAX_LENGTH ? "composer-character-count is-at-limit" : "composer-character-count"}
+          title="Character count includes spaces"
+        >
+          {currentText.length.toLocaleString()} / {CHAT_INPUT_MAX_LENGTH.toLocaleString()}
+        </span>
       </div>
     </form>
   );

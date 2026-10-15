@@ -95,8 +95,11 @@ class ChatTurn(BaseModel):
     content: str
 
 
+CHAT_MESSAGE_MAX_LENGTH = 4000
+
+
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(max_length=CHAT_MESSAGE_MAX_LENGTH, description="Shopping prompt, up to 4,000 characters")
     mode: str | None = None
     history: list[ChatTurn] = Field(default_factory=list)
     cart: list[dict[str, object]] = Field(default_factory=list)
