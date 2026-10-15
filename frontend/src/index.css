@@ -14,6 +14,7 @@
 @import "./styles/chat.css";
 @import "./styles/markdown.css";
 @import "./styles/responsive.css";
+@import "./styles/precision.css";
 
 .app-shell {
   min-height: 100vh;
