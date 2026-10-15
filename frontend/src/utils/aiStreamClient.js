@@ -1,3 +1,65 @@
+let streamMetricSequence = 0;
+
+/**
+ * Emits privacy-safe User Timing entries for DevTools. These marks contain no
+ * prompt text, tokens, account identifiers, or credentials.
+ */
+function createStreamLatencyMetrics() {
+  if (typeof performance === "undefined" || typeof performance.mark !== "function") {
+    return { responseReceived() {}, firstToken() {}, complete() {} };
+  }
+
+  const id = ++streamMetricSequence;
+  const prefix = `shopsense-chat-${id}`;
+  const marks = {
+    start: `${prefix}-request-start`,
+    response: `${prefix}-response-headers`,
+    firstToken: `${prefix}-first-token`,
+    complete: `${prefix}-complete`,
+  };
+  let responseMarked = false;
+  let firstTokenMarked = false;
+  let completed = false;
+
+  const mark = (name) => {
+    try {
+      performance.mark(name);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const measure = (name, start, end) => {
+    try {
+      if (start && end) performance.measure(name, start, end);
+    } catch {
+      // Timing telemetry must never affect chat delivery.
+    }
+  };
+
+  mark(marks.start);
+
+  return {
+    responseReceived() {
+      if (responseMarked) return;
+      responseMarked = mark(marks.response);
+    },
+    firstToken() {
+      if (firstTokenMarked) return;
+      firstTokenMarked = mark(marks.firstToken);
+    },
+    complete() {
+      if (completed) return;
+      completed = true;
+      mark(marks.complete);
+      measure(`${prefix} total request duration`, marks.start, marks.complete);
+      measure(`${prefix} time to response headers`, marks.start, marks.response);
+      measure(`${prefix} time to first token`, marks.start, marks.firstToken);
+    },
+  };
+}
+
 /**
  * Production-ready AI Streaming Response Handler.
  * Consumes Server-Sent Events (SSE) or chunked HTTP transfer streams with
@@ -33,6 +95,7 @@ export async function streamAIResponse({
 }) {
   let accumulatedText = "";
   let fullResponseMeta = null;
+  const latencyMetrics = createStreamLatencyMetrics();
 
   try {
     const response = await fetch(url, {
@@ -45,6 +108,7 @@ export async function streamAIResponse({
       body: JSON.stringify(body),
       signal
     });
+    latencyMetrics.responseReceived();
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
@@ -75,6 +139,7 @@ export async function streamAIResponse({
         if (trimmed.startsWith("data:")) {
           const rawData = trimmed.replace(/^data:\s*/, "");
           if (rawData === "[DONE]") {
+            latencyMetrics.complete();
             if (onComplete) onComplete(accumulatedText, fullResponseMeta);
             return accumulatedText;
           }
@@ -115,11 +180,13 @@ export async function streamAIResponse({
               "";
 
             if (token) {
+              latencyMetrics.firstToken();
               accumulatedText += token;
               if (onToken) onToken(token);
             }
           } catch {
             // Raw text fallback if payload is not JSON
+            latencyMetrics.firstToken();
             accumulatedText += rawData;
             if (onToken) onToken(rawData);
           }
@@ -131,17 +198,20 @@ export async function streamAIResponse({
     if (buffer.trim().startsWith("data:")) {
       const rawData = buffer.trim().replace(/^data:\s*/, "");
       if (rawData !== "[DONE]") {
+        latencyMetrics.firstToken();
         accumulatedText += rawData;
         if (onToken) onToken(rawData);
       }
     }
 
+    latencyMetrics.complete();
     if (onComplete) {
       onComplete(accumulatedText);
     }
 
     return accumulatedText;
   } catch (error) {
+    latencyMetrics.complete();
     if (error.name === "AbortError") {
       // User explicitly stopped generation; do not surface as uncaught fault
       if (onComplete) onComplete(accumulatedText);
