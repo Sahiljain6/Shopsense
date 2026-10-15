@@ -49,7 +49,7 @@ body {
 }
 .app-shell { isolation: isolate; }
 .ambient-stage { background: var(--ss-canvas); }
-.app-container {
+.app-shell .app-container {
   width: 100%;
   max-width: 1200px;
   padding: 0 clamp(0.75rem, 2.4vw, 1.35rem) 2rem;
