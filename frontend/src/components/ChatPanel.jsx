@@ -4,7 +4,7 @@ import WelcomePromptGrid from "./WelcomePromptGrid";
 import AttachmentPreviewBar from "./AttachmentPreviewBar";
 import ComposerInput from "./ComposerInput";
 import TypingIndicator from "./TypingIndicator";
-import { streamChat, sendChat, fetchLink, identifyImage, friendlyError, getToken } from "../api";
+import { streamChat, sendChat, fetchLink, identifyImage, friendlyError, getToken, createIdempotencyKey } from "../api";
 import { getCartFromStorage } from "../hooks/useCart";
 import { CART_QUERIES, GREETING_QUERIES, URL_PATTERN } from "../utils/constants";
 
@@ -38,6 +38,7 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
   const fileInputRef = useRef(null);
   const warmUpTimerRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const activeChatSubmissionRef = useRef(false);
   const isNearBottomRef = useRef(true);
   const tokenBatchTimerRef = useRef(null);
 
@@ -186,6 +187,12 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
       }
 
       // ── REAL SSE STREAMING CHAT FLOW ──
+      // A synchronous ref guard prevents double-clicks before React re-renders.
+      if (activeChatSubmissionRef.current) return;
+      activeChatSubmissionRef.current = true;
+      const idempotencyKey = createIdempotencyKey();
+      const cartForRequest = getCart();
+
       setIsWarmingUp(false);
       setLoadingStatus("Thinking...");
       if (warmUpTimerRef.current) clearTimeout(warmUpTimerRef.current);
@@ -257,8 +264,9 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
           message: text,
           mode: null,
           history,
-          cart: getCart(),
+          cart: cartForRequest,
           model: selectedModel,
+          idempotencyKey,
           signal: controller.signal,
           onStatus: (status) => {
             setLoadingStatus(status);
@@ -334,11 +342,12 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
                 text,
                 null,
                 history,
-                getCart(),
+                cartForRequest,
                 (status) => {
                   if (status === "waking") setIsWarmingUp(true);
                 },
-                selectedModel
+                selectedModel,
+                idempotencyKey
               );
               const prods = Array.isArray(fallbackResp.products) ? fallbackResp.products : [];
               setMessages((prev) => {
@@ -384,6 +393,7 @@ export default function ChatPanel({ onError, onClearError, isLoggedIn = false, o
           tokenBatchTimerRef.current = null;
         }
         if (warmUpTimerRef.current) clearTimeout(warmUpTimerRef.current);
+        activeChatSubmissionRef.current = false;
         setLoading(false);
         setIsWarmingUp(false);
         setLoadingStatus(null);
