@@ -66,6 +66,24 @@ function getCsrfToken() {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function waitForRetry(delayMs, signal) {
+  if (signal?.aborted) return Promise.reject(new DOMException("Request aborted", "AbortError"));
+  if (delayMs <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal?.removeEventListener("abort", onAbort);
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(new DOMException("Request aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export async function apiFetch(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const headers = {
@@ -139,7 +157,7 @@ export async function apiFetch(path, options = {}) {
           attempt++;
           if (onStatusChange) onStatusChange("waking");
           const retryDelayMs = Math.min(3000, Math.max(0, deadlineAt - Date.now()));
-          if (retryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+          if (retryDelayMs > 0) await waitForRetry(retryDelayMs, callerSignal);
           continue;
         }
         if (response.status === 401) {
@@ -170,7 +188,7 @@ export async function apiFetch(path, options = {}) {
         attempt++;
         if (onStatusChange) onStatusChange("waking");
         const retryDelayMs = Math.min(2500, Math.max(0, deadlineAt - Date.now()));
-        if (retryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        if (retryDelayMs > 0) await waitForRetry(retryDelayMs, callerSignal);
         continue;
       }
 
