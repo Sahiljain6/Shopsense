@@ -85,6 +85,7 @@ export async function streamAIResponse({
   headers = {},
   body,
   signal,
+  timeoutMs = 105000,
   onToken,
   onStatus,
   onProducts,
@@ -97,6 +98,18 @@ export async function streamAIResponse({
   let accumulatedText = "";
   let fullResponseMeta = null;
   const latencyMetrics = createStreamLatencyMetrics();
+  const boundedTimeoutMs = Math.max(1, Number(timeoutMs) || 105000);
+  const requestController = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => requestController.abort(signal?.reason);
+  if (signal) {
+    if (signal.aborted) abortFromCaller();
+    else signal.addEventListener("abort", abortFromCaller, { once: true });
+  }
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    requestController.abort();
+  }, boundedTimeoutMs);
 
   try {
     const response = await fetch(url, {
@@ -107,7 +120,7 @@ export async function streamAIResponse({
         ...headers
       },
       body: JSON.stringify(body),
-      signal
+      signal: requestController.signal
     });
     latencyMetrics.responseReceived();
 
@@ -218,8 +231,14 @@ export async function streamAIResponse({
     return accumulatedText;
   } catch (error) {
     latencyMetrics.complete();
-    if (error.name === "AbortError") {
-      // User explicitly stopped generation; do not surface as uncaught fault
+    if (timedOut) {
+      const timeoutError = new Error("The AI response exceeded its overall request budget. Please try again.");
+      timeoutError.name = "TimeoutError";
+      if (onError) onError(timeoutError);
+      throw timeoutError;
+    }
+    if (signal?.aborted || error?.name === "AbortError") {
+      // A caller/UI abort is intentional; do not turn it into an automatic retry.
       if (onComplete) onComplete(accumulatedText);
       return accumulatedText;
     }
@@ -227,5 +246,8 @@ export async function streamAIResponse({
       onError(error);
     }
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener("abort", abortFromCaller);
   }
 }
