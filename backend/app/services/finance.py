@@ -4,6 +4,8 @@ import logging
 from typing import Any
 import httpx
 
+from app.core.http_client import get_http_client
+
 logger = logging.getLogger("shopsense.finance")
 
 BANK_PRESETS = {
@@ -27,21 +29,21 @@ def lookup_ifsc(ifsc: str) -> dict[str, Any]:
 
     url = f"https://ifsc.razorpay.com/{clean_ifsc}"
     try:
-        with httpx.Client(timeout=4.0) as client:
-            resp = client.get(url)
-            if resp.status_code == 200:
-                data = resp.json()
-                return {
-                    "valid": True,
-                    "ifsc": clean_ifsc,
-                    "bank": data.get("BANK", "Indian Bank"),
-                    "branch": data.get("BRANCH", "Branch"),
-                    "city": data.get("CENTRE", data.get("DISTRICT", "")),
-                    "state": data.get("STATE", ""),
-                    "upi": data.get("UPI", True),
-                    "neft": data.get("NEFT", True),
-                    "summary": f"{data.get('BANK')} ({data.get('BRANCH')}, {data.get('STATE')})"
-                }
+        client = get_http_client(timeout=4.0)
+        resp = client.get(url)
+        if resp.status_code == 200:
+            data = resp.json()
+            return {
+                "valid": True,
+                "ifsc": clean_ifsc,
+                "bank": data.get("BANK", "Indian Bank"),
+                "branch": data.get("BRANCH", "Branch"),
+                "city": data.get("CENTRE", data.get("DISTRICT", "")),
+                "state": data.get("STATE", ""),
+                "upi": data.get("UPI", True),
+                "neft": data.get("NEFT", True),
+                "summary": f"{data.get('BANK')} ({data.get('BRANCH')}, {data.get('STATE')})"
+            }
     except Exception as exc:
         logger.warning("IFSC lookup notice for %s: %s", clean_ifsc, exc)
 
