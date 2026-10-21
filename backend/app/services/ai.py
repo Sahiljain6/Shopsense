@@ -727,7 +727,6 @@ class AIOrchestrator:
             gemini_contents = _build_gemini_contents(user, history)
             models_to_try = getattr(self, "active_gemini_models", None) or list(PRIMARY_GEMINI_MODELS)
             import httpx
-            _gemini_chat_timeout = httpx.Timeout(connect=1.5, read=2.5, write=1.5, pool=1.0)
             for model_name in models_to_try:
                 remaining = provider_deadline - time.monotonic()
                 if remaining <= 0:
