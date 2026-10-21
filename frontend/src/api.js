@@ -192,18 +192,39 @@ export function createIdempotencyKey() {
   return `shopsense-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`.slice(0, 128);
 }
 
-export const sendChat = (
+export async function sendChat(
   message, mode, history, cart = [], onStatusChange = null, model = "Sonnet 4.5", idempotencyKey = null
-) =>
-  apiFetch("/chat", {
-    method: "POST",
-    body: JSON.stringify({
-      message, mode, history, cart, model,
-      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
-    }),
-    onStatusChange,
-    retries: 1,
-  });
+) {
+  let inProgressRetries = 0;
+  while (true) {
+    try {
+      return await apiFetch("/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          message, mode, history, cart, model,
+          ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+        }),
+        onStatusChange,
+        retries: 1,
+      });
+    } catch (error) {
+      // The SSE request may still be finishing after a network disconnect.
+      // Wait for that exact operation to complete instead of triggering another LLM call.
+      if (
+        idempotencyKey &&
+        error instanceof ApiError &&
+        error.status === 409 &&
+        /already processing/i.test(String(error.message)) &&
+        inProgressRetries < 12
+      ) {
+        inProgressRetries += 1;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
 
 export async function streamChat({
   message,
