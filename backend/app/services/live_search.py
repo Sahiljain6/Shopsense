@@ -272,10 +272,19 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
         if not isinstance(payload, dict) or payload.get("error"):
             logger.warning("SerpApi Google Shopping returned an API error; using fallback search.")
             return False, []
+        shopping_results = payload.get("shopping_results")
+        if shopping_results is not None and not isinstance(shopping_results, list):
+            logger.warning("SerpApi Google Shopping returned malformed results; using fallback search.")
+            return False, []
+        if isinstance(shopping_results, list) and shopping_results and not any(
+            isinstance(item, dict) for item in shopping_results
+        ):
+            logger.warning("SerpApi Google Shopping returned malformed result entries; using fallback search.")
+            return False, []
         fetched_at = _retrieved_at()
         normalized: list[dict[str, object]] = []
         seen: set[str] = set()
-        for item in payload.get("shopping_results") or []:
+        for item in shopping_results or []:
             if not isinstance(item, dict):
                 continue
             result = _normalise_serpapi_result(item, fetched_at)
@@ -288,6 +297,9 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
             normalized.append(result)
             if len(normalized) >= max(1, min(max_results, 20)):
                 break
+        if shopping_results and not normalized:
+            logger.warning("SerpApi Google Shopping results contained no usable listings; using fallback search.")
+            return False, []
         return True, normalized
     except (httpx.HTTPError, ValueError, TypeError) as error:
         logger.warning("SerpApi Google Shopping request failed (%s); trying fallback search.", type(error).__name__)
