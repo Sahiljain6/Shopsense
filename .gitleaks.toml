@@ -1,0 +1,16 @@
+title = "ShopSense Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# The original deterministic UUID test fixture was flagged by the generic-api-key
+# entropy rule. Scope this one exception to that exact synthetic value and test file.
+[allowlist]
+description = "Exact false-positive UUID fixture in the chat idempotency test; not a credential."
+regexTarget = "secret"
+regexes = [
+  '''7a9f2c30-7d4a-4f61-962f-c7a8bb7a1f11''',
+]
+paths = [
+  '''backend/tests/test_chat_idempotency\.py''',
+]

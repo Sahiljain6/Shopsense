@@ -185,13 +185,46 @@ export const googleLogin = (credentialOrPayload) => {
   });
 };
 
-export const sendChat = (message, mode, history, cart = [], onStatusChange = null, model = "Sonnet 4.5") =>
-  apiFetch("/chat", {
-    method: "POST",
-    body: JSON.stringify({ message, mode, history, cart, model }),
-    onStatusChange,
-    retries: 1,
-  });
+export function createIdempotencyKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `shopsense-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`.slice(0, 128);
+}
+
+export async function sendChat(
+  message, mode, history, cart = [], onStatusChange = null, model = "Sonnet 4.5", idempotencyKey = null
+) {
+  let inProgressRetries = 0;
+  while (true) {
+    try {
+      return await apiFetch("/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          message, mode, history, cart, model,
+          ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+        }),
+        onStatusChange,
+        retries: 1,
+      });
+    } catch (error) {
+      // The SSE request may still be finishing after a network disconnect.
+      // Wait for that exact operation to complete instead of triggering another LLM call.
+      if (
+        idempotencyKey &&
+        error instanceof ApiError &&
+        error.status === 409 &&
+        /already processing/i.test(String(error.message)) &&
+        inProgressRetries < 12
+      ) {
+        inProgressRetries += 1;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
 
 export async function streamChat({
   message,
@@ -199,6 +232,7 @@ export async function streamChat({
   history = [],
   cart = [],
   model = "Sonnet 4.5",
+  idempotencyKey,
   signal,
   onToken,
   onStatus,
@@ -221,7 +255,7 @@ export async function streamChat({
   return streamAIResponse({
     url: `${API_URL}/chat/stream`,
     headers,
-    body: { message, mode, history, cart, model },
+    body: { message, mode, history, cart, model, ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}) },
     signal,
     onToken,
     onStatus,
