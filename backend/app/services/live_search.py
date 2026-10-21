@@ -111,8 +111,8 @@ def _build_cache_key(
         "provider_config": provider_fingerprint,
         "market": "in",
         "language": "en",
-        "location": re.sub(r"\\s+", " ", location.strip().lower()),
-        "query": re.sub(r"\\s+", " ", query.strip().lower()),
+        "location": re.sub(r"\s+", " ", location.strip().lower()),
+        "query": re.sub(r"\s+", " ", query.strip().lower()),
         "max_results": max_results,
     }
     canonical = json.dumps(key_payload, sort_keys=True, separators=(",", ":"))
