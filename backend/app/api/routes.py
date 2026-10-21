@@ -18,7 +18,7 @@ from app.core.config import get_settings
 from app.core.auth_types import Scope, SecurityContext, UserTier
 from app.core.audit import audit_logger
 from app.core.db_scoping import ScopedQueryFilter
-from app.core.quota import check_quota, quota_engine
+from app.core.quota import quota_engine
 from app.core.scoping import require_scope, require_feature_flag, require_tier
 from app.core.security import (
     clear_auth_cookies,
@@ -790,10 +790,6 @@ async def chat_stream(
             logger.exception("Error in chat stream: %s", exc)
             yield f"data: {json.dumps({'type': 'error', 'error': 'The chat request could not be completed.'})}\n\n"
             yield "data: [DONE]\n\n"
-        finally:
-            if not idempotency_completed:
-                _release_chat_idempotency(db, user.id, payload.idempotency_key)
-
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
