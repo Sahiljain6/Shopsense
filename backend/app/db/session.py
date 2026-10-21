@@ -13,7 +13,22 @@ def _connect_args(url: str) -> dict[str, object]:
 
 
 settings = get_settings()
-engine = create_engine(settings.database_url, connect_args=_connect_args(settings.database_url))
+_engine_options: dict[str, object] = {
+    "connect_args": _connect_args(settings.database_url),
+    "pool_pre_ping": True,
+}
+
+# QueuePool settings are supported for the production PostgreSQL deployment.
+# SQLite retains its dialect-appropriate defaults, including the in-memory test setup.
+if not settings.database_url.startswith("sqlite"):
+    _engine_options.update(
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=settings.db_pool_timeout_seconds,
+        pool_recycle=settings.db_pool_recycle_seconds,
+    )
+
+engine = create_engine(settings.database_url, **_engine_options)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
