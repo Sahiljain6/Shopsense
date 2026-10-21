@@ -338,6 +338,10 @@ Shopsense/
 - Live search can add a network request on price/deal queries; repeated matching queries are cached for 15 minutes per backend process.
 - The model provider and its rate limits also affect response latency.
 
+## Caching, scaling, and request budgets
+
+See [docs/caching-scaling-and-api-governance.md](./docs/caching-scaling-and-api-governance.md) for live-search cache TTL/key/invalidation rules, the prerequisites for adding backend replicas, why a separate API gateway is currently deferred, and frontend/backend timeout budgets. Cache and AI timeout settings are documented in `backend/.env.example`.
+
 ## Production engineering roadmap
 
 The 20-part reliability and hardening plan is tracked in [docs/production-engineering-roadmap.md](./docs/production-engineering-roadmap.md). Implementation is reviewed in parts and should preserve the current shopping experience and AI-provider behavior.
