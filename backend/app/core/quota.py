@@ -143,7 +143,7 @@ class QuotaEngine:
                 db.rollback()
                 return False, current, None
 
-            reserved_usage = db.add(
+            db.add(
                 QuotaReservation(
                     reservation_id=reservation_id,
                     user_id=user_id,
