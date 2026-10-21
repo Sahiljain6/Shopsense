@@ -1204,9 +1204,8 @@ def get_user_quota(
     context: SecurityContext = Depends(get_security_context),
 ) -> dict[str, object]:
     """
-    Live quota dashboard: returns current monthly token usage, limits,
-    rate limit settings, and remaining allowances for the authenticated user.
-    Zero database queries — reads from quota engine in-memory store.
+    Live quota dashboard: returns persisted monthly usage plus active reservations,
+    rate-limit settings, and remaining allowances for the authenticated user.
     """
     current_usage = quota_engine.get_usage(context.user_id)
     monthly_limit = context.quota.monthly_tokens
