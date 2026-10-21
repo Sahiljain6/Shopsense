@@ -340,7 +340,7 @@ Shopsense/
 
 ## Caching, scaling, and request budgets
 
-See [docs/caching-scaling-and-api-governance.md](./docs/caching-scaling-and-api-governance.md) for live-search cache TTL/key/invalidation rules, the prerequisites for adding backend replicas, why a separate API gateway is currently deferred, and frontend/backend timeout budgets. Cache and AI timeout settings are documented in `backend/.env.example`.
+See [docs/caching-scaling-and-api-governance.md](./docs/caching-scaling-and-api-governance.md) for live-search cache TTL/key/invalidation rules, the prerequisites for adding backend replicas, why a separate API gateway is currently deferred, and frontend/backend timeout budgets. Cache and AI timeout settings are documented in `backend/.env.example`. The browser's default overall API/stream budget is 105 seconds; callers may set lower per-request budgets, and an explicit user cancellation is not retried.
 
 ## Production engineering roadmap
 
