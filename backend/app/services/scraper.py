@@ -3,6 +3,8 @@ import os
 import re
 
 import httpx
+
+from app.core.http_client import get_http_client
 from bs4 import BeautifulSoup
 
 from app.core.config import get_settings
@@ -38,10 +40,10 @@ def fetch_with_scraperapi(
         params["country_code"] = country_code
 
     try:
-        with httpx.Client(timeout=30) as client:
-            response = client.get("https://api.scraperapi.com/", params=params)
-            response.raise_for_status()
-            return response.text
+        client = get_http_client(timeout=30)
+        response = client.get("https://api.scraperapi.com/", params=params)
+        response.raise_for_status()
+        return response.text
     except httpx.HTTPError:
         return None
 
