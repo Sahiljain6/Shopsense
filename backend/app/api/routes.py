@@ -50,23 +50,31 @@ from app.services.conversation_service import ConversationService
 
 logger = logging.getLogger("shopsense.api")
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
+
+
+def _request_rate_limit_key(request: Request) -> str:
+    """Use a verified user ID for authenticated routes and the host-derived IP otherwise."""
+    user_id = getattr(request.state, "user_id", None)
+    return f"user:{user_id}" if user_id is not None else get_remote_address(request)
+
+
+limiter = Limiter(key_func=_request_rate_limit_key)
 
 
 CHAT_IDEMPOTENCY_TTL = timedelta(hours=24)
 CHAT_IDEMPOTENCY_STALE_AFTER = timedelta(minutes=3)
 
 
-def _enforce_chat_quota(context: SecurityContext) -> None:
-    """Enforce chat quota after cache lookup so replays do not consume a fresh allowance."""
+def _enforce_chat_quota(context: SecurityContext, estimated_tokens: int = 500) -> str:
+    """Atomically reserve quota after cache lookup so replays do not consume allowance."""
     monthly_limit = context.quota.monthly_tokens
-    allowed, current_usage = quota_engine.check_and_reserve(
+    allowed, current_usage, reservation_id = quota_engine.reserve(
         context.user_id,
-        estimated_tokens=500,
+        estimated_tokens=estimated_tokens,
         monthly_limit=monthly_limit,
     )
-    if allowed:
-        return
+    if allowed and reservation_id:
+        return reservation_id
     try:
         audit_logger.log_quota_exceeded(
             user_id=context.user_id,
@@ -75,7 +83,7 @@ def _enforce_chat_quota(context: SecurityContext) -> None:
             metric="monthly_tokens",
             limit=monthly_limit,
             current_usage=current_usage,
-            requested=500,
+            requested=estimated_tokens,
         )
     except Exception:
         pass
@@ -86,7 +94,7 @@ def _enforce_chat_quota(context: SecurityContext) -> None:
             "reason": "monthly_token_quota_exceeded",
             "monthly_limit": monthly_limit,
             "current_usage": current_usage,
-            "requested_tokens": 500,
+            "requested_tokens": estimated_tokens,
             "tier": context.tier.value,
             "upgrade_hint": "Upgrade to Pro or Enterprise for increased token allowances.",
         },
@@ -533,8 +541,9 @@ def chat(
     if cached_response is not None:
         return cached_response
 
+    quota_reservation_id: str | None = None
     try:
-        _enforce_chat_quota(context)
+        quota_reservation_id = _enforce_chat_quota(context)
         history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
         context_plan = None
 
@@ -562,14 +571,23 @@ def chat(
                 model=payload.model,
             )
             generation_succeeded = True
-            tokens_consumed = max(50, (len(payload.message) + len(response.answer)) // 4 + 50)
-            quota_engine.record_usage(user.id, tokens_consumed)
         except Exception as err:
             db.rollback()
             logger.warning("AI chat generation failed; returning a retryable fallback response: %s", type(err).__name__)
             response = ChatResponse(
                 answer="I ran into a temporary issue retrieving product data. Please try asking again in a moment."
             )
+
+        if generation_succeeded:
+            tokens_consumed = max(50, (len(payload.message) + len(response.answer)) // 4 + 50)
+            try:
+                quota_engine.complete_reservation(user.id, quota_reservation_id, tokens_consumed)
+                quota_reservation_id = None
+            except Exception as quota_err:
+                logger.warning("Unable to finalize AI token accounting: %s", type(quota_err).__name__)
+        elif quota_reservation_id:
+            quota_engine.release_reservation(user.id, quota_reservation_id)
+            quota_reservation_id = None
 
         # Attach full product schemas so frontend does not need a second roundtrip
         if response.product_ids and not response.products:
@@ -615,6 +633,8 @@ def chat(
 
         return response
     except Exception:
+        if quota_reservation_id:
+            quota_engine.release_reservation(user.id, quota_reservation_id)
         _release_chat_idempotency(db, user.id, payload.idempotency_key)
         raise
 
@@ -651,10 +671,10 @@ async def chat_stream(
         return StreamingResponse(
             _replay_chat_response_events(cached_response),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+            headers={"Cache-Control": "no-cache, no-transform", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
         )
     try:
-        _enforce_chat_quota(context)
+        quota_reservation_id = _enforce_chat_quota(context)
     except Exception:
         _release_chat_idempotency(db, user.id, payload.idempotency_key)
         raise
@@ -676,7 +696,7 @@ async def chat_stream(
             logger.warning(f"Notice: unable to assemble conversation context for {payload.conversation_id}: {err}")
 
     async def event_generator():
-        nonlocal idempotency_completed
+        nonlocal idempotency_completed, quota_reservation_id
         try:
             stream_started = time.perf_counter()
             # 1. Initial status event
@@ -723,7 +743,11 @@ async def chat_stream(
             )
 
             tokens_consumed = max(50, (len(payload.message) + len(response.answer)) // 4 + 50)
-            quota_engine.record_usage(user.id, tokens_consumed)
+            try:
+                quota_engine.complete_reservation(user.id, quota_reservation_id, tokens_consumed)
+                quota_reservation_id = None
+            except Exception as quota_err:
+                logger.warning("Unable to finalize streamed token accounting: %s", type(quota_err).__name__)
 
             try:
                 db.add(ChatHistory(user_id=user.id, message=payload.message, response=response.model_dump()))
@@ -791,6 +815,12 @@ async def chat_stream(
 
 
         except Exception as exc:
+            if quota_reservation_id:
+                try:
+                    quota_engine.release_reservation(user.id, quota_reservation_id)
+                    quota_reservation_id = None
+                except Exception as quota_err:
+                    logger.warning("Unable to release streamed token reservation: %s", type(quota_err).__name__)
             if not idempotency_completed:
                 _release_chat_idempotency(db, user.id, payload.idempotency_key)
             logger.exception("Error in chat stream: %s", exc)
@@ -800,7 +830,7 @@ async def chat_stream(
         event_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         }
