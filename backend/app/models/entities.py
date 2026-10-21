@@ -91,6 +91,35 @@ class ChatIdempotency(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.utcnow() + timedelta(hours=24), index=True)
 
 
+class MonthlyTokenUsage(Base):
+    """Durable per-user UTC-month token accounting and active reservations."""
+
+    __tablename__ = "monthly_token_usage"
+    __table_args__ = (
+        UniqueConstraint("user_id", "period", name="uq_monthly_token_usage_user_period"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    period: Mapped[str] = mapped_column(String(7), nullable=False)
+    used_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reserved_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class QuotaReservation(Base):
+    """Short-lived token reservation created before an expensive AI request."""
+
+    __tablename__ = "quota_reservations"
+
+    reservation_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    period: Mapped[str] = mapped_column(String(7), nullable=False)
+    reserved_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+
+
 class Wishlist(Base):
     __tablename__ = "wishlist"
     id: Mapped[int] = mapped_column(primary_key=True)
