@@ -57,6 +57,42 @@ CHAT_IDEMPOTENCY_TTL = timedelta(hours=24)
 CHAT_IDEMPOTENCY_STALE_AFTER = timedelta(minutes=3)
 
 
+def _enforce_chat_quota(context: SecurityContext) -> None:
+    """Enforce chat quota after cache lookup so replays do not consume a fresh allowance."""
+    monthly_limit = context.quota.monthly_tokens
+    allowed, current_usage = quota_engine.check_and_reserve(
+        context.user_id,
+        estimated_tokens=500,
+        monthly_limit=monthly_limit,
+    )
+    if allowed:
+        return
+    try:
+        audit_logger.log_quota_exceeded(
+            user_id=context.user_id,
+            email=context.email,
+            tier=context.tier.value,
+            metric="monthly_tokens",
+            limit=monthly_limit,
+            current_usage=current_usage,
+            requested=500,
+        )
+    except Exception:
+        pass
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail={
+            "error": "Quota Exceeded",
+            "reason": "monthly_token_quota_exceeded",
+            "monthly_limit": monthly_limit,
+            "current_usage": current_usage,
+            "requested_tokens": 500,
+            "tier": context.tier.value,
+            "upgrade_hint": "Upgrade to Pro or Enterprise for increased token allowances.",
+        },
+    )
+
+
 def _chat_request_fingerprint(payload: ChatRequest) -> str:
     """Fingerprint the semantic request without its idempotency key."""
     request_data = payload.model_dump(mode="json", exclude={"idempotency_key"})
@@ -465,7 +501,7 @@ def chat(
     payload: ChatRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    context: SecurityContext = Depends(check_quota(estimated_tokens=500)),
+    context: SecurityContext = Depends(get_security_context),
 ) -> ChatResponse:
     # 1. Advanced Model Scope Validation
     is_advanced_request = (
@@ -496,6 +532,7 @@ def chat(
     idempotency_state, cached_response = _claim_chat_idempotency(db, user.id, payload)
     if cached_response is not None:
         return cached_response
+    _enforce_chat_quota(context)
 
     try:
         history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
@@ -583,7 +620,7 @@ async def chat_stream(
     payload: ChatRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    context: SecurityContext = Depends(check_quota(estimated_tokens=500)),
+    context: SecurityContext = Depends(get_security_context),
 ):
     """Server-Sent Events (SSE) chat streaming endpoint for fast perceived latency.
     Emits progressive status updates, token chunks, resolved products, and final metadata.
@@ -610,6 +647,7 @@ async def chat_stream(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
         )
+    _enforce_chat_quota(context)
 
     idempotency_completed = False
     history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
