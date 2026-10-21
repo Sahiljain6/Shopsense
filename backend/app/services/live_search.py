@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.core.config import get_settings
+from app.core.http_client import get_http_client
 from app.services.trust_engine import evaluate_store_trust, filter_and_rank_trustworthy_deals
 
 logger = logging.getLogger("shopsense.live_search")
@@ -185,7 +186,7 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
         "no_cache": "false",
     }
     try:
-        response = httpx.get(SERPAPI_ENDPOINT, params=params, timeout=9.0)
+        response = get_http_client(timeout=9.0).get(SERPAPI_ENDPOINT, params=params, timeout=9.0)
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict) or payload.get("error"):

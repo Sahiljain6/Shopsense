@@ -2,6 +2,8 @@ import base64
 import os
 import httpx
 
+from app.core.http_client import get_http_client
+
 VISION_ENDPOINT = "https://vision.googleapis.com/v1/images:annotate"
 FREE_HF_VISION_ENDPOINT = "https://router.huggingface.co/hf-inference/models/google/vit-base-patch16-224"
 FREE_HF_BLIP_ENDPOINT = "https://router.huggingface.co/hf-inference/models/Salesforce/blip-image-captioning-base"
@@ -16,26 +18,26 @@ def identify_image_free(image_bytes: bytes) -> list[str]:
 
     try:
         # 1. Try free ViT image classifier (Hugging Face Vision AI)
-        with httpx.Client(timeout=10) as client:
-            resp = client.post(FREE_HF_VISION_ENDPOINT, headers=headers, content=image_bytes)
-            if resp.status_code == 200:
-                results = resp.json()
-                if isinstance(results, list):
-                    labels = [item.get("label") for item in results if item.get("label")]
-                    if labels:
-                        clean_labels = [l.split(",")[0].strip() for l in labels[:5]]
-                        return clean_labels
+        client = get_http_client(timeout=10)
+        resp = client.post(FREE_HF_VISION_ENDPOINT, headers=headers, content=image_bytes)
+        if resp.status_code == 200:
+            results = resp.json()
+            if isinstance(results, list):
+                labels = [item.get("label") for item in results if item.get("label")]
+                if labels:
+                    clean_labels = [l.split(",")[0].strip() for l in labels[:5]]
+                    return clean_labels
 
         # 2. Try free BLIP image captioner (Hugging Face Multimodal AI)
-        with httpx.Client(timeout=10) as client:
-            resp = client.post(FREE_HF_BLIP_ENDPOINT, headers=headers, content=image_bytes)
-            if resp.status_code == 200:
-                results = resp.json()
-                if isinstance(results, list) and len(results) > 0:
-                    caption = results[0].get("generated_text", "")
-                    if caption:
-                        words = [w.strip() for w in caption.split() if len(w) > 3]
-                        return words[:5]
+        client = get_http_client(timeout=10)
+        resp = client.post(FREE_HF_BLIP_ENDPOINT, headers=headers, content=image_bytes)
+        if resp.status_code == 200:
+            results = resp.json()
+            if isinstance(results, list) and len(results) > 0:
+                caption = results[0].get("generated_text", "")
+                if caption:
+                    words = [w.strip() for w in caption.split() if len(w) > 3]
+                    return words[:5]
     except Exception as error:
         print(f"Free Hugging Face Vision API notice: {error}")
 
@@ -59,13 +61,13 @@ def identify_image(image_bytes: bytes, api_key: str | None = None) -> list[str]:
                 }]
             }
 
-            with httpx.Client(timeout=15) as client:
-                response = client.post(
-                    VISION_ENDPOINT,
-                    params={"key": api_key},
-                    json=payload
-                )
-                response.raise_for_status()
+            client = get_http_client(timeout=15)
+            response = client.post(
+                VISION_ENDPOINT,
+                params={"key": api_key},
+                json=payload
+            )
+            response.raise_for_status()
 
             data = response.json()
             result = (data.get("responses") or [{}])[0]

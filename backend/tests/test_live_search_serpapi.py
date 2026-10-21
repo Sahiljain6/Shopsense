@@ -26,25 +26,26 @@ def test_serpapi_results_include_price_image_and_timestamp(monkeypatch):
     )
     calls = []
 
-    def fake_get(url, params, timeout):
-        calls.append({"url": url, "params": params, "timeout": timeout})
-        return FakeResponse({
-            "shopping_results": [{
-                "title": "Sony Wireless Headphones",
-                "link": "https://www.amazon.in/dp/B012345678",
-                "source": "Amazon.in",
-                "price": "₹8,999",
-                "extracted_price": 8999,
-                "old_price": "₹9,999",
-                "extracted_old_price": 9999,
-                "thumbnail": "https://serpapi.com/images/sony-headphones.jpg",
-                "rating": 4.5,
-                "reviews": 1204,
-                "snippet": "Wireless noise cancelling headphones",
-            }]
-        })
+    class FakeHttpClient:
+        def get(self, url, params, timeout):
+            calls.append({"url": url, "params": params, "timeout": timeout})
+            return FakeResponse({
+                "shopping_results": [{
+                    "title": "Sony Wireless Headphones",
+                    "link": "https://www.amazon.in/dp/B012345678",
+                    "source": "Amazon.in",
+                    "price": "₹8,999",
+                    "extracted_price": 8999,
+                    "old_price": "₹9,999",
+                    "extracted_old_price": 9999,
+                    "thumbnail": "https://serpapi.com/images/sony-headphones.jpg",
+                    "rating": 4.5,
+                    "reviews": 1204,
+                    "snippet": "Wireless noise cancelling headphones",
+                }]
+            })
 
-    monkeypatch.setattr(live_search.httpx, "get", fake_get)
+    monkeypatch.setattr(live_search, "get_http_client", lambda timeout: FakeHttpClient())
 
     first = live_search.search_live_deals("Sony headphones latest price", force=True)
     second = live_search.search_live_deals("Sony headphones latest price", force=True)

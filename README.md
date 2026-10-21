@@ -18,6 +18,8 @@
 - [Run locally](#run-locally)
 - [Run with Docker Compose](#run-with-docker-compose)
 - [Environment variables](#environment-variables)
+- [Production engineering roadmap](#production-engineering-roadmap)
+- [Deployment hardening](#deployment-hardening)
 - [API overview](#api-overview)
 - [Tests and code quality](#tests-and-code-quality)
 - [Repository layout](#repository-layout)
@@ -234,6 +236,10 @@ All secrets belong in backend environment variables or backend/.env, never in cl
 | SERPAPI_API_KEY | Optional | Enables structured Google Shopping results |
 | SERPAPI_LOCATION | Optional | Shopping search location; defaults to Mumbai, Maharashtra, India |
 | DATABASE_URL | Recommended | SQLAlchemy connection URL; use SQLite locally or PostgreSQL for shared deployments |
+| DB_POOL_SIZE | Optional | Base SQLAlchemy pool size for PostgreSQL; defaults to 5 |
+| DB_MAX_OVERFLOW | Optional | Temporary connections above the base pool; defaults to 10 |
+| DB_POOL_TIMEOUT_SECONDS | Optional | Maximum time to wait for a pooled DB connection; defaults to 30 seconds |
+| DB_POOL_RECYCLE_SECONDS | Optional | Recycle interval for pooled DB connections; defaults to 1800 seconds |
 | JWT_SECRET | Required in production | Signing secret for application tokens; use a private random value |
 | ENVIRONMENT | Optional | Set to production for production validation |
 | CORS_ORIGINS | Deployment-specific | Comma-separated frontend origins allowed by the API |
@@ -331,6 +337,14 @@ Shopsense/
 - A free hosted backend may be waking from an idle state.
 - Live search can add a network request on price/deal queries; repeated matching queries are cached for 15 minutes per backend process.
 - The model provider and its rate limits also affect response latency.
+
+## Production engineering roadmap
+
+The 20-part reliability and hardening plan is tracked in [docs/production-engineering-roadmap.md](./docs/production-engineering-roadmap.md). Implementation is reviewed in parts and should preserve the current shopping experience and AI-provider behavior.
+
+## Deployment hardening
+
+See [docs/deployment-hardening.md](./docs/deployment-hardening.md) for managed-host guidance, safe reverse-proxy/SSE settings for self-hosted deployments, rate-limit and quota scope, database connection-pool tuning, and product query-performance notes.
 
 ## Security and data accuracy
 

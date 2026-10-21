@@ -2,6 +2,8 @@ import logging
 from typing import Any
 import httpx
 
+from app.core.http_client import get_http_client
+
 logger = logging.getLogger("shopsense.weather")
 
 CITY_COORDINATES: dict[str, tuple[float, float]] = {
@@ -44,14 +46,14 @@ def get_weather_shopping_advice(location: str = "Mumbai") -> dict[str, Any]:
     precip = 0.0
 
     try:
-        with httpx.Client(timeout=4.0) as client:
-            resp = client.get(url)
-            if resp.status_code == 200:
-                data = resp.json()
-                current = data.get("current", {})
-                temp = float(current.get("temperature_2m", temp))
-                humidity = int(current.get("relative_humidity_2m", humidity))
-                precip = float(current.get("precipitation", precip))
+        client = get_http_client(timeout=4.0)
+        resp = client.get(url)
+        if resp.status_code == 200:
+            data = resp.json()
+            current = data.get("current", {})
+            temp = float(current.get("temperature_2m", temp))
+            humidity = int(current.get("relative_humidity_2m", humidity))
+            precip = float(current.get("precipitation", precip))
     except Exception as exc:
         logger.warning("Open-Meteo weather fetch notice for %s: %s", location, exc)
 

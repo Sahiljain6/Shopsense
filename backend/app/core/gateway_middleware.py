@@ -1,5 +1,5 @@
 import time
-from collections import defaultdict
+from threading import RLock
 from typing import Callable, Dict, List, Optional, Set
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -14,35 +14,52 @@ class SlidingWindowRateLimiter:
     In-memory thread-safe sliding-window rate limiter per user/tier.
     Can be backed by Redis in multi-node clusters.
     """
-    def __init__(self):
-        # Maps (user_id_or_ip) -> list of request timestamps within the last 60 seconds
-        self._history: Dict[str, List[float]] = defaultdict(list)
+    def __init__(self, max_identifiers: int = 10000):
+        # Maps verified user IDs or host-derived IPs to timestamps in the last minute.
+        self._history: Dict[str, List[float]] = {}
+        self._lock = RLock()
+        self._max_identifiers = max(100, int(max_identifiers))
 
     def is_rate_limited(self, identifier: str, max_requests_per_minute: int) -> tuple[bool, int, int]:
-        """
-        Returns (is_limited, current_count, retry_after_seconds)
-        """
+        """Atomically check and record a request; returns (limited, count, retry-after)."""
         now = time.time()
         window_start = now - 60.0
+        limit = max(1, int(max_requests_per_minute))
 
-        # Evict timestamps older than 60 seconds
-        timestamps = [ts for ts in self._history[identifier] if ts > window_start]
-        self._history[identifier] = timestamps
+        with self._lock:
+            timestamps = [ts for ts in self._history.get(identifier, []) if ts > window_start]
+            if timestamps:
+                self._history[identifier] = timestamps
+            else:
+                self._history.pop(identifier, None)
 
-        if len(timestamps) >= max_requests_per_minute:
-            oldest_in_window = timestamps[0]
-            retry_after = max(1, int(60.0 - (now - oldest_in_window)))
-            return True, len(timestamps), retry_after
+            if len(timestamps) >= limit:
+                retry_after = max(1, int(60.0 - (now - timestamps[0])))
+                return True, len(timestamps), retry_after
 
-        # Record this request
-        self._history[identifier].append(now)
-        return False, len(timestamps) + 1, 0
+            # Bound memory under high-cardinality unauthenticated traffic.
+            if identifier not in self._history and len(self._history) >= self._max_identifiers:
+                expired_keys = [
+                    key for key, values in self._history.items()
+                    if not values or values[-1] <= window_start
+                ]
+                for key in expired_keys:
+                    self._history.pop(key, None)
+                if len(self._history) >= self._max_identifiers:
+                    # Fail closed for new identities until a bucket expires; existing
+                    # identities retain their normal behavior and retry-after semantics.
+                    return True, 0, 60
+
+            timestamps.append(now)
+            self._history[identifier] = timestamps
+            return False, len(timestamps), 0
 
     def reset(self, identifier: Optional[str] = None):
-        if identifier:
-            self._history.pop(identifier, None)
-        else:
-            self._history.clear()
+        with self._lock:
+            if identifier:
+                self._history.pop(identifier, None)
+            else:
+                self._history.clear()
 
 
 rate_limiter = SlidingWindowRateLimiter()

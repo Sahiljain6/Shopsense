@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from app.models.entities import Product
 from app.services.search import resolve_products, CATEGORY_KEYWORDS
 
@@ -25,7 +25,7 @@ class CatalogService:
 
         if not q or not q.strip():
             try:
-                stmt = select(Product).order_by(Product.rating.desc())
+                stmt = select(Product).options(selectinload(Product.category)).order_by(Product.rating.desc())
                 if max_price is not None:
                     stmt = stmt.where(Product.price <= max_price)
                 stmt = stmt.limit(limit)
@@ -50,7 +50,7 @@ class CatalogService:
         try:
             return list(
                 self.db.scalars(
-                    select(Product).where(Product.id.in_(product_ids))
+                    select(Product).options(selectinload(Product.category)).where(Product.id.in_(product_ids))
                 ).all()
             )
         except Exception as e:

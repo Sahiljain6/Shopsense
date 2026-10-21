@@ -10,6 +10,7 @@ from app.db.session import Base, SessionLocal, engine
 from app import models  # noqa: F401
 from app.models.entities import Category, Product, Review, SeedVersion
 from app.core.config import get_settings
+from app.core.http_client import close_http_clients
 from app.core.gateway_middleware import GatewayAuthMiddleware
 
 Base.metadata.create_all(bind=engine)
@@ -594,6 +595,7 @@ settings = get_settings()
 limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 
 app = FastAPI(title="ShopSense API - India Edition", version="1.1.0")
+app.add_event_handler("shutdown", close_http_clients)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

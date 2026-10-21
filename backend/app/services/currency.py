@@ -1,4 +1,6 @@
 import httpx
+
+from app.core.http_client import get_http_client
 from functools import lru_cache
 
 FALLBACK_RATES = {
@@ -28,13 +30,13 @@ def convert_price(amount: float, from_curr: str = "USD", to_curr: str = "INR") -
     # Frankfurter supports EUR, USD, GBP, JPY, CAD, AUD, etc.
     try:
         url = f"https://api.frankfurter.app/latest?amount={amount}&from={from_curr}&to={to_curr}"
-        with httpx.Client(timeout=5) as client:
-            resp = client.get(url)
-            if resp.status_code == 200:
-                data = resp.json()
-                rates = data.get("rates", {})
-                if to_curr in rates:
-                    return round(float(rates[to_curr]), 2)
+        client = get_http_client(timeout=5)
+        resp = client.get(url)
+        if resp.status_code == 200:
+            data = resp.json()
+            rates = data.get("rates", {})
+            if to_curr in rates:
+                return round(float(rates[to_curr]), 2)
     except Exception as error:
         pass
 
