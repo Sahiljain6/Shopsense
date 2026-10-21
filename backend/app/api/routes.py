@@ -552,6 +552,7 @@ def chat(
             except Exception as err:
                 logger.warning(f"Notice: unable to assemble conversation context for {payload.conversation_id}: {err}")
 
+        generation_succeeded = False
         try:
             response = AIOrchestrator(db).answer_via_agents(
                 payload.message,
@@ -560,11 +561,12 @@ def chat(
                 cart=payload.cart,
                 model=payload.model,
             )
+            generation_succeeded = True
             tokens_consumed = max(50, (len(payload.message) + len(response.answer)) // 4 + 50)
             quota_engine.record_usage(user.id, tokens_consumed)
         except Exception as err:
             db.rollback()
-            print(f"Error during AIOrchestrator.answer: {err}")
+            logger.warning("AI chat generation failed; returning a retryable fallback response: %s", type(err).__name__)
             response = ChatResponse(
                 answer="I ran into a temporary issue retrieving product data. Please try asking again in a moment."
             )
@@ -577,7 +579,11 @@ def chat(
             except Exception as e:
                 logger.warning("Notice attaching product models to chat response: %s", e)
 
-        _complete_chat_idempotency(db, user.id, payload, response)
+        if generation_succeeded:
+            _complete_chat_idempotency(db, user.id, payload, response)
+        else:
+            # Do not memoize a transient provider error as a successful answer.
+            _release_chat_idempotency(db, user.id, payload.idempotency_key)
 
         # Save chat history in an isolated transaction so history logging never crashes the response
         try:
