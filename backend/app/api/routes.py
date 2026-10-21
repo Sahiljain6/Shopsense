@@ -532,9 +532,9 @@ def chat(
     idempotency_state, cached_response = _claim_chat_idempotency(db, user.id, payload)
     if cached_response is not None:
         return cached_response
-    _enforce_chat_quota(context)
 
     try:
+        _enforce_chat_quota(context)
         history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
         context_plan = None
 
@@ -647,7 +647,11 @@ async def chat_stream(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
         )
-    _enforce_chat_quota(context)
+    try:
+        _enforce_chat_quota(context)
+    except Exception:
+        _release_chat_idempotency(db, user.id, payload.idempotency_key)
+        raise
 
     idempotency_completed = False
     history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
