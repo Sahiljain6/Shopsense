@@ -109,6 +109,17 @@ def test_stale_in_progress_claim_can_be_recovered(db_session):
     assert record.updated_at > datetime.utcnow() - timedelta(minutes=1)
 
 
+def test_request_accepts_uuid_style_idempotency_key():
+    payload = ChatRequest(message="Find running shoes", idempotency_key="7a9f2c30-7d4a-4f61-962f-c7a8bb7a1f11")
+    assert payload.idempotency_key == "7a9f2c30-7d4a-4f61-962f-c7a8bb7a1f11"
+
+
+@pytest.mark.parametrize("invalid_key", ["short", "contains spaces", "bad/key", "x" * 129])
+def test_request_rejects_malformed_idempotency_key(invalid_key):
+    with pytest.raises(Exception):
+        ChatRequest(message="Find running shoes", idempotency_key=invalid_key)
+
+
 def test_legacy_request_without_key_remains_supported(db_session):
     user = _user(db_session, "idempotency-legacy@example.com")
     payload = ChatRequest(message="Recommend a backpack")
