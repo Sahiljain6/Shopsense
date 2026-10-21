@@ -181,20 +181,20 @@ def _release_chat_idempotency(db: Session, user_id: int, key: str | None) -> Non
 
 async def _replay_chat_response_events(response: ChatResponse):
     """Replay a cached result using the same SSE event shape as a fresh response."""
-    yield f"data: {json.dumps({'type': 'status', 'status': 'Restoring completed response...'})}\\n\\n"
+    yield f"data: {json.dumps({'type': 'status', 'status': 'Restoring completed response...'})}\n\n"
     words = (response.answer or "").split(" ")
     chunk_size = 4
     for i in range(0, len(words), chunk_size):
         chunk = " ".join(words[i:i + chunk_size])
         if i + chunk_size < len(words):
             chunk += " "
-        yield f"data: {json.dumps({'type': 'token', 'token': chunk, 'chunk': chunk})}\\n\\n"
+        yield f"data: {json.dumps({'type': 'token', 'token': chunk, 'chunk': chunk})}\n\n"
     if response.products:
-        yield f"data: {json.dumps({'type': 'products', 'products': [p.model_dump() for p in response.products], 'product_ids': response.product_ids})}\\n\\n"
+        yield f"data: {json.dumps({'type': 'products', 'products': [p.model_dump() for p in response.products], 'product_ids': response.product_ids})}\n\n"
     if response.live_deals:
-        yield f"data: {json.dumps({'type': 'live_deals', 'live_deals': [d.model_dump() for d in response.live_deals]})}\\n\\n"
-    yield f"data: {json.dumps({'type': 'done', 'response': response.model_dump(mode='json')})}\\n\\n"
-    yield "data: [DONE]\\n\\n"
+        yield f"data: {json.dumps({'type': 'live_deals', 'live_deals': [d.model_dump() for d in response.live_deals]})}\n\n"
+    yield f"data: {json.dumps({'type': 'done', 'response': response.model_dump(mode='json')})}\n\n"
+    yield "data: [DONE]\n\n"
 
 
 def _product_read(product: Product) -> ProductRead:
@@ -746,8 +746,8 @@ async def chat_stream(
             if not idempotency_completed:
                 _release_chat_idempotency(db, user.id, payload.idempotency_key)
             logger.exception("Error in chat stream: %s", exc)
-            yield f"data: {json.dumps({'type': 'error', 'error': 'The chat request could not be completed.'})}\\n\\n"
-            yield "data: [DONE]\\n\\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': 'The chat request could not be completed.'})}\n\n"
+            yield "data: [DONE]\n\n"
         finally:
             if not idempotency_completed:
                 _release_chat_idempotency(db, user.id, payload.idempotency_key)
