@@ -4,6 +4,8 @@ import logging
 from typing import Any
 import httpx
 
+from app.core.http_client import get_http_client
+
 from app.core.config import get_settings
 
 logger = logging.getLogger("shopsense.logistics")
@@ -88,35 +90,35 @@ def lookup_pincode(pincode: str) -> dict[str, Any]:
     delivery_status = "Deliverable"
 
     try:
-        with httpx.Client(timeout=4.0) as client:
-            resp = client.get(url, headers=headers, params=params if params else None)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list) and len(data) > 0:
-                    first_node = data[0] if isinstance(data[0], dict) else {}
-                    if first_node.get("Status") == "Success" or "PostOffice" in first_node:
-                        po_list = first_node.get("PostOffice") or []
-                        if po_list and isinstance(po_list, list) and len(po_list) > 0:
-                            first_po = po_list[0]
-                            district = first_po.get("District") or first_po.get("district") or ""
-                            state = first_po.get("State") or first_po.get("state") or ""
-                            post_office = first_po.get("Name") or first_po.get("name") or ""
-                            delivery_status = first_po.get("DeliveryStatus") or first_po.get("delivery_status") or "Deliverable"
-                elif isinstance(data, dict):
-                    po_list = data.get("PostOffice") or data.get("post_office") or data.get("places") or data.get("data")
-                    if isinstance(po_list, list) and len(po_list) > 0:
+        client = get_http_client(timeout=4.0)
+        resp = client.get(url, headers=headers, params=params if params else None)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, list) and len(data) > 0:
+                first_node = data[0] if isinstance(data[0], dict) else {}
+                if first_node.get("Status") == "Success" or "PostOffice" in first_node:
+                    po_list = first_node.get("PostOffice") or []
+                    if po_list and isinstance(po_list, list) and len(po_list) > 0:
                         first_po = po_list[0]
-                        if isinstance(first_po, dict):
-                            district = first_po.get("District") or first_po.get("district") or ""
-                            state = first_po.get("State") or first_po.get("state") or ""
-                            post_office = first_po.get("Name") or first_po.get("name") or ""
-                            delivery_status = first_po.get("DeliveryStatus") or first_po.get("delivery_status") or "Deliverable"
-                    if not district:
-                        district = data.get("district") or data.get("District") or data.get("city") or data.get("City") or ""
-                    if not state:
-                        state = data.get("state") or data.get("State") or ""
-                    if not post_office:
-                        post_office = data.get("post_office") or data.get("name") or data.get("Name") or ""
+                        district = first_po.get("District") or first_po.get("district") or ""
+                        state = first_po.get("State") or first_po.get("state") or ""
+                        post_office = first_po.get("Name") or first_po.get("name") or ""
+                        delivery_status = first_po.get("DeliveryStatus") or first_po.get("delivery_status") or "Deliverable"
+            elif isinstance(data, dict):
+                po_list = data.get("PostOffice") or data.get("post_office") or data.get("places") or data.get("data")
+                if isinstance(po_list, list) and len(po_list) > 0:
+                    first_po = po_list[0]
+                    if isinstance(first_po, dict):
+                        district = first_po.get("District") or first_po.get("district") or ""
+                        state = first_po.get("State") or first_po.get("state") or ""
+                        post_office = first_po.get("Name") or first_po.get("name") or ""
+                        delivery_status = first_po.get("DeliveryStatus") or first_po.get("delivery_status") or "Deliverable"
+                if not district:
+                    district = data.get("district") or data.get("District") or data.get("city") or data.get("City") or ""
+                if not state:
+                    state = data.get("state") or data.get("State") or ""
+                if not post_office:
+                    post_office = data.get("post_office") or data.get("name") or data.get("Name") or ""
     except Exception as exc:
         logger.warning("Pincode API lookup notice for %s: %s", clean_pin, exc)
 
