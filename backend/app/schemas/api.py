@@ -1,3 +1,4 @@
+import re
 from enum import Enum
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -105,6 +106,22 @@ class ChatRequest(BaseModel):
     cart: list[dict[str, object]] = Field(default_factory=list)
     model: str | None = "Sonnet 4.5"
     conversation_id: str | None = None
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=128,
+        description="Optional key reused only for retries of the same chat submission",
+    )
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_idempotency_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not re.fullmatch(r"[A-Za-z0-9._:-]{8,128}", value):
+            raise ValueError("idempotency_key must be 8-128 characters using letters, digits, '.', '_', ':', or '-'.")
+        return value
 
 
 class LiveDeal(BaseModel):
