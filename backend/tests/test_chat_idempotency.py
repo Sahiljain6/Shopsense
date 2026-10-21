@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.api.routes import _claim_chat_idempotency, _complete_chat_idempotency
@@ -116,7 +117,7 @@ def test_request_accepts_uuid_style_idempotency_key():
 
 @pytest.mark.parametrize("invalid_key", ["short", "contains spaces", "bad/key", "x" * 129])
 def test_request_rejects_malformed_idempotency_key(invalid_key):
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         ChatRequest(message="Find running shoes", idempotency_key=invalid_key)
 
 
