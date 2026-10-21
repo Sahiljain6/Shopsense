@@ -1,7 +1,9 @@
 import asyncio
+import hashlib
 import json
 import logging
 import time
+from datetime import datetime, timedelta
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -9,7 +11,8 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.auth_types import Scope, SecurityContext, UserTier
@@ -32,7 +35,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db
-from app.models.entities import ChatHistory, Order, Product, Review, SeedVersion, User, Wishlist
+from app.models.entities import ChatHistory, ChatIdempotency, Order, Product, Review, SeedVersion, User, Wishlist
 from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, GoogleAuthRequest, PriceHistoryResponse, ProductCreate, ProductRead, RefreshTokenRequest, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
 from app.services.ai import AIOrchestrator
 from app.services.barcode_lookup import lookup_barcode
@@ -48,6 +51,150 @@ from app.services.conversation_service import ConversationService
 logger = logging.getLogger("shopsense.api")
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
+
+
+CHAT_IDEMPOTENCY_TTL = timedelta(hours=24)
+CHAT_IDEMPOTENCY_STALE_AFTER = timedelta(minutes=3)
+
+
+def _chat_request_fingerprint(payload: ChatRequest) -> str:
+    """Fingerprint the semantic request without its idempotency key."""
+    request_data = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    canonical = json.dumps(request_data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _claim_chat_idempotency(
+    db: Session, user_id: int, payload: ChatRequest
+) -> tuple[str, ChatResponse | None]:
+    """Claim a chat operation or return its completed response for a safe retry."""
+    key = payload.idempotency_key
+    if not key:
+        return "new", None
+
+    fingerprint = _chat_request_fingerprint(payload)
+    now = datetime.utcnow()
+    db.execute(delete(ChatIdempotency).where(ChatIdempotency.expires_at <= now))
+    db.commit()
+
+    for _attempt in range(3):
+        record = db.scalar(
+            select(ChatIdempotency)
+            .where(ChatIdempotency.user_id == user_id, ChatIdempotency.key == key)
+            .with_for_update()
+        )
+        if record is not None:
+            if record.request_hash != fingerprint:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This idempotency key was already used for a different chat request.",
+                )
+            if record.status == "completed" and record.response_payload is not None:
+                return "replay", ChatResponse.model_validate(record.response_payload)
+
+            age = now - record.updated_at if record.updated_at else CHAT_IDEMPOTENCY_STALE_AFTER
+            if record.status == "processing" and age <= CHAT_IDEMPOTENCY_STALE_AFTER:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This chat request is already processing. Retry with the same idempotency key.",
+                )
+
+            previous_updated_at = record.updated_at
+            result = db.execute(
+                update(ChatIdempotency)
+                .where(
+                    ChatIdempotency.id == record.id,
+                    ChatIdempotency.status == record.status,
+                    ChatIdempotency.updated_at == previous_updated_at,
+                )
+                .values(
+                    status="processing",
+                    response_payload=None,
+                    updated_at=now,
+                    expires_at=now + CHAT_IDEMPOTENCY_TTL,
+                )
+            )
+            db.commit()
+            if result.rowcount == 1:
+                return "new", None
+            db.expire_all()
+            continue
+
+        record = ChatIdempotency(
+            user_id=user_id,
+            key=key,
+            request_hash=fingerprint,
+            status="processing",
+            created_at=now,
+            updated_at=now,
+            expires_at=now + CHAT_IDEMPOTENCY_TTL,
+        )
+        db.add(record)
+        try:
+            db.commit()
+            return "new", None
+        except IntegrityError:
+            db.rollback()
+
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Unable to claim this chat request safely. Retry with the same idempotency key.",
+    )
+
+
+def _complete_chat_idempotency(
+    db: Session, user_id: int, payload: ChatRequest, response: ChatResponse
+) -> None:
+    if not payload.idempotency_key:
+        return
+    record = db.scalar(
+        select(ChatIdempotency).where(
+            ChatIdempotency.user_id == user_id,
+            ChatIdempotency.key == payload.idempotency_key,
+        )
+    )
+    if record is None:
+        return
+    record.status = "completed"
+    record.response_payload = response.model_dump(mode="json")
+    record.updated_at = datetime.utcnow()
+    record.expires_at = record.updated_at + CHAT_IDEMPOTENCY_TTL
+    db.commit()
+
+
+def _release_chat_idempotency(db: Session, user_id: int, key: str | None) -> None:
+    """Release only unfinished claims so callers may retry after a failed attempt."""
+    if not key:
+        return
+    try:
+        db.execute(
+            delete(ChatIdempotency).where(
+                ChatIdempotency.user_id == user_id,
+                ChatIdempotency.key == key,
+                ChatIdempotency.status == "processing",
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+async def _replay_chat_response_events(response: ChatResponse):
+    """Replay a cached result using the same SSE event shape as a fresh response."""
+    yield f"data: {json.dumps({'type': 'status', 'status': 'Restoring completed response...'})}\\n\\n"
+    words = (response.answer or "").split(" ")
+    chunk_size = 4
+    for i in range(0, len(words), chunk_size):
+        chunk = " ".join(words[i:i + chunk_size])
+        if i + chunk_size < len(words):
+            chunk += " "
+        yield f"data: {json.dumps({'type': 'token', 'token': chunk, 'chunk': chunk})}\\n\\n"
+    if response.products:
+        yield f"data: {json.dumps({'type': 'products', 'products': [p.model_dump() for p in response.products], 'product_ids': response.product_ids})}\\n\\n"
+    if response.live_deals:
+        yield f"data: {json.dumps({'type': 'live_deals', 'live_deals': [d.model_dump() for d in response.live_deals]})}\\n\\n"
+    yield f"data: {json.dumps({'type': 'done', 'response': response.model_dump(mode='json')})}\\n\\n"
+    yield "data: [DONE]\\n\\n"
 
 
 def _product_read(product: Product) -> ProductRead:
@@ -346,77 +493,87 @@ def chat(
                 },
             )
 
-    history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
-    context_plan = None
-
-    if payload.conversation_id:
-        try:
-            cwm = ContextWindowManager(model_name=payload.model or "default")
-            context_plan = cwm.assemble_conversation_context(
-                db=db,
-                conversation_id=payload.conversation_id,
-                current_query=payload.message,
-            )
-            # Use assembled messages as history (excluding current user turn)
-            assembled = context_plan["assembled_messages"]
-            history = [m for m in assembled if m["role"] != "user" or m["content"] != payload.message]
-        except Exception as err:
-            logger.warning(f"Notice: unable to assemble conversation context for {payload.conversation_id}: {err}")
+    idempotency_state, cached_response = _claim_chat_idempotency(db, user.id, payload)
+    if cached_response is not None:
+        return cached_response
 
     try:
-        response = AIOrchestrator(db).answer_via_agents(
-            payload.message,
-            payload.mode,
-            history,
-            cart=payload.cart,
-            model=payload.model,
-        )
-        tokens_consumed = max(50, (len(payload.message) + len(response.answer)) // 4 + 50)
-        quota_engine.record_usage(user.id, tokens_consumed)
-    except Exception as err:
-        db.rollback()
-        print(f"Error during AIOrchestrator.answer: {err}")
-        response = ChatResponse(
-            answer="I ran into a temporary issue retrieving product data. Please try asking again in a moment."
-        )
+        history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
+        context_plan = None
 
-    # Attach full product schemas so frontend does not need a second roundtrip
-    if response.product_ids and not response.products:
+        if payload.conversation_id:
+            try:
+                cwm = ContextWindowManager(model_name=payload.model or "default")
+                context_plan = cwm.assemble_conversation_context(
+                    db=db,
+                    conversation_id=payload.conversation_id,
+                    current_query=payload.message,
+                )
+                # Use assembled messages as history (excluding current user turn)
+                assembled = context_plan["assembled_messages"]
+                history = [m for m in assembled if m["role"] != "user" or m["content"] != payload.message]
+            except Exception as err:
+                logger.warning(f"Notice: unable to assemble conversation context for {payload.conversation_id}: {err}")
+
         try:
-            prod_entities = CatalogService(db).get_many(response.product_ids)
-            response.products = [_product_read(p) for p in prod_entities]
-        except Exception as e:
-            logger.warning("Notice attaching product models to chat response: %s", e)
-
-    # Save chat history in an isolated transaction so history logging never crashes the response
-    try:
-        db.add(ChatHistory(user_id=user.id, message=payload.message, response=response.model_dump()))
-        db.commit()
-    except Exception as err:
-        db.rollback()
-        print(f"Notice: unable to save chat history: {err}")
-
-    # Persist turns into stateful conversation management system if conversation_id provided
-    if payload.conversation_id:
-        try:
-            ConversationService.add_message(
-                db=db,
-                conversation_id=payload.conversation_id,
-                role="user",
-                content=payload.message,
+            response = AIOrchestrator(db).answer_via_agents(
+                payload.message,
+                payload.mode,
+                history,
+                cart=payload.cart,
+                model=payload.model,
             )
-            ConversationService.add_message(
-                db=db,
-                conversation_id=payload.conversation_id,
-                role="assistant",
-                content=response.answer,
-            )
-            if context_plan and context_plan.get("needs_summarization"):
-                SummarizationService.execute_summarization(db=db, conversation_id=payload.conversation_id)
+            tokens_consumed = max(50, (len(payload.message) + len(response.answer)) // 4 + 50)
+            quota_engine.record_usage(user.id, tokens_consumed)
         except Exception as err:
-            logger.warning(f"Notice: unable to persist stateful conversation turns: {err}")
+            db.rollback()
+            print(f"Error during AIOrchestrator.answer: {err}")
+            response = ChatResponse(
+                answer="I ran into a temporary issue retrieving product data. Please try asking again in a moment."
+            )
 
-    return response
+        # Attach full product schemas so frontend does not need a second roundtrip
+        if response.product_ids and not response.products:
+            try:
+                prod_entities = CatalogService(db).get_many(response.product_ids)
+                response.products = [_product_read(p) for p in prod_entities]
+            except Exception as e:
+                logger.warning("Notice attaching product models to chat response: %s", e)
+
+        _complete_chat_idempotency(db, user.id, payload, response)
+
+        # Save chat history in an isolated transaction so history logging never crashes the response
+        try:
+            db.add(ChatHistory(user_id=user.id, message=payload.message, response=response.model_dump()))
+            db.commit()
+        except Exception as err:
+            db.rollback()
+            print(f"Notice: unable to save chat history: {err}")
+
+        # Persist turns into stateful conversation management system if conversation_id provided
+        if payload.conversation_id:
+            try:
+                ConversationService.add_message(
+                    db=db,
+                    conversation_id=payload.conversation_id,
+                    role="user",
+                    content=payload.message,
+                )
+                ConversationService.add_message(
+                    db=db,
+                    conversation_id=payload.conversation_id,
+                    role="assistant",
+                    content=response.answer,
+                )
+                if context_plan and context_plan.get("needs_summarization"):
+                    SummarizationService.execute_summarization(db=db, conversation_id=payload.conversation_id)
+            except Exception as err:
+                logger.warning(f"Notice: unable to persist stateful conversation turns: {err}")
+
+        return response
+    except Exception:
+        _release_chat_idempotency(db, user.id, payload.idempotency_key)
+        raise
 
 
 @router.post("/chat/stream")
@@ -446,6 +603,15 @@ async def chat_stream(
             },
         )
 
+    idempotency_state, cached_response = _claim_chat_idempotency(db, user.id, payload)
+    if cached_response is not None:
+        return StreamingResponse(
+            _replay_chat_response_events(cached_response),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        )
+
+    idempotency_completed = False
     history = [{"role": turn.role, "content": turn.content} for turn in payload.history]
     context_plan = None
     if payload.conversation_id:
@@ -462,6 +628,7 @@ async def chat_stream(
             logger.warning(f"Notice: unable to assemble conversation context for {payload.conversation_id}: {err}")
 
     async def event_generator():
+        nonlocal idempotency_completed
         try:
             stream_started = time.perf_counter()
             # 1. Initial status event
@@ -507,6 +674,40 @@ async def chat_stream(
                 len(response.products or []),
             )
 
+            tokens_consumed = max(50, (len(payload.message) + len(response.answer)) // 4 + 50)
+            quota_engine.record_usage(user.id, tokens_consumed)
+
+            try:
+                db.add(ChatHistory(user_id=user.id, message=payload.message, response=response.model_dump()))
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.warning(f"Notice saving chat history: {e}")
+
+            if payload.conversation_id:
+                try:
+                    ConversationService.add_message(
+                        db=db,
+                        conversation_id=payload.conversation_id,
+                        role="user",
+                        content=payload.message,
+                    )
+                    ConversationService.add_message(
+                        db=db,
+                        conversation_id=payload.conversation_id,
+                        role="assistant",
+                        content=response.answer,
+                    )
+                    if context_plan and context_plan.get("needs_summarization"):
+                        SummarizationService.execute_summarization(db=db, conversation_id=payload.conversation_id)
+                except Exception as e:
+                    logger.warning(f"Notice persisting stateful turns: {e}")
+
+            # Store the final result before emitting chunks so a retry can replay it.
+            _complete_chat_idempotency(db, user.id, payload, response)
+            idempotency_completed = True
+
+
             # 4. The provider returns a complete answer today; do not add artificial chunk waits.
             token_delivery_started = time.perf_counter()
             full_text = response.answer or ""
@@ -540,40 +741,16 @@ async def chat_stream(
             yield f"data: {json.dumps({'type': 'done', 'response': resp_dict})}\n\n"
             yield "data: [DONE]\n\n"
 
-            # 7. Record quota and log history
-            tokens_consumed = max(50, (len(payload.message) + len(response.answer)) // 4 + 50)
-            quota_engine.record_usage(user.id, tokens_consumed)
-
-            try:
-                db.add(ChatHistory(user_id=user.id, message=payload.message, response=response.model_dump()))
-                db.commit()
-            except Exception as e:
-                db.rollback()
-                logger.warning(f"Notice saving chat history: {e}")
-
-            if payload.conversation_id:
-                try:
-                    ConversationService.add_message(
-                        db=db,
-                        conversation_id=payload.conversation_id,
-                        role="user",
-                        content=payload.message,
-                    )
-                    ConversationService.add_message(
-                        db=db,
-                        conversation_id=payload.conversation_id,
-                        role="assistant",
-                        content=response.answer,
-                    )
-                    if context_plan and context_plan.get("needs_summarization"):
-                        SummarizationService.execute_summarization(db=db, conversation_id=payload.conversation_id)
-                except Exception as e:
-                    logger.warning(f"Notice persisting stateful turns: {e}")
 
         except Exception as exc:
+            if not idempotency_completed:
+                _release_chat_idempotency(db, user.id, payload.idempotency_key)
             logger.exception("Error in chat stream: %s", exc)
-            yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
-            yield "data: [DONE]\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': 'The chat request could not be completed.'})}\\n\\n"
+            yield "data: [DONE]\\n\\n"
+        finally:
+            if not idempotency_completed:
+                _release_chat_idempotency(db, user.id, payload.idempotency_key)
 
     return StreamingResponse(
         event_generator(),
