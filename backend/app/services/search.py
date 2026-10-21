@@ -2,7 +2,7 @@ import difflib
 import re
 from dataclasses import dataclass
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from app.models.entities import Category, Product
 
 
@@ -193,7 +193,7 @@ def resolve_products(
             ).first()
 
             if matched_cat:
-                stmt = select(Product).where(Product.category_id == matched_cat.id)
+                stmt = select(Product).options(selectinload(Product.category)).where(Product.category_id == matched_cat.id)
                 if budget is not None:
                     stmt = stmt.where(Product.price <= budget)
 
@@ -277,7 +277,7 @@ def resolve_products(
         ]
 
         if terms:
-            fallback_stmt = select(Product)
+            fallback_stmt = select(Product).options(selectinload(Product.category))
             if budget is not None:
                 fallback_stmt = fallback_stmt.where(Product.price <= budget)
 
