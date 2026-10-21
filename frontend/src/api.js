@@ -86,22 +86,48 @@ export async function apiFetch(path, options = {}) {
     headers["X-CSRF-Token"] = csrfToken;
   }
 
-  const maxRetries = options.retries ?? 1;
-  const onStatusChange = options.onStatusChange;
+  const {
+    retries: retryCount,
+    onStatusChange,
+    timeoutMs: attemptTimeoutOverride,
+    totalTimeoutMs: totalTimeoutOverride,
+    signal: callerSignal,
+    ...fetchOptions
+  } = options;
+  const maxRetries = retryCount ?? 1;
+  // Keep the existing 35s/65s wake-up windows, but prevent retries from stacking
+  // beyond one overall budget. Callers can lower either budget for short endpoints.
+  const totalTimeoutMs = Math.max(1, Number(totalTimeoutOverride ?? 105000) || 105000);
+  const deadlineAt = Date.now() + totalTimeoutMs;
+  const totalTimeoutMessage = "The request exceeded its overall time budget. Please try again.";
 
   let attempt = 0;
   while (attempt <= maxRetries) {
-    // 35s on first attempt, 65s on second attempt to accommodate Render free-tier spin-up
-    const timeoutMs = attempt === 0 ? 35000 : 65000;
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 0) throw new ApiError(408, totalTimeoutMessage);
+
+    // Preserve the Render wake-up allowance unless the overall deadline is closer.
+    const attemptDefaultMs = attempt === 0 ? 35000 : 65000;
+    const configuredAttemptMs = Number(attemptTimeoutOverride ?? attemptDefaultMs) || attemptDefaultMs;
+    const timeoutMs = Math.max(1, Math.min(configuredAttemptMs, remainingMs));
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    let timedOut = false;
+    const abortFromCaller = () => controller.abort(callerSignal?.reason);
+    if (callerSignal) {
+      if (callerSignal.aborted) abortFromCaller();
+      else callerSignal.addEventListener("abort", abortFromCaller, { once: true });
+    }
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
 
     try {
       if (attempt > 0 && onStatusChange) {
         onStatusChange("waking");
       }
       const response = await fetch(`${API_URL}${path}`, {
-        ...options,
+        ...fetchOptions,
         credentials: "include",
         headers,
         signal: controller.signal,
@@ -112,7 +138,8 @@ export async function apiFetch(path, options = {}) {
         if (attempt < maxRetries && [502, 503, 504].includes(response.status)) {
           attempt++;
           if (onStatusChange) onStatusChange("waking");
-          await new Promise((resolve) => setTimeout(resolve, 3000));
+          const retryDelayMs = Math.min(3000, Math.max(0, deadlineAt - Date.now()));
+          if (retryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
           continue;
         }
         if (response.status === 401) {
@@ -125,10 +152,12 @@ export async function apiFetch(path, options = {}) {
       }
       return await response.json();
     } catch (error) {
+      // A UI-initiated abort is intentional and must not trigger an automatic retry.
+      if (callerSignal?.aborted) throw error;
       if (error instanceof ApiError && ![502, 503, 504].includes(error.status)) {
         throw error;
       }
-      const isTimeout = error instanceof DOMException && error.name === "AbortError";
+      const isTimeout = timedOut || (error instanceof DOMException && error.name === "AbortError");
       const isNetworkError =
         error instanceof TypeError ||
         error.name === "TypeError" ||
@@ -140,7 +169,8 @@ export async function apiFetch(path, options = {}) {
       ) {
         attempt++;
         if (onStatusChange) onStatusChange("waking");
-        await new Promise((resolve) => setTimeout(resolve, 2500));
+        const retryDelayMs = Math.min(2500, Math.max(0, deadlineAt - Date.now()));
+        if (retryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
         continue;
       }
 
@@ -159,6 +189,7 @@ export async function apiFetch(path, options = {}) {
       );
     } finally {
       clearTimeout(timeoutId);
+      if (callerSignal) callerSignal.removeEventListener("abort", abortFromCaller);
     }
   }
 }
