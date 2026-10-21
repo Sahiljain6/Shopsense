@@ -37,6 +37,10 @@ def ensure_db_override():
 def reset_db() -> None:
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    # The quota engine has its own SessionLocal bound to the same configured URL.
+    # Clear it between isolated tests so reused user IDs cannot leak test usage.
+    from app.core.quota import quota_engine
+    quota_engine.reset_all()
 
 
 @pytest.fixture()
