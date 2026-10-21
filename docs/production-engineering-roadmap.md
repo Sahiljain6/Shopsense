@@ -2,7 +2,9 @@
 
 **Project:** [ShopSense](https://github.com/Sahiljain6/Shopsense) — React + Vite frontend, FastAPI backend, SQLAlchemy storage, AI shopping assistant, and optional SerpApi live retailer search.
 
-**Status:** Part 1 is implemented on the feature branch and awaiting CI/review. Parts 2–20 are plans, not claims that those changes already exist.
+**Status:** Part 1 is in its own pull request. Parts 2–5 are implemented together on `feature/parts-02-05-performance` and await CI/review. Parts 6–20 remain planned work.
+
+**Part 2–5 implementation notes:** monthly token usage and active reservations are database-backed and atomic on SQLite/PostgreSQL; the sliding-window request limiter is thread-safe and memory-bounded but remains process-local; managed-host deployments do not get an unnecessary extra reverse proxy; PostgreSQL pool settings and reusable outbound HTTP clients are bounded; product/category queries use eager loading to avoid N+1 category reads. See [docs/deployment-hardening.md](./deployment-hardening.md).
 
 ## Implementation guardrails
 
