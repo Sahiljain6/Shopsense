@@ -1,6 +1,6 @@
 import secrets
 from functools import lru_cache
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     pincode_api_url: str = ""
 
     database_url: str = "sqlite:///./shopsense.db"
+    db_pool_size: int = Field(default=5, ge=1, le=30)
+    db_max_overflow: int = Field(default=10, ge=0, le=50)
+    db_pool_timeout_seconds: int = Field(default=30, ge=1, le=120)
+    db_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86400)
 
     jwt_secret: str = ""
     pinecone_api_key: str = ""
