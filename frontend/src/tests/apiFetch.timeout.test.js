@@ -62,3 +62,25 @@ test("an attempt timeout returns a bounded 408 error", async () => {
     restoreStorage();
   }
 });
+
+
+test("retry pauses cannot stretch a request beyond the total deadline", async () => {
+  const restoreStorage = installLocalStorage();
+  const previousFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response("", { status: 503, statusText: "Unavailable" });
+  };
+
+  try {
+    await assert.rejects(
+      apiFetch("/health", { retries: 1, timeoutMs: 100, totalTimeoutMs: 20 }),
+      (error) => error instanceof ApiError && error.status === 408
+    );
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreStorage();
+  }
+});
