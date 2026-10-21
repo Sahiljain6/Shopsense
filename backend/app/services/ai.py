@@ -600,6 +600,8 @@ class AIOrchestrator:
         self.catalog = CatalogService(db)
 
         settings = get_settings()
+        provider_timeout = float(getattr(settings, "ai_provider_timeout_seconds", 30))
+        self._provider_chain_timeout = float(getattr(settings, "ai_provider_chain_timeout_seconds", 75))
 
         self.client = None
         self.provider: str | None = None
@@ -617,7 +619,7 @@ class AIOrchestrator:
 
         if openai_key and openai_key.strip():
             clean_key = openai_key.strip().strip("'").strip('"')
-            self.client = OpenAI(api_key=clean_key)
+            self.client = OpenAI(api_key=clean_key, timeout=provider_timeout, max_retries=0)
             self.provider = "openai"
             self.model = settings.openai_model or "gpt-4o-mini"
 
@@ -635,7 +637,9 @@ class AIOrchestrator:
             clean_key = groq_key.strip().strip("'").strip('"')
             self.client = OpenAI(
                 base_url="https://api.groq.com/openai/v1",
-                api_key=clean_key
+                api_key=clean_key,
+                timeout=provider_timeout,
+                max_retries=0,
             )
             self.provider = "groq"
             self.active_models = get_active_models_nonblocking("groq", clean_key)
@@ -651,7 +655,8 @@ class AIOrchestrator:
                 host="https://ollama.com",
                 headers={
                     "Authorization": f"Bearer {clean_key}"
-                }
+                },
+                timeout=provider_timeout,
             )
             self.provider = "ollama"
             self.model = settings.ollama_model
@@ -663,7 +668,15 @@ class AIOrchestrator:
         user: str,
         history: list[dict[str, str]] | None = None
     ) -> str | None:
-        """Call whichever provider is configured (Hugging Face Multi-Model, Gemini, OpenAI, Groq, Ollama)."""
+        """Call the configured provider within one bounded provider/model-fallback budget."""
+
+        settings = get_settings()
+        provider_deadline = time.monotonic() + float(
+            getattr(settings, "ai_provider_chain_timeout_seconds", 75)
+        )
+        configured_attempt_timeout = float(
+            getattr(settings, "ai_provider_timeout_seconds", 30)
+        )
 
         # 1. Try Hugging Face Multi-Model Serverless API (via new router.huggingface.co)
         if self.hf_token or self.provider == "huggingface":
@@ -685,6 +698,10 @@ class AIOrchestrator:
 
                 import httpx
                 for model_name in hf_models:
+                    remaining = provider_deadline - time.monotonic()
+                    if remaining <= 0:
+                        logger.warning("AI provider budget exhausted provider=huggingface")
+                        break
                     url = "https://router.huggingface.co/v1/chat/completions"
                     payload = {
                         "model": model_name,
@@ -693,7 +710,7 @@ class AIOrchestrator:
                         "temperature": 0.3
                     }
                     try:
-                        with httpx.Client(timeout=12) as client:
+                        with httpx.Client(timeout=min(12.0, remaining)) as client:
                             resp = client.post(url, headers=headers, json=payload)
                             if resp.status_code == 200:
                                 data = resp.json()
@@ -712,6 +729,10 @@ class AIOrchestrator:
             import httpx
             _gemini_chat_timeout = httpx.Timeout(connect=1.5, read=2.5, write=1.5, pool=1.0)
             for model_name in models_to_try:
+                remaining = provider_deadline - time.monotonic()
+                if remaining <= 0:
+                    logger.warning("AI provider budget exhausted provider=gemini")
+                    break
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_api_key}"
                 payload = {
                     "system_instruction": {
@@ -720,7 +741,13 @@ class AIOrchestrator:
                     "contents": gemini_contents
                 }
                 try:
-                    with httpx.Client(timeout=_gemini_chat_timeout) as client:
+                    request_timeout = httpx.Timeout(
+                        connect=min(1.5, remaining),
+                        read=min(2.5, remaining),
+                        write=min(1.5, remaining),
+                        pool=min(1.0, remaining),
+                    )
+                    with httpx.Client(timeout=request_timeout) as client:
                         resp = client.post(url, json=payload)
                         if resp.status_code == 200:
                             data = resp.json()
@@ -751,8 +778,18 @@ class AIOrchestrator:
         if self.provider == "openai" and self.client:
             candidate_models = [self.model, "gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
             for model_name in candidate_models:
+                remaining = provider_deadline - time.monotonic()
+                if remaining <= 0:
+                    logger.warning("AI provider budget exhausted provider=openai")
+                    break
                 try:
-                    response = self.client.chat.completions.create(
+                    provider_client = self.client
+                    if hasattr(self.client, "with_options"):
+                        provider_client = self.client.with_options(
+                            timeout=min(configured_attempt_timeout, remaining),
+                            max_retries=0,
+                        )
+                    response = provider_client.chat.completions.create(
                         model=model_name,
                         messages=clean_messages
                     )
@@ -767,8 +804,18 @@ class AIOrchestrator:
             candidate_models = self.active_models or ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 
             for model_name in candidate_models:
+                remaining = provider_deadline - time.monotonic()
+                if remaining <= 0:
+                    logger.warning("AI provider budget exhausted provider=groq")
+                    break
                 try:
-                    response = self.client.chat.completions.create(
+                    provider_client = self.client
+                    if hasattr(self.client, "with_options"):
+                        provider_client = self.client.with_options(
+                            timeout=min(configured_attempt_timeout, remaining),
+                            max_retries=0,
+                        )
+                    response = provider_client.chat.completions.create(
                         model=model_name,
                         messages=clean_messages
                     )
@@ -780,8 +827,18 @@ class AIOrchestrator:
             return None
 
         if self.client:
+            remaining = provider_deadline - time.monotonic()
+            if remaining <= 0:
+                logger.warning("AI provider budget exhausted provider=%s", self.provider or "unknown")
+                return None
             try:
-                response = self.client.chat(
+                provider_client = self.client
+                if hasattr(self.client, "with_options"):
+                    provider_client = self.client.with_options(
+                        timeout=min(configured_attempt_timeout, remaining),
+                        max_retries=0,
+                    )
+                response = provider_client.chat(
                     model=self.model,
                     messages=clean_messages,
                     stream=False
