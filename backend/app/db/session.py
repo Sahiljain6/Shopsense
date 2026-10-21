@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 from app.core.config import get_settings
 
 
@@ -17,6 +18,10 @@ _engine_options: dict[str, object] = {
     "connect_args": _connect_args(settings.database_url),
     "pool_pre_ping": True,
 }
+
+# Share one in-memory SQLite database across the app's worker/test threads.
+if settings.database_url in {"sqlite://", "sqlite:///:memory:"}:
+    _engine_options["poolclass"] = StaticPool
 
 # QueuePool settings are supported for the production PostgreSQL deployment.
 # SQLite retains its dialect-appropriate defaults, including the in-memory test setup.
