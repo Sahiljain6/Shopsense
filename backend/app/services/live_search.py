@@ -3,7 +3,9 @@
 SerpApi's Google Shopping engine is preferred when SERPAPI_API_KEY is configured.
 DuckDuckGo remains a no-key fallback. Prices are search snapshots, not checkout guarantees.
 """
+import hashlib
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -35,8 +37,86 @@ except ImportError:
 
 SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
 CACHE_TTL_SECONDS = 15 * 60
-_CACHE_LOCK = threading.Lock()
+CACHE_MAX_ENTRIES = 256
+CACHE_SCHEMA_VERSION = 2
+_CACHE_LOCK = threading.RLock()
 _DEAL_CACHE: dict[str, tuple[float, list[dict[str, object]]]] = {}
+_CACHE_METRICS: dict[str, int] = {"hits": 0, "misses": 0, "expirations": 0, "evictions": 0}
+
+
+def _cache_ttl_seconds(settings: object | None = None) -> int:
+    configured = getattr(settings or get_settings(), "live_search_cache_ttl_seconds", CACHE_TTL_SECONDS)
+    try:
+        return max(1, min(int(configured), 86400))
+    except (TypeError, ValueError):
+        return CACHE_TTL_SECONDS
+
+
+def _cache_max_entries(settings: object | None = None) -> int:
+    configured = getattr(settings or get_settings(), "live_search_cache_max_entries", CACHE_MAX_ENTRIES)
+    try:
+        return max(16, min(int(configured), 5000))
+    except (TypeError, ValueError):
+        return CACHE_MAX_ENTRIES
+
+
+def clear_live_search_cache(*, reset_metrics: bool = True) -> None:
+    """Clear only derived live-search snapshots; persistent catalog/account data is untouched."""
+    with _CACHE_LOCK:
+        _DEAL_CACHE.clear()
+        if reset_metrics:
+            for name in _CACHE_METRICS:
+                _CACHE_METRICS[name] = 0
+
+
+def live_search_cache_stats() -> dict[str, int | str]:
+    """Expose non-sensitive local cache diagnostics; never expose query/cache keys."""
+    with _CACHE_LOCK:
+        return {
+            "scope": "process-local",
+            "entries": len(_DEAL_CACHE),
+            "max_entries": _cache_max_entries(),
+            "ttl_seconds": _cache_ttl_seconds(),
+            **_CACHE_METRICS,
+        }
+
+
+def _evict_expired_locked(now: float, ttl_seconds: int) -> None:
+    expired = [
+        key for key, (stored_at, _items) in _DEAL_CACHE.items()
+        if now - stored_at >= ttl_seconds
+    ]
+    for key in expired:
+        _DEAL_CACHE.pop(key, None)
+    _CACHE_METRICS["expirations"] += len(expired)
+
+
+def _build_cache_key(
+    *,
+    provider: str,
+    api_key: str,
+    location: str,
+    query: str,
+    max_results: int,
+) -> str:
+    """Version and hash every result-affecting input without storing a raw API key."""
+    provider_fingerprint = (
+        hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+        if api_key
+        else ("ddg-available" if HAS_DDG else "ddg-unavailable")
+    )
+    key_payload = {
+        "schema": CACHE_SCHEMA_VERSION,
+        "provider": provider,
+        "provider_config": provider_fingerprint,
+        "market": "in",
+        "language": "en",
+        "location": re.sub(r"\s+", " ", location.strip().lower()),
+        "query": re.sub(r"\s+", " ", query.strip().lower()),
+        "max_results": max_results,
+    }
+    canonical = json.dumps(key_payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 ALLOWED_STORES = [
     "amazon.in", "amazon.com", "flipkart.com", "croma.com",
@@ -192,10 +272,19 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
         if not isinstance(payload, dict) or payload.get("error"):
             logger.warning("SerpApi Google Shopping returned an API error; using fallback search.")
             return False, []
+        shopping_results = payload.get("shopping_results")
+        if shopping_results is not None and not isinstance(shopping_results, list):
+            logger.warning("SerpApi Google Shopping returned malformed results; using fallback search.")
+            return False, []
+        if isinstance(shopping_results, list) and shopping_results and not any(
+            isinstance(item, dict) for item in shopping_results
+        ):
+            logger.warning("SerpApi Google Shopping returned malformed result entries; using fallback search.")
+            return False, []
         fetched_at = _retrieved_at()
         normalized: list[dict[str, object]] = []
         seen: set[str] = set()
-        for item in payload.get("shopping_results") or []:
+        for item in shopping_results or []:
             if not isinstance(item, dict):
                 continue
             result = _normalise_serpapi_result(item, fetched_at)
@@ -208,6 +297,9 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
             normalized.append(result)
             if len(normalized) >= max(1, min(max_results, 20)):
                 break
+        if shopping_results and not normalized:
+            logger.warning("SerpApi Google Shopping results contained no usable listings; using fallback search.")
+            return False, []
         return True, normalized
     except (httpx.HTTPError, ValueError, TypeError) as error:
         logger.warning("SerpApi Google Shopping request failed (%s); trying fallback search.", type(error).__name__)
@@ -301,27 +393,57 @@ def search_live_deals(
         return []
 
     settings = get_settings()
-    api_key = (getattr(settings, "serpapi_api_key", "") or os.getenv("SERPAPI_API_KEY") or "").strip()
-    location = getattr(settings, "serpapi_location", "") or os.getenv("SERPAPI_LOCATION") or "Mumbai, Maharashtra, India"
+    api_key = (
+        getattr(settings, "serpapi_api_key", "")
+        or os.getenv("SERPAPI_API_KEY")
+        or ""
+    ).strip().strip("'").strip('"')
+    location = (
+        getattr(settings, "serpapi_location", "")
+        or os.getenv("SERPAPI_LOCATION")
+        or "Mumbai, Maharashtra, India"
+    ).strip()
+    result_limit = max(1, min(int(max_results), 20))
     provider_key = "serpapi" if api_key else "ddg"
-    cache_key = "|".join((provider_key, location.lower(), re.sub(r"\s+", " ", clean_query.lower())))
+    cache_key = _build_cache_key(
+        provider=provider_key,
+        api_key=api_key,
+        location=location,
+        query=clean_query,
+        max_results=result_limit,
+    )
+    ttl_seconds = _cache_ttl_seconds(settings)
+    max_entries = _cache_max_entries(settings)
     now = time.monotonic()
+
     with _CACHE_LOCK:
+        _evict_expired_locked(now, ttl_seconds)
         cached = _DEAL_CACHE.get(cache_key)
-        if cached and now - cached[0] < CACHE_TTL_SECONDS:
-            return [dict(item) for item in cached[1][:max(1, max_results)]]
-        if cached:
-            _DEAL_CACHE.pop(cache_key, None)
+        if cached is not None:
+            _CACHE_METRICS["hits"] += 1
+            # Return a copy so callers cannot mutate the cached snapshot.
+            return [dict(item) for item in cached[1]]
+        _CACHE_METRICS["misses"] += 1
 
     if api_key:
-        succeeded, deals = _search_serpapi(clean_query, max_results=max(1, min(max_results, 20)))
+        succeeded, deals = _search_serpapi(clean_query, max_results=result_limit)
         if not succeeded:
-            deals = _search_ddg(clean_query, max_results)
+            # A failure is not a fresh result. Do not cache fallback results as if SerpApi succeeded.
+            deals = _search_ddg(clean_query, result_limit)
     else:
         succeeded = False
-        deals = _search_ddg(clean_query, max_results)
+        deals = _search_ddg(clean_query, result_limit)
 
-    if (api_key and succeeded) or not api_key:
+    # Cache successful SerpApi responses, including valid no-result searches. The no-key
+    # fallback has no reliable success flag, so only non-empty DDG results are cached.
+    should_cache = (api_key and succeeded) or (not api_key and bool(deals))
+    if should_cache:
         with _CACHE_LOCK:
-            _DEAL_CACHE[cache_key] = (time.monotonic(), [dict(item) for item in deals])
-    return [dict(item) for item in deals[:max(1, max_results)]]
+            stored_at = time.monotonic()
+            _evict_expired_locked(stored_at, ttl_seconds)
+            if cache_key not in _DEAL_CACHE and len(_DEAL_CACHE) >= max_entries:
+                oldest_key = min(_DEAL_CACHE, key=lambda key: _DEAL_CACHE[key][0])
+                _DEAL_CACHE.pop(oldest_key, None)
+                _CACHE_METRICS["evictions"] += 1
+            _DEAL_CACHE[cache_key] = (stored_at, [dict(item) for item in deals])
+    return [dict(item) for item in deals[:result_limit]]

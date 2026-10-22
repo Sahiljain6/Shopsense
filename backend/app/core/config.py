@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     db_pool_timeout_seconds: int = Field(default=30, ge=1, le=120)
     db_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86400)
 
+    # Live retailer search snapshots are process-local and deliberately bounded.
+    live_search_cache_ttl_seconds: int = Field(default=900, ge=1, le=86400)
+    live_search_cache_max_entries: int = Field(default=256, ge=16, le=5000)
+
+    # Upstream AI attempts and their ordered model fallback chain have explicit budgets.
+    ai_provider_timeout_seconds: int = Field(default=30, ge=5, le=120)
+    ai_provider_chain_timeout_seconds: int = Field(default=75, ge=10, le=240)
+
     jwt_secret: str = ""
     pinecone_api_key: str = ""
 
