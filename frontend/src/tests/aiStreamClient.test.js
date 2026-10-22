@@ -117,3 +117,23 @@ describe("AI Streaming Client Unit Tests", () => {
     }
   });
 });
+
+
+test("a stalled AI stream fails with a distinct bounded timeout", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = (_url, { signal }) => {
+    if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    });
+  };
+
+  try {
+    await assert.rejects(
+      streamAIResponse({ url: "/api/test/stream", body: {}, timeoutMs: 10 }),
+      (error) => error?.name === "TimeoutError"
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});

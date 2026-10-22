@@ -2,7 +2,7 @@
 
 **Project:** [ShopSense](https://github.com/Sahiljain6/Shopsense) — React + Vite frontend, FastAPI backend, SQLAlchemy storage, AI shopping assistant, and optional SerpApi live retailer search.
 
-**Status:** Part 1 is in its own pull request. Parts 2–5 are implemented together on `feature/parts-02-05-performance` and await CI/review. Parts 6–20 remain planned work.
+**Status:** Part 1 is merged into `main` (PR #36). Parts 2–5 are in open PR #37 from `feature/parts-02-05-performance`. Parts 6–10 are implemented on `feature/parts-06-10-caching-timeouts` as a stacked change; load-balancer and separate API-gateway infrastructure remain intentionally deferred pending measurements/requirements. Parts 11–20 remain planned work.
 
 **Part 2–5 implementation notes:** monthly token usage and active reservations are database-backed and atomic on SQLite/PostgreSQL; the sliding-window request limiter is thread-safe and memory-bounded but remains process-local; managed-host deployments do not get an unnecessary extra reverse proxy; PostgreSQL pool settings and reusable outbound HTTP clients are bounded; product/category queries use eager loading to avoid N+1 category reads. See [docs/deployment-hardening.md](./deployment-hardening.md).
 
@@ -169,6 +169,18 @@
 - Tests simulate a stalled model and stalled search provider and verify bounded completion.
 - Timeout failures are distinguishable from invalid keys, invalid model IDs, quotas, and no-results outcomes.
 - Avoid arbitrary reductions of valid response time without a latency baseline.
+
+## Parts 6–10 — Implementation status (feature branch)
+
+**Status:** Implemented on `feature/parts-06-10-caching-timeouts`; review and CI are pending.
+
+- **Part 6:** Live-search snapshots now use bounded configurable TTL/capacity, provider-configuration and market-aware hashed keys, copy-on-read, and freshness-preserving timestamps.
+- **Part 7:** Cache expiry, oldest-entry eviction, explicit derived-cache clearing, non-sensitive cache counters, and failure-vs-success cache behavior are covered by tests.
+- **Part 8:** New balancing infrastructure is intentionally deferred. The runbook lists the shared-state and SSE checks required before adding replicas; the request rate limiter is still process-local.
+- **Part 9:** A separate gateway is intentionally deferred because FastAPI already owns the current single-API policy boundary. Public API/gateway requirements are documented for a future multi-service or third-party integration.
+- **Part 10:** Frontend retries now share an overall deadline and respect caller cancellation; backend AI provider requests and model fallbacks are bounded by configurable request/chain budgets. SerpApi keeps its explicit 9-second timeout.
+
+See [docs/caching-scaling-and-api-governance.md](./caching-scaling-and-api-governance.md).
 
 ## Part 11 — Retry policy
 

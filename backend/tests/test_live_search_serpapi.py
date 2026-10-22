@@ -96,3 +96,25 @@ def test_missing_serpapi_key_returns_empty_when_no_fallback_available(monkeypatc
 
     assert results == []
     live_search._DEAL_CACHE.clear()
+
+
+def test_serpapi_malformed_results_are_reported_as_failure(monkeypatch):
+    monkeypatch.setattr(
+        live_search,
+        "get_settings",
+        lambda: SimpleNamespace(
+            serpapi_api_key="test-serpapi-secret",
+            serpapi_location="Mumbai, Maharashtra, India",
+        ),
+    )
+
+    class FakeHttpClient:
+        def get(self, url, params, timeout):
+            return FakeResponse({"shopping_results": "unexpected-string"})
+
+    monkeypatch.setattr(live_search, "get_http_client", lambda timeout: FakeHttpClient())
+
+    success, results = live_search._search_serpapi("headphones latest price", 5)
+
+    assert success is False
+    assert results == []
