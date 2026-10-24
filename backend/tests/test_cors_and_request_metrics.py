@@ -8,9 +8,9 @@ def test_request_id_is_returned_and_untrusted_ids_are_replaced(client):
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] == "test-request-0001"
 
-    invalid = client.get("/health", headers={"X-Request-ID": "bad request\nforged"})
+    invalid = client.get("/health", headers={"X-Request-ID": "unsafe request id"})
     assert invalid.status_code == 200
-    assert invalid.headers["X-Request-ID"] != "bad request\nforged"
+    assert invalid.headers["X-Request-ID"] != "unsafe request id"
     assert len(invalid.headers["X-Request-ID"]) <= 64
 
 
