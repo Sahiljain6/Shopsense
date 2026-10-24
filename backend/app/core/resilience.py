@@ -52,6 +52,18 @@ def should_try_model_fallback(error: BaseException | Any) -> bool:
     return status == 400 and model_miss
 
 
+def retry_after_from_error(error: BaseException | Any) -> str | None:
+    """Extract Retry-After from an upstream response without logging its contents."""
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    try:
+        return headers.get("Retry-After") or headers.get("retry-after")
+    except Exception:
+        return None
+
+
 def retry_delay_seconds(
     attempt: int,
     *,
