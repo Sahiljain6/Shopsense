@@ -19,12 +19,14 @@ def test_development_secret_is_random_when_not_configured():
 
 
 def test_production_rejects_placeholder_jwt_secret():
-    with pytest.raises(RuntimeError, match="JWT_SECRET"):
-        Settings(
-            _env_file=None,
-            jwt_secret="replace-with-a-random-32-byte-or-longer-secret",
-            environment="production",
-        )
+    for candidate in (
+        "replace-with-a-random-32-byte-or-longer-secret",
+        "shopsense-development-jwt-secret-key-2026-fixed",
+        "shopsense-super-secret-jwt-key-change-in-production-2026",
+        "short",
+    ):
+        with pytest.raises(RuntimeError, match="JWT_SECRET"):
+            Settings(_env_file=None, jwt_secret=candidate, environment="production")
 
 
 def test_chat_payload_history_cart_and_turn_text_are_bounded():
