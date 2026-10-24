@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     db_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86400)
     db_lock_timeout_ms: int = Field(default=5000, ge=100, le=120000)
     db_statement_timeout_ms: int = Field(default=30000, ge=1000, le=300000)
+    max_request_body_bytes: int = Field(default=10485760, ge=1048576, le=52428800)
 
     # Live retailer search snapshots are process-local and deliberately bounded.
     live_search_cache_ttl_seconds: int = Field(default=900, ge=1, le=86400)
