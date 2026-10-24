@@ -138,7 +138,7 @@ export async function apiFetch(path, options = {}) {
     signal: callerSignal,
     ...fetchOptions
   } = options;
-  const requestedRetries = Math.max(0, Number(retryCount ?? 1) || 0);
+  const requestedRetries = Math.min(3, Math.max(0, Number(retryCount ?? 1) || 0));
   // Never automatically replay a mutation unless it carries an idempotency key.
   const retrySafeMethod = ["GET", "HEAD", "OPTIONS"].includes(method);
   const retryAllowed = retrySafeMethod || hasIdempotencyKey(headers, fetchOptions.body);
