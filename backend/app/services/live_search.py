@@ -318,6 +318,9 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
     except (httpx.HTTPError, ValueError, TypeError) as error:
         if is_transient_upstream_failure(error):
             _SERPAPI_BREAKER.record_failure()
+        else:
+            # Resolve half-open probes for permanent auth/input failures; they are not outages.
+            _SERPAPI_BREAKER.record_success()
         logger.warning(
             "SerpApi Google Shopping request failed (error_type=%s); trying fallback search.",
             type(error).__name__,
