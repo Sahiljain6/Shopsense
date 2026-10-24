@@ -9,7 +9,13 @@ from ollama import Client
 from openai import OpenAI
 
 from app.core.config import get_settings
-from app.core.resilience import retry_delay_seconds, should_try_model_fallback
+from app.core.resilience import (
+    get_provider_breaker,
+    is_transient_upstream_failure,
+    retry_after_from_error,
+    retry_delay_seconds,
+    should_try_model_fallback,
+)
 from app.models.entities import Product
 from app.schemas.api import ChatResponse, LiveDeal
 from app.services.catalog import CatalogService
@@ -669,6 +675,44 @@ class AIOrchestrator:
         user: str,
         history: list[dict[str, str]] | None = None
     ) -> str | None:
+        """Apply a provider-specific circuit around the existing ordered fallback chain."""
+        provider = getattr(self, "provider", None)
+        if provider not in {"openai", "groq", "gemini", "ollama", "huggingface"}:
+            return self._chat_with_budget(system, user, history)
+
+        breaker = get_provider_breaker(provider)
+        if not breaker.allow_request():
+            logger.warning("AI provider circuit is open; failing fast (provider=%s)", provider)
+            return None
+
+        self._transient_failure_seen = False
+        try:
+            result = self._chat_with_budget(system, user, history)
+        except Exception as error:
+            self._transient_failure_seen = is_transient_upstream_failure(error)
+            logger.warning(
+                "AI provider call failed (provider=%s error_type=%s)",
+                provider,
+                type(error).__name__,
+            )
+            result = None
+
+        if result:
+            breaker.record_success()
+        elif self._transient_failure_seen:
+            breaker.record_failure()
+        else:
+            # A permanent 4xx/configuration response is not evidence of an outage;
+            # it also resolves a half-open probe.
+            breaker.record_success()
+        return result
+
+    def _chat_with_budget(
+        self,
+        system: str,
+        user: str,
+        history: list[dict[str, str]] | None = None
+    ) -> str | None:
         """Call the configured provider within one bounded provider/model-fallback budget."""
 
         settings = get_settings()
@@ -721,6 +765,8 @@ class AIOrchestrator:
                                     if content and content.strip():
                                         return content.strip()
                     except Exception as hf_err:
+                        if is_transient_upstream_failure(hf_err):
+                            self._transient_failure_seen = True
                         logger.warning(
                             "[AI PROVIDER FAILURE] provider=huggingface model=%s error_type=%s",
                             model_name,
@@ -730,6 +776,7 @@ class AIOrchestrator:
                             break
                         delay = retry_delay_seconds(
                             hf_models.index(model_name),
+                            retry_after=retry_after_from_error(hf_err),
                             max_seconds=0.5,
                             remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
                         )
@@ -778,10 +825,13 @@ class AIOrchestrator:
                             "status_code": resp.status_code,
                             "message": resp.text[:500],
                         })()
+                        if is_transient_upstream_failure(failure):
+                            self._transient_failure_seen = True
                         if not should_try_model_fallback(failure):
                             return None
                         delay = retry_delay_seconds(
                             list(models_to_try).index(model_name),
+                            retry_after=resp.headers.get("Retry-After"),
                             max_seconds=0.5,
                             remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
                         )
@@ -789,6 +839,8 @@ class AIOrchestrator:
                             time.sleep(delay)
                         continue
                 except Exception as err:
+                    if is_transient_upstream_failure(err):
+                        self._transient_failure_seen = True
                     logger.warning(
                         "[AI PROVIDER FAILURE] provider=gemini model=%s error_type=%s",
                         model_name,
@@ -798,6 +850,7 @@ class AIOrchestrator:
                         return None
                     delay = retry_delay_seconds(
                         list(models_to_try).index(model_name),
+                        retry_after=retry_after_from_error(err),
                         max_seconds=0.5,
                         remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
                     )
@@ -839,6 +892,8 @@ class AIOrchestrator:
                     if response and response.choices:
                         return response.choices[0].message.content
                 except Exception as error:
+                    if is_transient_upstream_failure(error):
+                        self._transient_failure_seen = True
                     logger.warning(
                         "[AI PROVIDER FAILURE] provider=openai model=%s error_type=%s",
                         model_name,
@@ -848,6 +903,7 @@ class AIOrchestrator:
                         return None
                     delay = retry_delay_seconds(
                         attempt,
+                        retry_after=retry_after_from_error(error),
                         max_seconds=0.5,
                         remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
                     )
@@ -859,7 +915,7 @@ class AIOrchestrator:
         if self.provider == "groq" and self.client:
             candidate_models = self.active_models or ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 
-            for model_name in candidate_models:
+            for attempt, model_name in enumerate(candidate_models):
                 remaining = provider_deadline - time.monotonic()
                 if remaining <= 0:
                     logger.warning("AI provider budget exhausted provider=groq")
@@ -878,6 +934,8 @@ class AIOrchestrator:
                     if response and response.choices:
                         return response.choices[0].message.content
                 except Exception as error:
+                    if is_transient_upstream_failure(error):
+                        self._transient_failure_seen = True
                     logger.warning(
                         "[AI PROVIDER FAILURE] provider=groq model=%s error_type=%s",
                         model_name,
@@ -887,6 +945,7 @@ class AIOrchestrator:
                         return None
                     delay = retry_delay_seconds(
                         attempt,
+                        retry_after=retry_after_from_error(error),
                         max_seconds=0.5,
                         remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
                     )
@@ -914,6 +973,8 @@ class AIOrchestrator:
                 )
                 return response.message.content
             except Exception as error:
+                if is_transient_upstream_failure(error):
+                    self._transient_failure_seen = True
                 logger.warning(
                     "[AI PROVIDER FAILURE] provider=%s model=%s error_type=%s",
                     self.provider,
