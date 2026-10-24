@@ -30,6 +30,12 @@ app.dependency_overrides[get_db] = override_get_db
 @pytest.fixture(autouse=True)
 def ensure_db_override():
     app.dependency_overrides[get_db] = override_get_db
+    # Reliability tests exercise process-local cache/circuit state; keep each test isolated.
+    from app.core.resilience import reset_provider_breakers
+    from app.services import live_search
+    reset_provider_breakers()
+    live_search._SERPAPI_BREAKER.reset()
+    live_search.clear_live_search_cache()
     yield
     app.dependency_overrides[get_db] = override_get_db
 
