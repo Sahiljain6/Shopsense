@@ -874,7 +874,12 @@ def price_history(product_id: int, db: Session = Depends(get_db)) -> PriceHistor
 
 @router.post("/identify-image", response_model=ChatResponse)
 async def identify_image_route(file: UploadFile = File(...), db: Session = Depends(get_db)) -> ChatResponse:
-    image_bytes = await file.read()
+    # Read at most one byte beyond the limit; never load an arbitrarily large upload into RAM.
+    max_image_bytes = 8 * 1024 * 1024
+    image_bytes = await file.read(max_image_bytes + 1)
+    await file.close()
+    if len(image_bytes) > max_image_bytes:
+        raise HTTPException(status_code=413, detail="Image upload must be 8 MB or smaller.")
     if not image_bytes:
         return ChatResponse(answer="Empty image uploaded. Please upload a valid product photo.")
 
@@ -931,6 +936,11 @@ def add_wishlist(payload: WishlistRequest, db: Session = Depends(get_db), user: 
             db.add(Wishlist(user_id=user.id, product_id=payload.product_id))
             db.commit()
         return wishlist(db, user)
+    except IntegrityError:
+        # A concurrent identical add may win the unique constraint race. Treat it as
+        # success after rollback so double clicks remain idempotent.
+        db.rollback()
+        return wishlist(db, user)
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Unable to update wishlist.")
@@ -947,6 +957,19 @@ def delete_wishlist(product_id: int, db: Session = Depends(get_db), user: User =
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Unable to remove from wishlist.")
+
+
+@router.get("/admin/ops/metrics")
+def admin_ops_metrics(_: User = Depends(require_admin)) -> dict[str, object]:
+    """Return bounded process-local operational metrics without prompts or credentials."""
+    from app.core.observability import request_metrics
+    from app.services.live_search import live_search_cache_stats, serpapi_breaker_stats
+
+    return {
+        "http": request_metrics.snapshot(),
+        "live_search_cache": live_search_cache_stats(),
+        "circuit_breakers": {"serpapi": serpapi_breaker_stats()},
+    }
 
 
 @router.get("/admin/analytics")
