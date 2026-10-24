@@ -66,6 +66,32 @@ function getCsrfToken() {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function hasIdempotencyKey(headers, body) {
+  const headerKey = Object.entries(headers || {}).find(([name]) => name.toLowerCase() === "idempotency-key")?.[1];
+  if (typeof headerKey === "string" && headerKey.trim().length >= 8) return true;
+  if (typeof body !== "string") return false;
+  try {
+    const payload = JSON.parse(body);
+    return typeof payload?.idempotency_key === "string" && payload.idempotency_key.trim().length >= 8;
+  } catch {
+    return false;
+  }
+}
+
+function computeRetryDelayMs(attempt, response, deadlineAt) {
+  const jitterCap = Math.min(5000, 250 * (2 ** Math.min(Math.max(0, attempt), 5)));
+  let delayMs = Math.floor(Math.random() * (jitterCap + 1));
+  const retryAfter = response?.headers?.get?.("Retry-After");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    const retryAfterMs = Number.isFinite(seconds)
+      ? Math.max(0, seconds * 1000)
+      : Math.max(0, Date.parse(retryAfter) - Date.now());
+    if (Number.isFinite(retryAfterMs)) delayMs = Math.max(delayMs, retryAfterMs);
+  }
+  return Math.min(delayMs, Math.max(0, deadlineAt - Date.now()));
+}
+
 function waitForRetry(delayMs, signal) {
   if (signal?.aborted) return Promise.reject(new DOMException("Request aborted", "AbortError"));
   if (delayMs <= 0) return Promise.resolve();
@@ -112,7 +138,11 @@ export async function apiFetch(path, options = {}) {
     signal: callerSignal,
     ...fetchOptions
   } = options;
-  const maxRetries = retryCount ?? 1;
+  const requestedRetries = Math.max(0, Number(retryCount ?? 1) || 0);
+  // Never automatically replay a mutation unless it carries an idempotency key.
+  const retrySafeMethod = ["GET", "HEAD", "OPTIONS"].includes(method);
+  const retryAllowed = retrySafeMethod || hasIdempotencyKey(headers, fetchOptions.body);
+  const maxRetries = retryAllowed ? requestedRetries : 0;
   // Keep the existing 35s/65s wake-up windows, but prevent retries from stacking
   // beyond one overall budget. Callers can lower either budget for short endpoints.
   const totalTimeoutMs = Math.max(1, Number(totalTimeoutOverride ?? 105000) || 105000);
@@ -152,12 +182,14 @@ export async function apiFetch(path, options = {}) {
       });
 
       if (!response.ok) {
-        // Render free-tier returns 502/503/504 while waking the container
-        if (attempt < maxRetries && [502, 503, 504].includes(response.status)) {
+        // Retry only transient server/provider responses; unsafe mutations have maxRetries=0.
+        const retryableStatuses = [408, 425, 429, 500, 502, 503, 504];
+        if (attempt < maxRetries && retryableStatuses.includes(response.status)) {
           attempt++;
           if (onStatusChange) onStatusChange("waking");
-          const retryDelayMs = Math.min(3000, Math.max(0, deadlineAt - Date.now()));
-          if (retryDelayMs > 0) await waitForRetry(retryDelayMs, callerSignal);
+          try { await response.body?.cancel(); } catch { /* best-effort connection cleanup */ }
+          const retryDelay = computeRetryDelayMs(attempt - 1, response, deadlineAt);
+          if (retryDelay > 0) await waitForRetry(retryDelay, callerSignal);
           continue;
         }
         if (response.status === 401) {
@@ -172,7 +204,7 @@ export async function apiFetch(path, options = {}) {
     } catch (error) {
       // A UI-initiated abort is intentional and must not trigger an automatic retry.
       if (callerSignal?.aborted) throw error;
-      if (error instanceof ApiError && ![502, 503, 504].includes(error.status)) {
+      if (error instanceof ApiError && ![408, 425, 429, 500, 502, 503, 504].includes(error.status)) {
         throw error;
       }
       const isTimeout = timedOut || (error instanceof DOMException && error.name === "AbortError");
@@ -183,12 +215,12 @@ export async function apiFetch(path, options = {}) {
 
       if (
         attempt < maxRetries &&
-        (isTimeout || isNetworkError || (error instanceof ApiError && [502, 503, 504].includes(error.status)))
+        (isTimeout || isNetworkError || (error instanceof ApiError && [408, 425, 429, 500, 502, 503, 504].includes(error.status)))
       ) {
         attempt++;
         if (onStatusChange) onStatusChange("waking");
-        const retryDelayMs = Math.min(2500, Math.max(0, deadlineAt - Date.now()));
-        if (retryDelayMs > 0) await waitForRetry(retryDelayMs, callerSignal);
+        const retryDelay = computeRetryDelayMs(attempt - 1, null, deadlineAt);
+        if (retryDelay > 0) await waitForRetry(retryDelay, callerSignal);
         continue;
       }
 
