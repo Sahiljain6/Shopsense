@@ -3,15 +3,13 @@ from app.models.entities import User
 from conftest import TestingSessionLocal
 
 
-def test_request_id_is_returned_and_untrusted_ids_are_replaced(client):
-    response = client.get("/health", headers={"X-Request-ID": "test-request-0001"})
+def test_request_id_is_generated_by_server_and_returned(client):
+    response = client.get("/health", headers={"X-Request-ID": "caller-supplied-value"})
     assert response.status_code == 200
-    assert response.headers["X-Request-ID"] == "test-request-0001"
-
-    invalid = client.get("/health", headers={"X-Request-ID": "unsafe request id"})
-    assert invalid.status_code == 200
-    assert invalid.headers["X-Request-ID"] != "unsafe request id"
-    assert len(invalid.headers["X-Request-ID"]) <= 64
+    request_id = response.headers["X-Request-ID"]
+    assert len(request_id) == 32
+    assert all(char in "0123456789abcdef" for char in request_id)
+    assert request_id != "caller-supplied-value"
 
 
 def test_cors_allows_shop_sense_project_preview_but_not_unrelated_origins(client):
