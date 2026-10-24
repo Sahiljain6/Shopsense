@@ -60,6 +60,9 @@ def _configure_connection_limits(dbapi_connection: object, _connection_record: o
         elif engine.dialect.name == "postgresql":
             cursor.execute(f"SET lock_timeout = '{settings.db_lock_timeout_ms}ms'")
             cursor.execute(f"SET statement_timeout = '{settings.db_statement_timeout_ms}ms'")
+            # Persist session defaults across pool checkouts; a rolled-back setup
+            # transaction would otherwise discard these SET values.
+            dbapi_connection.commit()
     finally:
         cursor.close()
 
