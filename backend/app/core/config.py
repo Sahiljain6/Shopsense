@@ -84,9 +84,10 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_jwt_secret(self) -> "Settings":
         env = (self.environment or "").lower()
-        dummy = "shopsense-hackathon-secure-secret-key-2026-production"
+        dummy = "replace-with-a-random-32-byte-or-longer-secret"
+        legacy_dummy = "shopsense-hackathon-secure-secret-key-2026-production"
         if env == "production":
-            if not self.jwt_secret or self.jwt_secret == dummy:
+            if not self.jwt_secret or self.jwt_secret in {dummy, legacy_dummy} or self.jwt_secret.startswith("replace-"):
                 raise RuntimeError("CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be set in production.")
         elif not self.jwt_secret:
             self.jwt_secret = secrets.token_urlsafe(32)
