@@ -748,7 +748,7 @@ class AIOrchestrator:
                 for model_name in hf_models:
                     remaining = provider_deadline - time.monotonic()
                     if remaining <= 0:
-                        logger.warning("AI provider budget exhausted provider=huggingface")
+                        logger.warning("ai_provider request_id=%s outcome=budget_exhausted provider=huggingface", current_request_id())
                         break
                     url = "https://router.huggingface.co/v1/chat/completions"
                     payload = {
@@ -769,7 +769,8 @@ class AIOrchestrator:
                                         return content.strip()
                             else:
                                 logger.warning(
-                                    "[AI PROVIDER FAILURE] provider=huggingface model=%s status=%s",
+                                    "ai_provider request_id=%s provider=huggingface outcome=http_error model=%s status=%s",
+                                    current_request_id(),
                                     model_name,
                                     resp.status_code,
                                 )
@@ -793,7 +794,8 @@ class AIOrchestrator:
                         if is_transient_upstream_failure(hf_err):
                             self._transient_failure_seen = True
                         logger.warning(
-                            "[AI PROVIDER FAILURE] provider=huggingface model=%s error_type=%s",
+                            "ai_provider request_id=%s provider=huggingface outcome=failed model=%s error_type=%s",
+                            current_request_id(),
                             model_name,
                             type(hf_err).__name__,
                         )
@@ -816,7 +818,7 @@ class AIOrchestrator:
             for model_name in models_to_try:
                 remaining = provider_deadline - time.monotonic()
                 if remaining <= 0:
-                    logger.warning("AI provider budget exhausted provider=gemini")
+                    logger.warning("ai_provider request_id=%s outcome=budget_exhausted provider=gemini", current_request_id())
                     break
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_api_key}"
                 payload = {
@@ -842,7 +844,8 @@ class AIOrchestrator:
                                 if parts:
                                     return parts[0].get("text")
                         logger.warning(
-                            "[AI PROVIDER FAILURE] provider=gemini model=%s status=%s",
+                            "ai_provider request_id=%s provider=gemini outcome=http_error model=%s status=%s",
+                            current_request_id(),
                             model_name,
                             resp.status_code,
                         )
@@ -867,7 +870,8 @@ class AIOrchestrator:
                     if is_transient_upstream_failure(err):
                         self._transient_failure_seen = True
                     logger.warning(
-                        "[AI PROVIDER FAILURE] provider=gemini model=%s error_type=%s",
+                        "ai_provider request_id=%s provider=gemini outcome=failed model=%s error_type=%s",
+                        current_request_id(),
                         model_name,
                         type(err).__name__,
                     )
@@ -901,7 +905,7 @@ class AIOrchestrator:
             for attempt, model_name in enumerate(candidate_models):
                 remaining = provider_deadline - time.monotonic()
                 if remaining <= 0:
-                    logger.warning("AI provider budget exhausted provider=openai")
+                    logger.warning("ai_provider request_id=%s outcome=budget_exhausted provider=openai", current_request_id())
                     break
                 try:
                     provider_client = self.client
@@ -920,7 +924,8 @@ class AIOrchestrator:
                     if is_transient_upstream_failure(error):
                         self._transient_failure_seen = True
                     logger.warning(
-                        "[AI PROVIDER FAILURE] provider=openai model=%s error_type=%s",
+                        "ai_provider request_id=%s provider=openai outcome=failed model=%s error_type=%s",
+                        current_request_id(),
                         model_name,
                         type(error).__name__,
                     )
@@ -943,7 +948,7 @@ class AIOrchestrator:
             for attempt, model_name in enumerate(candidate_models):
                 remaining = provider_deadline - time.monotonic()
                 if remaining <= 0:
-                    logger.warning("AI provider budget exhausted provider=groq")
+                    logger.warning("ai_provider request_id=%s outcome=budget_exhausted provider=groq", current_request_id())
                     break
                 try:
                     provider_client = self.client
@@ -962,7 +967,8 @@ class AIOrchestrator:
                     if is_transient_upstream_failure(error):
                         self._transient_failure_seen = True
                     logger.warning(
-                        "[AI PROVIDER FAILURE] provider=groq model=%s error_type=%s",
+                        "ai_provider request_id=%s provider=groq outcome=failed model=%s error_type=%s",
+                        current_request_id(),
                         model_name,
                         type(error).__name__,
                     )
@@ -982,7 +988,7 @@ class AIOrchestrator:
         if self.client:
             remaining = provider_deadline - time.monotonic()
             if remaining <= 0:
-                logger.warning("AI provider budget exhausted provider=%s", self.provider or "unknown")
+                logger.warning("ai_provider request_id=%s outcome=budget_exhausted provider=%s", current_request_id(), self.provider or "unknown")
                 return None
             try:
                 provider_client = self.client
@@ -1001,7 +1007,8 @@ class AIOrchestrator:
                 if is_transient_upstream_failure(error):
                     self._transient_failure_seen = True
                 logger.warning(
-                    "[AI PROVIDER FAILURE] provider=%s model=%s error_type=%s",
+                    "ai_provider request_id=%s provider=%s outcome=failed model=%s error_type=%s",
+                    current_request_id(),
                     self.provider,
                     self.model,
                     type(error).__name__,
@@ -1060,8 +1067,8 @@ class AIOrchestrator:
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
         except Exception as err:
-            logger.warning("Tool execution failed (tool=%s error_type=%s)", tool_name, type(err).__name__)
-            return json.dumps({"error": str(err)})
+            logger.warning("tool_execution request_id=%s tool=%s outcome=failed error_type=%s", current_request_id(), tool_name, type(err).__name__)
+            return json.dumps({"error": "Tool execution failed. Please continue without this tool."})
 
     def _execute_search_catalog(self, category: str | None = None, budget: float | None = None, keywords: str = "") -> str:
         """Search catalog and return product data as JSON string with deduplication and sanitization."""
@@ -1242,8 +1249,9 @@ class AIOrchestrator:
             remaining = _deadline - time.monotonic()
             if remaining <= 0:
                 logger.warning(
-                    "_chat_with_tools: 20s budget exhausted%s — returning None",
-                    f" before {label}" if label else "",
+                    "ai_tool_calling request_id=%s outcome=budget_exhausted stage=%s",
+                    current_request_id(),
+                    label or "unknown",
                 )
                 return False
             return True
@@ -1293,7 +1301,7 @@ class AIOrchestrator:
                     if msg.content:
                         return msg.content
                 except Exception as err:
-                    logger.warning("%s tool-calling failure (model=%s error_type=%s)", self.provider, model_name, type(err).__name__)
+                    logger.warning("tool_calling request_id=%s provider=%s model=%s outcome=failed error_type=%s", current_request_id(), self.provider, model_name, type(err).__name__)
                     continue
 
         # --- Gemini (native tool support via REST) ---
@@ -1320,8 +1328,8 @@ class AIOrchestrator:
                         resp = client.post(url, json=payload)
                         if resp.status_code != 200:
                             logger.warning(
-                                "Gemini non-200 on '%s': status=%s body=%.120s",
-                                model_name, resp.status_code, resp.text,
+                                "ai_tool_calling request_id=%s provider=gemini outcome=http_error model=%s status=%s",
+                                current_request_id(), model_name, resp.status_code,
                             )
                             continue
                         data = resp.json()
@@ -1367,12 +1375,12 @@ class AIOrchestrator:
                 except _httpx.TimeoutException as err:
                     # Distinct log so Render logs show TIMEOUT vs. other failures at a glance
                     logger.warning(
-                        "Gemini TIMEOUT on '%s' (%.1fs elapsed): %s",
-                        model_name, time.monotonic() - _attempt_start, err,
+                        "ai_tool_calling request_id=%s provider=gemini outcome=timeout model=%s elapsed_seconds=%.1f",
+                        current_request_id(), model_name, time.monotonic() - _attempt_start,
                     )
                     continue
                 except Exception as err:
-                    logger.warning("Gemini tool-calling failure (model=%s error_type=%s)", model_name, type(err).__name__)
+                    logger.warning("tool_calling request_id=%s provider=gemini model=%s outcome=failed error_type=%s", current_request_id(), model_name, type(err).__name__)
                     continue
         # --- HuggingFace fallback (prompt-based tool instructions) ---
         if not _budget_ok("HuggingFace"):
@@ -1750,7 +1758,7 @@ class AIOrchestrator:
                         )
                     )
             except Exception as err:
-                logger.warning("Pincode pre-check failed (error_type=%s)", type(err).__name__)
+                logger.warning("shopping_tool request_id=%s tool=pincode outcome=failed error_type=%s", current_request_id(), type(err).__name__)
 
         # 6. EMI & Bank Financing Trigger (specific pattern — keep as pre-check)
         emi_match = re.search(r'\b(?:emi|monthly installment|no cost emi|finance options?)\b.*?(?:₹|rs\.?|inr)?\s*(\d{4,7})\b', message, re.IGNORECASE)
@@ -1775,7 +1783,7 @@ class AIOrchestrator:
                         lines.append(f"✓ {off}")
                     return ChatResponse(answer="\n".join(lines))
             except Exception as err:
-                logger.warning("EMI pre-check failed (error_type=%s)", type(err).__name__)
+                logger.warning("shopping_tool request_id=%s tool=emi outcome=failed error_type=%s", current_request_id(), type(err).__name__)
 
         # 7. Weather & Climate Shopping Trigger (specific pattern — keep as pre-check)
         weather_match = re.search(r'\b(?:weather in|weather at|climate in|temperature in|monsoon in|rain in|hot in|heatwave in)\s+([a-zA-Z\s]+)\b', message, re.IGNORECASE)
@@ -1794,7 +1802,7 @@ class AIOrchestrator:
                         lines.append(f"✓ **{prod}**")
                     return ChatResponse(answer="\n".join(lines))
                 except Exception as err:
-                    logger.warning("Weather pre-check failed (error_type=%s)", type(err).__name__)
+                    logger.warning("shopping_tool request_id=%s tool=weather outcome=failed error_type=%s", current_request_id(), type(err).__name__)
 
         # 8. International Import & Dubai/US Price Comparison Trigger
         import_match = re.search(r'\b(?:dubai|usa?|us|abroad|import)\b.*?(?:aed|\$|usd|eur|gbp)\s*(\d{3,6})\b', message, re.IGNORECASE)
@@ -1820,7 +1828,7 @@ class AIOrchestrator:
                 lines.append(f"💡 **Verdict**: {comp['verdict']}")
                 return ChatResponse(answer="\n".join(lines))
             except Exception as err:
-                logger.warning("Import comparison failed (error_type=%s)", type(err).__name__)
+                logger.warning("shopping_tool request_id=%s tool=import_compare outcome=failed error_type=%s", current_request_id(), type(err).__name__)
 
         # 9. Deal Timing & Indian Sales Cycle Trigger (specific pattern — keep as pre-check)
         if any(phrase in message.lower() for phrase in ["buy now or wait", "wait for sale", "upcoming sale", "next sale", "good time to buy", "should i wait", "diwali sale"]):
@@ -1844,7 +1852,7 @@ class AIOrchestrator:
                     lines.append(f"• **Estimated All-Time Low**: ~**₹{dt_res['estimated_all_time_low']:,}** (Potential savings: ₹{dt_res['estimated_sale_savings_inr']:,})")
                 return ChatResponse(answer="\n".join(lines))
             except Exception as err:
-                logger.warning("Deal timing pre-check failed (error_type=%s)", type(err).__name__)
+                logger.warning("shopping_tool request_id=%s tool=deal_timing outcome=failed error_type=%s", current_request_id(), type(err).__name__)
 
         # 10. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
         url_match = re.search(r'https?://[^\s]+', message)
@@ -1919,7 +1927,7 @@ class AIOrchestrator:
                 if not isinstance(response, ChatResponse):
                     response = self.answer(message, mode, history, cart=cart)
         except Exception as err:
-            logger.warning("Agent orchestration failed; using single-agent fallback (error_type=%s)", type(err).__name__)
+            logger.warning("agent_orchestration request_id=%s outcome=fallback error_type=%s", current_request_id(), type(err).__name__)
             response = self.answer(message, mode, history, cart=cart)
 
         response.model = model or "Sonnet 4.5"
