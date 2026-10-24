@@ -19,6 +19,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.http_client import get_http_client
+from app.core.resilience import CircuitBreaker, is_transient_upstream_failure
 from app.services.trust_engine import evaluate_store_trust, filter_and_rank_trustworthy_deals
 
 logger = logging.getLogger("shopsense.live_search")
@@ -42,6 +43,8 @@ CACHE_SCHEMA_VERSION = 2
 _CACHE_LOCK = threading.RLock()
 _DEAL_CACHE: dict[str, tuple[float, list[dict[str, object]]]] = {}
 _CACHE_METRICS: dict[str, int] = {"hits": 0, "misses": 0, "expirations": 0, "evictions": 0}
+
+_SERPAPI_BREAKER = CircuitBreaker(failure_threshold=5, reset_timeout_seconds=30.0)
 
 
 def _cache_ttl_seconds(settings: object | None = None) -> int:
@@ -249,6 +252,9 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
     api_key = (getattr(settings, "serpapi_api_key", "") or os.getenv("SERPAPI_API_KEY") or "").strip().strip("'").strip('"')
     if not api_key:
         return False, []
+    if not _SERPAPI_BREAKER.allow_request():
+        logger.warning("SerpApi circuit is open; using fallback search.")
+        return False, []
 
     location = (
         getattr(settings, "serpapi_location", "")
@@ -300,9 +306,15 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
         if shopping_results and not normalized:
             logger.warning("SerpApi Google Shopping results contained no usable listings; using fallback search.")
             return False, []
+        _SERPAPI_BREAKER.record_success()
         return True, normalized
     except (httpx.HTTPError, ValueError, TypeError) as error:
-        logger.warning("SerpApi Google Shopping request failed (%s); trying fallback search.", type(error).__name__)
+        if is_transient_upstream_failure(error):
+            _SERPAPI_BREAKER.record_failure()
+        logger.warning(
+            "SerpApi Google Shopping request failed (error_type=%s); trying fallback search.",
+            type(error).__name__,
+        )
         return False, []
 
 
