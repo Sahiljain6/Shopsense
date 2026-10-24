@@ -922,7 +922,7 @@ class AIOrchestrator:
                 )
                 return None
 
-        logger.warning("All AI LLM providers failed or returned None for user prompt: '%s...' (provider: %s)", user[:60], self.provider)
+        logger.warning("All AI LLM providers failed or returned None (provider: %s)", self.provider)
         return None
 
     # ---------- Tool Execution ----------
@@ -974,7 +974,7 @@ class AIOrchestrator:
             else:
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
         except Exception as err:
-            logger.warning("Tool execution error (%s): %s", tool_name, err)
+            logger.warning("Tool execution failed (tool=%s error_type=%s)", tool_name, type(err).__name__)
             return json.dumps({"error": str(err)})
 
     def _execute_search_catalog(self, category: str | None = None, budget: float | None = None, keywords: str = "") -> str:
@@ -1207,7 +1207,7 @@ class AIOrchestrator:
                     if msg.content:
                         return msg.content
                 except Exception as err:
-                    logger.warning("%s tool-calling error with '%s': %s", self.provider, model_name, err)
+                    logger.warning("%s tool-calling failure (model=%s error_type=%s)", self.provider, model_name, type(err).__name__)
                     continue
 
         # --- Gemini (native tool support via REST) ---
@@ -1286,7 +1286,7 @@ class AIOrchestrator:
                     )
                     continue
                 except Exception as err:
-                    logger.warning("Gemini tool-calling error on '%s': %s", model_name, err)
+                    logger.warning("Gemini tool-calling failure (model=%s error_type=%s)", model_name, type(err).__name__)
                     continue
         # --- HuggingFace fallback (prompt-based tool instructions) ---
         if not _budget_ok("HuggingFace"):
@@ -1664,7 +1664,7 @@ class AIOrchestrator:
                         )
                     )
             except Exception as err:
-                logger.warning("Pincode pre-check notice: %s", err)
+                logger.warning("Pincode pre-check failed (error_type=%s)", type(err).__name__)
 
         # 6. EMI & Bank Financing Trigger (specific pattern — keep as pre-check)
         emi_match = re.search(r'\b(?:emi|monthly installment|no cost emi|finance options?)\b.*?(?:₹|rs\.?|inr)?\s*(\d{4,7})\b', message, re.IGNORECASE)
@@ -1689,7 +1689,7 @@ class AIOrchestrator:
                         lines.append(f"✓ {off}")
                     return ChatResponse(answer="\n".join(lines))
             except Exception as err:
-                logger.warning("EMI pre-check notice: %s", err)
+                logger.warning("EMI pre-check failed (error_type=%s)", type(err).__name__)
 
         # 7. Weather & Climate Shopping Trigger (specific pattern — keep as pre-check)
         weather_match = re.search(r'\b(?:weather in|weather at|climate in|temperature in|monsoon in|rain in|hot in|heatwave in)\s+([a-zA-Z\s]+)\b', message, re.IGNORECASE)
@@ -1708,7 +1708,7 @@ class AIOrchestrator:
                         lines.append(f"✓ **{prod}**")
                     return ChatResponse(answer="\n".join(lines))
                 except Exception as err:
-                    logger.warning("Weather pre-check notice: %s", err)
+                    logger.warning("Weather pre-check failed (error_type=%s)", type(err).__name__)
 
         # 8. International Import & Dubai/US Price Comparison Trigger
         import_match = re.search(r'\b(?:dubai|usa?|us|abroad|import)\b.*?(?:aed|\$|usd|eur|gbp)\s*(\d{3,6})\b', message, re.IGNORECASE)
@@ -1734,7 +1734,7 @@ class AIOrchestrator:
                 lines.append(f"💡 **Verdict**: {comp['verdict']}")
                 return ChatResponse(answer="\n".join(lines))
             except Exception as err:
-                logger.warning("Import comparison notice: %s", err)
+                logger.warning("Import comparison failed (error_type=%s)", type(err).__name__)
 
         # 9. Deal Timing & Indian Sales Cycle Trigger (specific pattern — keep as pre-check)
         if any(phrase in message.lower() for phrase in ["buy now or wait", "wait for sale", "upcoming sale", "next sale", "good time to buy", "should i wait", "diwali sale"]):
@@ -1758,7 +1758,7 @@ class AIOrchestrator:
                     lines.append(f"• **Estimated All-Time Low**: ~**₹{dt_res['estimated_all_time_low']:,}** (Potential savings: ₹{dt_res['estimated_sale_savings_inr']:,})")
                 return ChatResponse(answer="\n".join(lines))
             except Exception as err:
-                logger.warning("Deal timing pre-check notice: %s", err)
+                logger.warning("Deal timing pre-check failed (error_type=%s)", type(err).__name__)
 
         # 10. Auto-detect product URL pasted in chat message (specific pattern — keep as pre-check)
         url_match = re.search(r'https?://[^\s]+', message)
@@ -1833,7 +1833,7 @@ class AIOrchestrator:
                 if not isinstance(response, ChatResponse):
                     response = self.answer(message, mode, history, cart=cart)
         except Exception as err:
-            logger.exception("Agent orchestration failed; using single-agent fallback: %s", err)
+            logger.warning("Agent orchestration failed; using single-agent fallback (error_type=%s)", type(err).__name__)
             response = self.answer(message, mode, history, cart=cart)
 
         response.model = model or "Sonnet 4.5"
