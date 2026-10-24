@@ -12,7 +12,7 @@ from app.models.entities import Category, Product, Review, SeedVersion
 from app.core.config import get_settings
 from app.core.http_client import close_http_clients
 from app.core.gateway_middleware import GatewayAuthMiddleware
-from app.core.observability import RequestObservabilityMiddleware
+from app.core.observability import RequestBodyLimitMiddleware, RequestObservabilityMiddleware
 
 Base.metadata.create_all(bind=engine)
 
@@ -644,16 +644,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         },
     )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_origin_regex=settings.cors_origin_regex,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
@@ -674,7 +664,19 @@ async def security_headers_middleware(request: Request, call_next):
 
 
 app.add_middleware(GatewayAuthMiddleware)
+app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(RequestObservabilityMiddleware)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_origin_regex=settings.cors_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 app.include_router(router)
 app.include_router(conv_router)
 
