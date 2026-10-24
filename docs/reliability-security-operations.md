@@ -5,7 +5,7 @@ This guide documents the application-level protections added for roadmap Parts 1
 ## Part 11 — Retry policy
 
 - Browser `apiFetch` retries GET/HEAD/OPTIONS by default for selected network, timeout, and transient server errors.
-- A mutation is not automatically retried unless its request includes an idempotency key in the `Idempotency-Key` header or JSON `idempotency_key` field. ShopSense chat retries reuse the same request key, matching the backend's durable chat receipt.
+- A mutation is not automatically retried unless its JSON body contains the backend-supported `idempotency_key` field. Header-only keys are deliberately not treated as safe because non-chat mutation endpoints do not yet enforce them. ShopSense chat retries reuse the same request key, matching the backend's durable chat receipt.
 - AI model fallback continues only for transient upstream errors and explicit model-not-found cases. Permanent authentication/authorization and malformed-request failures stop the fallback loop instead of sending the same invalid request to every candidate model.
 - OpenAI-compatible clients have SDK retries disabled so the application's bounded model fallback is not multiplied by hidden SDK retry loops.
 - Retry logic is not a guarantee that an upstream service did no work after a client timeout; use idempotency for state-changing calls.
