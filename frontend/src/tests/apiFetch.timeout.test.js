@@ -168,3 +168,30 @@ test("an idempotency header alone does not enable mutation retries unsupported b
     restoreStorage();
   }
 });
+
+
+test("a non-chat POST is not retried even if its body contains an idempotency-looking field", async () => {
+  const restoreStorage = installLocalStorage();
+  const previousFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    throw new TypeError("simulated network drop");
+  };
+
+  try {
+    await assert.rejects(
+      apiFetch("/fetch-link", {
+        method: "POST",
+        body: JSON.stringify({ url: "https://example.com/product", idempotency_key: "client-only-key-001" }),
+        retries: 2,
+        totalTimeoutMs: 1000,
+      }),
+      (error) => error instanceof ApiError && error.status === 0
+    );
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreStorage();
+  }
+});
