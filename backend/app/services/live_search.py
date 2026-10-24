@@ -279,6 +279,9 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
     try:
         response = get_http_client(timeout=9.0).get(SERPAPI_ENDPOINT, params=params, timeout=9.0)
         response.raise_for_status()
+        # A successful HTTP exchange resolves a half-open probe even if the API
+        # returns an application-level error or malformed result schema.
+        _SERPAPI_BREAKER.record_success()
         payload = response.json()
         if not isinstance(payload, dict) or payload.get("error"):
             logger.warning("SerpApi Google Shopping returned an API error; using fallback search.")
@@ -311,7 +314,6 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
         if shopping_results and not normalized:
             logger.warning("SerpApi Google Shopping results contained no usable listings; using fallback search.")
             return False, []
-        _SERPAPI_BREAKER.record_success()
         return True, normalized
     except (httpx.HTTPError, ValueError, TypeError) as error:
         if is_transient_upstream_failure(error):
