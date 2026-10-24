@@ -88,8 +88,8 @@ class Settings(BaseSettings):
         dummy = "replace-with-a-random-32-byte-or-longer-secret"
         legacy_dummy = "shopsense-hackathon-secure-secret-key-2026-production"
         if env == "production":
-            if not self.jwt_secret or self.jwt_secret in {dummy, legacy_dummy} or self.jwt_secret.startswith("replace-"):
-                raise RuntimeError("CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be set in production.")
+            if not self.jwt_secret or len(self.jwt_secret) < 32 or self.jwt_secret in {dummy, legacy_dummy} or self.jwt_secret.startswith("replace-"):
+                raise RuntimeError("CRITICAL SECURITY ERROR: set a non-placeholder JWT_SECRET with at least 32 characters in production.")
         elif not self.jwt_secret:
             self.jwt_secret = secrets.token_urlsafe(32)
         return self
