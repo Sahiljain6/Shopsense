@@ -145,3 +145,41 @@ class RequestObservabilityMiddleware:
                 if not response_started:
                     status_code = 500
                 await finalize()
+
+
+class RequestBodyLimitMiddleware:
+    """Reject oversized declared request bodies before multipart/JSON parsing."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        from app.core.config import get_settings
+        max_bytes = int(get_settings().max_request_body_bytes)
+        declared_length: int | None = None
+        for name, value in scope.get("headers", []):
+            if name.lower() == b"content-length":
+                try:
+                    declared_length = int(value.decode("ascii"))
+                except (ValueError, UnicodeDecodeError):
+                    declared_length = None
+                break
+
+        if declared_length is not None and declared_length > max_bytes:
+            body = b'{"detail":"Request body exceeds the configured size limit."}'
+            await send({
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode("ascii")),
+                ],
+            })
+            await send({"type": "http.response.body", "body": body, "more_body": False})
+            return
+
+        await self.app(scope, receive, send)
