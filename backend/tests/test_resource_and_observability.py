@@ -65,3 +65,32 @@ def test_request_metrics_retains_only_bounded_route_keys_and_samples():
     assert snapshot["server_error_count"] == 1
     assert len(snapshot["routes"]) <= 10
     assert snapshot["samples_per_route"] == 10
+
+
+def test_declared_oversized_request_is_rejected_before_route_body_parsing():
+    from app.core.observability import RequestBodyLimitMiddleware
+
+    sent = []
+    app_called = {"value": False}
+
+    async def inner_app(_scope, _receive, _send):
+        app_called["value"] = True
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/chat",
+        "headers": [(b"content-length", b"10485761")],
+    }
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(RequestBodyLimitMiddleware(inner_app)(scope, receive, send))
+
+    assert app_called["value"] is False
+    assert sent[0]["type"] == "http.response.start"
+    assert sent[0]["status"] == 413
