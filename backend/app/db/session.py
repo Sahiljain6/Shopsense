@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 from app.core.config import get_settings
@@ -9,13 +9,15 @@ class Base(DeclarativeBase):
     pass
 
 
-def _connect_args(url: str) -> dict[str, object]:
-    return {"check_same_thread": False} if url.startswith("sqlite") else {}
+def _connect_args(url: str, lock_timeout_ms: int) -> dict[str, object]:
+    if url.startswith("sqlite"):
+        return {"check_same_thread": False, "timeout": max(0.1, lock_timeout_ms / 1000)}
+    return {}
 
 
 settings = get_settings()
 _engine_options: dict[str, object] = {
-    "connect_args": _connect_args(settings.database_url),
+    "connect_args": _connect_args(settings.database_url, settings.db_lock_timeout_ms),
     "pool_pre_ping": True,
 }
 
@@ -46,3 +48,20 @@ def get_db() -> Generator[Session, None, None]:
         raise
     finally:
         db.close()
+
+
+
+def _configure_connection_limits(dbapi_connection: object, _connection_record: object) -> None:
+    """Apply bounded DB lock/query waits once per pooled connection."""
+    cursor = dbapi_connection.cursor()
+    try:
+        if engine.dialect.name == "sqlite":
+            cursor.execute(f"PRAGMA busy_timeout = {settings.db_lock_timeout_ms}")
+        elif engine.dialect.name == "postgresql":
+            cursor.execute(f"SET lock_timeout = '{settings.db_lock_timeout_ms}ms'")
+            cursor.execute(f"SET statement_timeout = '{settings.db_statement_timeout_ms}ms'")
+    finally:
+        cursor.close()
+
+
+event.listen(engine, "connect", _configure_connection_limits)
