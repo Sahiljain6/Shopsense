@@ -66,9 +66,9 @@ function getCsrfToken() {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-function hasIdempotencyKey(headers, body) {
-  const headerKey = Object.entries(headers || {}).find(([name]) => name.toLowerCase() === "idempotency-key")?.[1];
-  if (typeof headerKey === "string" && headerKey.trim().length >= 8) return true;
+function hasIdempotencyKey(_headers, body) {
+  // Only the backend's durable ChatRequest JSON field currently guarantees a
+  // replay-safe mutation. Do not infer idempotency from an arbitrary header.
   if (typeof body !== "string") return false;
   try {
     const payload = JSON.parse(body);
