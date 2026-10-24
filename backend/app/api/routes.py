@@ -569,7 +569,11 @@ def chat(
                 assembled = context_plan["assembled_messages"]
                 history = [m for m in assembled if m["role"] != "user" or m["content"] != payload.message]
             except Exception as err:
-                logger.warning(f"Notice: unable to assemble conversation context for {payload.conversation_id}: {err}")
+                logger.warning(
+                    "conversation_context request_id=%s outcome=assembly_failed error_type=%s",
+                    current_request_id(),
+                    type(err).__name__,
+                )
 
         generation_succeeded = False
         try:
@@ -639,7 +643,11 @@ def chat(
                 if context_plan and context_plan.get("needs_summarization"):
                     SummarizationService.execute_summarization(db=db, conversation_id=payload.conversation_id)
             except Exception as err:
-                logger.warning(f"Notice: unable to persist stateful conversation turns: {err}")
+                logger.warning(
+                    "conversation_persistence request_id=%s outcome=failed error_type=%s",
+                    current_request_id(),
+                    type(err).__name__,
+                )
 
         return response
     except Exception:
