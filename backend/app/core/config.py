@@ -69,7 +69,8 @@ class Settings(BaseSettings):
         "https://shopsense-gmeelq7ml-sahil-jain-s-projects.vercel.app"
     )
 
-    cors_origin_regex: str = r"^https://shopsense.*\.vercel\.app$"
+    # Dynamic previews are limited to the ShopSense Vercel project/team slug; known public origins remain exact-listed above.
+    cors_origin_regex: str = r"^https://shopsense(?:-[a-z0-9-]+)?-sahil-jain-s-projects\.vercel\.app$"
 
     @property
     def cors_origins_list(self) -> list[str]:
