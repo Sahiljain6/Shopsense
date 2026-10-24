@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
+from contextvars import ContextVar
 import uuid
 from collections import deque
 from threading import RLock
@@ -11,6 +12,13 @@ from typing import Any
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger("shopsense.http")
+
+request_id_context: ContextVar[str] = ContextVar("shopsense_request_id", default="-")
+
+
+def current_request_id() -> str:
+    """Return the current server-generated request ID, or '-' outside an HTTP request."""
+    return request_id_context.get()
 
 
 class RequestMetrics:
@@ -92,6 +100,7 @@ class RequestObservabilityMiddleware:
         # values (which could accidentally contain secrets) into logs.
         request_id = uuid.uuid4().hex
         scope.setdefault("state", {})["request_id"] = request_id
+        context_token = request_id_context.set(request_id)
         started = time.perf_counter()
         status_code = 500
         response_started = False
@@ -134,10 +143,13 @@ class RequestObservabilityMiddleware:
             )
             raise
         finally:
-            if not finalized:
-                if not response_started:
-                    status_code = 500
-                await finalize()
+            try:
+                if not finalized:
+                    if not response_started:
+                        status_code = 500
+                    await finalize()
+            finally:
+                request_id_context.reset(context_token)
 
 
 class RequestBodyLimitMiddleware:
