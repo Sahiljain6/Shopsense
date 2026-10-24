@@ -140,3 +140,31 @@ test("an idempotent chat POST may safely retry a transient network error", async
     restoreStorage();
   }
 });
+
+
+test("an idempotency header alone does not enable mutation retries unsupported by the backend", async () => {
+  const restoreStorage = installLocalStorage();
+  const previousFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    throw new TypeError("simulated network drop");
+  };
+
+  try {
+    await assert.rejects(
+      apiFetch("/wishlist", {
+        method: "POST",
+        headers: { "Idempotency-Key": "header-only-key-001" },
+        body: JSON.stringify({ product_id: 12 }),
+        retries: 2,
+        totalTimeoutMs: 1000,
+      }),
+      (error) => error instanceof ApiError && error.status === 0
+    );
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreStorage();
+  }
+});
