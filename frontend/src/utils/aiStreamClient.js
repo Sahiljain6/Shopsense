@@ -105,12 +105,14 @@ export async function streamAIResponse({
   const eventBufferLimit = Math.min(1048576, Math.max(1024, Number(maxEventBufferChars) || 262144));
   let activeReader = null;
   const appendToken = (token) => {
-    if (accumulatedText.length + token.length > responseCharLimit) {
+    const chunk = typeof token === "string" ? token : String(token ?? "");
+    if (accumulatedText.length + chunk.length > responseCharLimit) {
       const limitError = new Error("The AI response exceeded the configured size limit.");
       limitError.name = "ResponseLimitError";
       throw limitError;
     }
-    accumulatedText += token;
+    accumulatedText += chunk;
+    return chunk;
   };
   const requestController = new AbortController();
   let timedOut = false;
@@ -224,15 +226,15 @@ export async function streamAIResponse({
 
             if (token) {
               latencyMetrics.firstToken();
-              appendToken(token);
-              if (onToken) onToken(token);
+              const safeToken = appendToken(token);
+              if (onToken) onToken(safeToken);
             }
           } catch (parseError) {
             if (parseError?.name === "ResponseLimitError") throw parseError;
             // Raw text fallback if payload is not JSON
             latencyMetrics.firstToken();
-            appendToken(rawData);
-            if (onToken) onToken(rawData);
+            const safeToken = appendToken(rawData);
+            if (onToken) onToken(safeToken);
           }
         }
       }
@@ -243,8 +245,8 @@ export async function streamAIResponse({
       const rawData = buffer.trim().replace(/^data:\s*/, "");
       if (rawData !== "[DONE]") {
         latencyMetrics.firstToken();
-        appendToken(rawData);
-        if (onToken) onToken(rawData);
+        const safeToken = appendToken(rawData);
+        if (onToken) onToken(safeToken);
       }
     }
 
