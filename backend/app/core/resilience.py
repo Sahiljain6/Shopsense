@@ -4,6 +4,8 @@ from __future__ import annotations
 import random
 import threading
 import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from collections.abc import Callable
 from typing import Any
 
@@ -65,10 +67,16 @@ def retry_delay_seconds(
     delay = random_uniform(0.0, cap) if cap > 0 else 0.0
     if retry_after is not None:
         try:
-            # Numeric Retry-After is supported; HTTP-date parsing is intentionally left to callers.
-            delay = max(delay, max(0.0, float(retry_after)))
+            retry_after_seconds = max(0.0, float(retry_after))
         except (TypeError, ValueError):
-            pass
+            try:
+                retry_at = parsedate_to_datetime(str(retry_after))
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=timezone.utc)
+                retry_after_seconds = max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+            except (TypeError, ValueError, OverflowError):
+                retry_after_seconds = 0.0
+        delay = max(delay, retry_after_seconds)
     delay = min(delay, max(0.0, max_seconds))
     if remaining_seconds is not None:
         delay = min(delay, max(0.0, remaining_seconds))
@@ -146,3 +154,27 @@ class CircuitBreaker:
                 "failure_threshold": self.failure_threshold,
                 "reset_timeout_seconds": self.reset_timeout_seconds,
             }
+
+
+_PROVIDER_BREAKERS: dict[str, CircuitBreaker] = {}
+_PROVIDER_BREAKERS_LOCK = threading.RLock()
+_SUPPORTED_PROVIDERS = {"openai", "groq", "gemini", "ollama", "huggingface"}
+
+
+def get_provider_breaker(provider: str) -> CircuitBreaker:
+    """Return a process-local breaker from a fixed provider allow-list."""
+    key = str(provider or "").lower()
+    if key not in _SUPPORTED_PROVIDERS:
+        raise ValueError("Unsupported AI provider breaker.")
+    with _PROVIDER_BREAKERS_LOCK:
+        breaker = _PROVIDER_BREAKERS.get(key)
+        if breaker is None:
+            breaker = CircuitBreaker(failure_threshold=5, reset_timeout_seconds=30.0)
+            _PROVIDER_BREAKERS[key] = breaker
+        return breaker
+
+
+def provider_breaker_stats() -> dict[str, dict[str, int | float | str]]:
+    """Return non-sensitive local provider circuit status."""
+    with _PROVIDER_BREAKERS_LOCK:
+        return {name: breaker.snapshot() for name, breaker in _PROVIDER_BREAKERS.items()}
