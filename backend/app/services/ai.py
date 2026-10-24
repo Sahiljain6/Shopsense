@@ -9,6 +9,7 @@ from ollama import Client
 from openai import OpenAI
 
 from app.core.config import get_settings
+from app.core.observability import current_request_id
 from app.core.resilience import (
     get_provider_breaker,
     is_transient_upstream_failure,
@@ -458,7 +459,8 @@ def _measure_ai_stage(stage: str):
                 return function(self, *args, **kwargs)
             finally:
                 logger.info(
-                    "ai_latency stage=%s duration_ms=%.1f provider=%s model=%s",
+                    "ai_latency request_id=%s stage=%s duration_ms=%.1f provider=%s model=%s",
+                    current_request_id(),
                     stage,
                     (time.perf_counter() - started) * 1000,
                     getattr(self, "provider", None) or "none",
@@ -682,7 +684,7 @@ class AIOrchestrator:
 
         breaker = get_provider_breaker(provider)
         if not breaker.allow_request():
-            logger.warning("AI provider circuit is open; failing fast (provider=%s)", provider)
+            logger.warning("ai_provider request_id=%s outcome=circuit_open provider=%s", current_request_id(), provider)
             return None
 
         self._transient_failure_seen = False
@@ -691,7 +693,8 @@ class AIOrchestrator:
         except Exception as error:
             self._transient_failure_seen = is_transient_upstream_failure(error)
             logger.warning(
-                "AI provider call failed (provider=%s error_type=%s)",
+                "ai_provider request_id=%s outcome=failed provider=%s error_type=%s",
+                current_request_id(),
                 provider,
                 type(error).__name__,
             )
@@ -1005,7 +1008,7 @@ class AIOrchestrator:
                 )
                 return None
 
-        logger.warning("All AI LLM providers failed or returned None (provider: %s)", self.provider)
+        logger.warning("ai_provider request_id=%s outcome=no_response provider=%s", current_request_id(), self.provider)
         return None
 
     # ---------- Tool Execution ----------
