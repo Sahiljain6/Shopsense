@@ -72,6 +72,11 @@ def clear_live_search_cache(*, reset_metrics: bool = True) -> None:
                 _CACHE_METRICS[name] = 0
 
 
+def serpapi_breaker_stats() -> dict[str, int | float | str]:
+    """Expose only local breaker state, never provider credentials or query content."""
+    return _SERPAPI_BREAKER.snapshot()
+
+
 def live_search_cache_stats() -> dict[str, int | str]:
     """Expose non-sensitive local cache diagnostics; never expose query/cache keys."""
     with _CACHE_LOCK:
