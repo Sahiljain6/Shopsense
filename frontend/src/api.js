@@ -141,7 +141,8 @@ export async function apiFetch(path, options = {}) {
   const requestedRetries = Math.min(3, Math.max(0, Number(retryCount ?? 1) || 0));
   // Never automatically replay a mutation unless it carries an idempotency key.
   const retrySafeMethod = ["GET", "HEAD", "OPTIONS"].includes(method);
-  const retryAllowed = retrySafeMethod || hasIdempotencyKey(headers, fetchOptions.body);
+  const chatEndpoint = path === "/chat" || path.startsWith("/chat/");
+  const retryAllowed = retrySafeMethod || (chatEndpoint && hasIdempotencyKey(headers, fetchOptions.body));
   const maxRetries = retryAllowed ? requestedRetries : 0;
   // Keep the existing 35s/65s wake-up windows, but prevent retries from stacking
   // beyond one overall budget. Callers can lower either budget for short endpoints.
