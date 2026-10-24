@@ -130,6 +130,14 @@ class CircuitBreaker:
                 self._opened_at = self._clock()
                 self._probe_in_flight = False
 
+    def reset(self) -> None:
+        """Reset breaker state, primarily for isolated tests and controlled operations."""
+        with self._lock:
+            self._state = "closed"
+            self._failures = 0
+            self._opened_at = 0.0
+            self._probe_in_flight = False
+
     def snapshot(self) -> dict[str, int | float | str]:
         with self._lock:
             return {
