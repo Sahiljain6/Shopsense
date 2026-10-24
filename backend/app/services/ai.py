@@ -764,6 +764,28 @@ class AIOrchestrator:
                                     content = choices[0].get("message", {}).get("content")
                                     if content and content.strip():
                                         return content.strip()
+                            else:
+                                logger.warning(
+                                    "[AI PROVIDER FAILURE] provider=huggingface model=%s status=%s",
+                                    model_name,
+                                    resp.status_code,
+                                )
+                                failure = type("ProviderResponseFailure", (), {
+                                    "status_code": resp.status_code,
+                                    "message": resp.text[:500],
+                                })()
+                                if is_transient_upstream_failure(failure):
+                                    self._transient_failure_seen = True
+                                if not should_try_model_fallback(failure):
+                                    return None
+                                delay = retry_delay_seconds(
+                                    hf_models.index(model_name),
+                                    retry_after=resp.headers.get("Retry-After"),
+                                    max_seconds=0.5,
+                                    remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
+                                )
+                                if delay:
+                                    time.sleep(delay)
                     except Exception as hf_err:
                         if is_transient_upstream_failure(hf_err):
                             self._transient_failure_seen = True
