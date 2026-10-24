@@ -20,6 +20,7 @@
 - [Environment variables](#environment-variables)
 - [Production engineering roadmap](#production-engineering-roadmap)
 - [Deployment hardening](#deployment-hardening)
+- [Reliability and security operations](#reliability-and-security-operations)
 - [API overview](#api-overview)
 - [Tests and code quality](#tests-and-code-quality)
 - [Repository layout](#repository-layout)
@@ -240,6 +241,13 @@ All secrets belong in backend environment variables or backend/.env, never in cl
 | DB_MAX_OVERFLOW | Optional | Temporary connections above the base pool; defaults to 10 |
 | DB_POOL_TIMEOUT_SECONDS | Optional | Maximum time to wait for a pooled DB connection; defaults to 30 seconds |
 | DB_POOL_RECYCLE_SECONDS | Optional | Recycle interval for pooled DB connections; defaults to 1800 seconds |
+| DB_LOCK_TIMEOUT_MS | Optional | Database lock wait limit; defaults to 5000 ms |
+| DB_STATEMENT_TIMEOUT_MS | Optional | PostgreSQL statement timeout; defaults to 30000 ms |
+| MAX_REQUEST_BODY_BYTES | Optional | Declared HTTP body size cap; defaults to 10 MiB |
+| LIVE_SEARCH_CACHE_TTL_SECONDS | Optional | Per-process retailer snapshot TTL; defaults to 900 seconds |
+| LIVE_SEARCH_CACHE_MAX_ENTRIES | Optional | Per-process retailer cache cap; defaults to 256 entries |
+| AI_PROVIDER_TIMEOUT_SECONDS | Optional | Individual AI provider request budget; defaults to 30 seconds |
+| AI_PROVIDER_CHAIN_TIMEOUT_SECONDS | Optional | Total AI provider/model fallback budget; defaults to 75 seconds |
 | JWT_SECRET | Required in production | Signing secret for application tokens; use a private random value |
 | ENVIRONMENT | Optional | Set to production for production validation |
 | CORS_ORIGINS | Deployment-specific | Comma-separated frontend origins allowed by the API |
@@ -265,6 +273,7 @@ FastAPI's interactive API documentation at **/docs** is the source of truth for 
 | POST /identify-image | Identify a product from an uploaded image |
 | POST /compare | Compare selected catalog products |
 | GET /products/{product_id}/price-history | Read stored price-history snapshots |
+| GET /admin/ops/metrics | Admin-only bounded operational metrics, cache stats, and circuit-breaker state |
 
 Chat endpoints use the application's authentication and quota controls. See the response schemas in **backend/app/schemas/api.py** for the ChatResponse and LiveDeal data structures. A language-agnostic API contract is also maintained in [docs/ai_backend_api_v1.json](./docs/ai_backend_api_v1.json).
 
@@ -341,6 +350,10 @@ Shopsense/
 ## Caching, scaling, and request budgets
 
 See [docs/caching-scaling-and-api-governance.md](./docs/caching-scaling-and-api-governance.md) for live-search cache TTL/key/invalidation rules, the prerequisites for adding backend replicas, why a separate API gateway is currently deferred, and frontend/backend timeout budgets. Cache and AI timeout settings are documented in `backend/.env.example`. The browser's default overall API/stream budget is 105 seconds; callers may set lower per-request budgets, and an explicit user cancellation is not retried.
+
+## Reliability and security operations
+
+See [docs/reliability-security-operations.md](./docs/reliability-security-operations.md) for retry/idempotency rules, jitter and `Retry-After`, circuit breakers, database lock timeouts, request/upload/SSE limits, CORS policy, secret-handling notes, and the admin-only operational metrics endpoint. Webhooks remain intentionally deferred until a trusted event producer and a verified event contract exist.
 
 ## Production engineering roadmap
 
