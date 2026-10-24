@@ -112,7 +112,7 @@ class RequestObservabilityMiddleware:
             finalized = True
             elapsed_ms = (time.perf_counter() - started) * 1000.0
             route_obj = scope.get("route")
-            route = getattr(route_obj, "path", None) or str(scope.get("path", "/"))
+            route = getattr(route_obj, "path", None) or "/unmatched"
             request_metrics.record(method, route, status_code, elapsed_ms)
             logger.info(
                 "http_request request_id=%s method=%s route=%s status_code=%d duration_ms=%.2f",
