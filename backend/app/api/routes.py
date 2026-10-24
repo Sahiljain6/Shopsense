@@ -938,9 +938,17 @@ def add_wishlist(payload: WishlistRequest, db: Session = Depends(get_db), user: 
         return wishlist(db, user)
     except IntegrityError:
         # A concurrent identical add may win the unique constraint race. Treat it as
-        # success after rollback so double clicks remain idempotent.
+        # success only when the row now exists; don't mask unrelated FK/DB failures.
         db.rollback()
-        return wishlist(db, user)
+        existing = db.scalar(
+            select(Wishlist).where(
+                Wishlist.user_id == user.id,
+                Wishlist.product_id == payload.product_id,
+            )
+        )
+        if existing is not None:
+            return wishlist(db, user)
+        raise HTTPException(status_code=400, detail="Unable to add this product to the wishlist.")
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Unable to update wishlist.")
