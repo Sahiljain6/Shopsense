@@ -186,6 +186,13 @@ def get_provider_breaker(provider: str) -> CircuitBreaker:
         return breaker
 
 
+def reset_provider_breakers() -> None:
+    """Reset local provider breaker state for isolated test/application harnesses."""
+    with _PROVIDER_BREAKERS_LOCK:
+        for breaker in _PROVIDER_BREAKERS.values():
+            breaker.reset()
+
+
 def provider_breaker_stats() -> dict[str, dict[str, int | float | str]]:
     """Return non-sensitive local provider circuit status."""
     with _PROVIDER_BREAKERS_LOCK:
