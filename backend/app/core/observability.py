@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import time
 import uuid
 from collections import deque
@@ -12,7 +11,6 @@ from typing import Any
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger("shopsense.http")
-_SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
 class RequestMetrics:
@@ -90,14 +88,9 @@ class RequestObservabilityMiddleware:
             await self.app(scope, receive, send)
             return
 
-        supplied = ""
-        for name, value in scope.get("headers", []):
-            if name.lower() == b"x-request-id":
-                candidate = value.decode("latin-1", errors="ignore")
-                if _SAFE_REQUEST_ID.fullmatch(candidate):
-                    supplied = candidate
-                break
-        request_id = supplied or uuid.uuid4().hex
+        # Always generate a server-owned ID: never copy arbitrary client header
+        # values (which could accidentally contain secrets) into logs.
+        request_id = uuid.uuid4().hex
         scope.setdefault("state", {})["request_id"] = request_id
         started = time.perf_counter()
         status_code = 500
