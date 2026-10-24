@@ -963,12 +963,16 @@ def delete_wishlist(product_id: int, db: Session = Depends(get_db), user: User =
 def admin_ops_metrics(_: User = Depends(require_admin)) -> dict[str, object]:
     """Return bounded process-local operational metrics without prompts or credentials."""
     from app.core.observability import request_metrics
+    from app.core.resilience import provider_breaker_stats
     from app.services.live_search import live_search_cache_stats, serpapi_breaker_stats
 
     return {
         "http": request_metrics.snapshot(),
         "live_search_cache": live_search_cache_stats(),
-        "circuit_breakers": {"serpapi": serpapi_breaker_stats()},
+        "circuit_breakers": {
+            "serpapi": serpapi_breaker_stats(),
+            "ai_providers": provider_breaker_stats(),
+        },
     }
 
 
