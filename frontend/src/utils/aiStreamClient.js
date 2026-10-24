@@ -86,6 +86,8 @@ export async function streamAIResponse({
   body,
   signal,
   timeoutMs = 105000,
+  maxResponseChars = 1000000,
+  maxEventBufferChars = 262144,
   onToken,
   onStatus,
   onProducts,
@@ -99,6 +101,19 @@ export async function streamAIResponse({
   let fullResponseMeta = null;
   const latencyMetrics = createStreamLatencyMetrics();
   const boundedTimeoutMs = Math.max(1, Number(timeoutMs) || 105000);
+  const responseCharLimit = Math.min(5000000, Math.max(1, Number(maxResponseChars) || 1000000));
+  const eventBufferLimit = Math.min(1048576, Math.max(1024, Number(maxEventBufferChars) || 262144));
+  let activeReader = null;
+  const appendToken = (token) => {
+    const chunk = typeof token === "string" ? token : String(token ?? "");
+    if (accumulatedText.length + chunk.length > responseCharLimit) {
+      const limitError = new Error("The AI response exceeded the configured size limit.");
+      limitError.name = "ResponseLimitError";
+      throw limitError;
+    }
+    accumulatedText += chunk;
+    return chunk;
+  };
   const requestController = new AbortController();
   let timedOut = false;
   const abortFromCaller = () => requestController.abort(signal?.reason);
@@ -134,6 +149,7 @@ export async function streamAIResponse({
     }
 
     const reader = response.body.getReader();
+    activeReader = reader;
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
 
@@ -143,10 +159,20 @@ export async function streamAIResponse({
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      // Retain the last incomplete fragment in the buffer
+      // Retain the last incomplete fragment in the buffer and bound individual SSE events.
       buffer = lines.pop() || "";
+      if (buffer.length > eventBufferLimit) {
+        const limitError = new Error("The AI stream contained an oversized event.");
+        limitError.name = "ResponseLimitError";
+        throw limitError;
+      }
 
       for (const line of lines) {
+        if (line.length > eventBufferLimit) {
+          const limitError = new Error("The AI stream contained an oversized event.");
+          limitError.name = "ResponseLimitError";
+          throw limitError;
+        }
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith(":")) continue; // Skip comments/keep-alives
 
@@ -200,14 +226,15 @@ export async function streamAIResponse({
 
             if (token) {
               latencyMetrics.firstToken();
-              accumulatedText += token;
-              if (onToken) onToken(token);
+              const safeToken = appendToken(token);
+              if (onToken) onToken(safeToken);
             }
-          } catch {
+          } catch (parseError) {
+            if (parseError?.name === "ResponseLimitError") throw parseError;
             // Raw text fallback if payload is not JSON
             latencyMetrics.firstToken();
-            accumulatedText += rawData;
-            if (onToken) onToken(rawData);
+            const safeToken = appendToken(rawData);
+            if (onToken) onToken(safeToken);
           }
         }
       }
@@ -218,8 +245,8 @@ export async function streamAIResponse({
       const rawData = buffer.trim().replace(/^data:\s*/, "");
       if (rawData !== "[DONE]") {
         latencyMetrics.firstToken();
-        accumulatedText += rawData;
-        if (onToken) onToken(rawData);
+        const safeToken = appendToken(rawData);
+        if (onToken) onToken(safeToken);
       }
     }
 
@@ -249,5 +276,9 @@ export async function streamAIResponse({
   } finally {
     clearTimeout(timeoutId);
     if (signal) signal.removeEventListener("abort", abortFromCaller);
+    if (activeReader) {
+      try { await activeReader.cancel(); } catch { /* Reader may already be closed or cancelled. */ }
+      try { activeReader.releaseLock(); } catch { /* Reader lock may already be released. */ }
+    }
   }
 }

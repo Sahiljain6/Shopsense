@@ -1,4 +1,5 @@
 import asyncio
+from contextvars import copy_context
 import hashlib
 import json
 import logging
@@ -18,6 +19,7 @@ from app.core.config import get_settings
 from app.core.auth_types import Scope, SecurityContext, UserTier
 from app.core.audit import audit_logger
 from app.core.db_scoping import ScopedQueryFilter
+from app.core.observability import current_request_id
 from app.core.quota import quota_engine
 from app.core.scoping import require_scope, require_feature_flag, require_tier
 from app.core.security import (
@@ -134,6 +136,10 @@ def _claim_chat_idempotency(
                     detail="This idempotency key was already used for a different chat request.",
                 )
             if record.status == "completed" and record.response_payload is not None:
+                logger.info(
+                    "chat_idempotency request_id=%s outcome=replay",
+                    current_request_id(),
+                )
                 return "replay", ChatResponse.model_validate(record.response_payload)
 
             age = now - record.updated_at if record.updated_at else CHAT_IDEMPOTENCY_STALE_AFTER
@@ -204,6 +210,10 @@ def _complete_chat_idempotency(
     record.updated_at = datetime.utcnow()
     record.expires_at = record.updated_at + CHAT_IDEMPOTENCY_TTL
     db.commit()
+    logger.info(
+        "chat_idempotency request_id=%s outcome=completed",
+        current_request_id(),
+    )
 
 
 def _release_chat_idempotency(db: Session, user_id: int, key: str | None) -> None:
@@ -559,7 +569,11 @@ def chat(
                 assembled = context_plan["assembled_messages"]
                 history = [m for m in assembled if m["role"] != "user" or m["content"] != payload.message]
             except Exception as err:
-                logger.warning(f"Notice: unable to assemble conversation context for {payload.conversation_id}: {err}")
+                logger.warning(
+                    "conversation_context request_id=%s outcome=assembly_failed error_type=%s",
+                    current_request_id(),
+                    type(err).__name__,
+                )
 
         generation_succeeded = False
         try:
@@ -629,7 +643,11 @@ def chat(
                 if context_plan and context_plan.get("needs_summarization"):
                     SummarizationService.execute_summarization(db=db, conversation_id=payload.conversation_id)
             except Exception as err:
-                logger.warning(f"Notice: unable to persist stateful conversation turns: {err}")
+                logger.warning(
+                    "conversation_persistence request_id=%s outcome=failed error_type=%s",
+                    current_request_id(),
+                    type(err).__name__,
+                )
 
         return response
     except Exception:
@@ -693,7 +711,11 @@ async def chat_stream(
             assembled = context_plan["assembled_messages"]
             history = [m for m in assembled if m["role"] != "user" or m["content"] != payload.message]
         except Exception as err:
-            logger.warning(f"Notice: unable to assemble conversation context for {payload.conversation_id}: {err}")
+            logger.warning(
+                "conversation_context request_id=%s outcome=assembly_failed error_type=%s",
+                current_request_id(),
+                type(err).__name__,
+            )
 
     async def event_generator():
         nonlocal idempotency_completed, quota_reservation_id
@@ -706,25 +728,29 @@ async def chat_stream(
             init_started = time.perf_counter()
             orch = AIOrchestrator(db)
             logger.info(
-                "chat_stream_timing stage=orchestrator_init duration_ms=%.1f provider=%s model=%s",
+                "chat_stream_timing request_id=%s stage=orchestrator_init duration_ms=%.1f provider=%s model=%s",
+                current_request_id(),
                 (time.perf_counter() - init_started) * 1000,
                 orch.provider or "none",
                 orch.model or "none",
             )
             loop = asyncio.get_running_loop()
             inference_started = time.perf_counter()
+            request_context = copy_context()
             response: ChatResponse = await loop.run_in_executor(
                 None,
+                request_context.run,
                 lambda: orch.answer_via_agents(
                     payload.message,
                     payload.mode,
                     history,
                     cart=payload.cart,
                     model=payload.model,
-                )
+                ),
             )
             logger.info(
-                "chat_stream_timing stage=answer_ready duration_ms=%.1f provider=%s model=%s answer_chars=%d",
+                "chat_stream_timing request_id=%s stage=answer_ready duration_ms=%.1f provider=%s model=%s answer_chars=%d",
+                current_request_id(),
                 (time.perf_counter() - inference_started) * 1000,
                 orch.provider or "none",
                 orch.model or "none",
@@ -737,7 +763,8 @@ async def chat_stream(
                 prod_entities = CatalogService(db).get_many(response.product_ids)
                 response.products = [_product_read(p) for p in prod_entities]
             logger.info(
-                "chat_stream_timing stage=product_resolution duration_ms=%.1f product_count=%d",
+                "chat_stream_timing request_id=%s stage=product_resolution duration_ms=%.1f product_count=%d",
+                current_request_id(),
                 (time.perf_counter() - product_resolution_started) * 1000,
                 len(response.products or []),
             )
@@ -754,7 +781,11 @@ async def chat_stream(
                 db.commit()
             except Exception as e:
                 db.rollback()
-                logger.warning(f"Notice saving chat history: {e}")
+                logger.warning(
+                    "chat_history_persistence request_id=%s outcome=failed error_type=%s",
+                    current_request_id(),
+                    type(e).__name__,
+                )
 
             if payload.conversation_id:
                 try:
@@ -773,7 +804,11 @@ async def chat_stream(
                     if context_plan and context_plan.get("needs_summarization"):
                         SummarizationService.execute_summarization(db=db, conversation_id=payload.conversation_id)
                 except Exception as e:
-                    logger.warning(f"Notice persisting stateful turns: {e}")
+                    logger.warning(
+                        "conversation_persistence request_id=%s outcome=failed error_type=%s",
+                        current_request_id(),
+                        type(e).__name__,
+                    )
 
             # Store the final result before emitting chunks so a retry can replay it.
             _complete_chat_idempotency(db, user.id, payload, response)
@@ -791,7 +826,8 @@ async def chat_stream(
                     chunk += " "
                 yield f"data: {json.dumps({'type': 'token', 'token': chunk, 'chunk': chunk})}\n\n"
             logger.info(
-                "chat_stream_timing stage=token_delivery duration_ms=%.1f word_count=%d total_ms=%.1f",
+                "chat_stream_timing request_id=%s stage=token_delivery duration_ms=%.1f word_count=%d total_ms=%.1f",
+                current_request_id(),
                 (time.perf_counter() - token_delivery_started) * 1000,
                 len(words),
                 (time.perf_counter() - stream_started) * 1000,
@@ -823,7 +859,11 @@ async def chat_stream(
                     logger.warning("Unable to release streamed token reservation: %s", type(quota_err).__name__)
             if not idempotency_completed:
                 _release_chat_idempotency(db, user.id, payload.idempotency_key)
-            logger.exception("Error in chat stream: %s", exc)
+            logger.warning(
+                "chat_stream_failed request_id=%s error_type=%s",
+                current_request_id(),
+                type(exc).__name__,
+            )
             yield f"data: {json.dumps({'type': 'error', 'error': 'The chat request could not be completed.'})}\n\n"
             yield "data: [DONE]\n\n"
     return StreamingResponse(
@@ -874,7 +914,12 @@ def price_history(product_id: int, db: Session = Depends(get_db)) -> PriceHistor
 
 @router.post("/identify-image", response_model=ChatResponse)
 async def identify_image_route(file: UploadFile = File(...), db: Session = Depends(get_db)) -> ChatResponse:
-    image_bytes = await file.read()
+    # Read at most one byte beyond the limit; never load an arbitrarily large upload into RAM.
+    max_image_bytes = 8 * 1024 * 1024
+    image_bytes = await file.read(max_image_bytes + 1)
+    await file.close()
+    if len(image_bytes) > max_image_bytes:
+        raise HTTPException(status_code=413, detail="Image upload must be 8 MB or smaller.")
     if not image_bytes:
         return ChatResponse(answer="Empty image uploaded. Please upload a valid product photo.")
 
@@ -931,6 +976,19 @@ def add_wishlist(payload: WishlistRequest, db: Session = Depends(get_db), user: 
             db.add(Wishlist(user_id=user.id, product_id=payload.product_id))
             db.commit()
         return wishlist(db, user)
+    except IntegrityError:
+        # A concurrent identical add may win the unique constraint race. Treat it as
+        # success only when the row now exists; don't mask unrelated FK/DB failures.
+        db.rollback()
+        existing = db.scalar(
+            select(Wishlist).where(
+                Wishlist.user_id == user.id,
+                Wishlist.product_id == payload.product_id,
+            )
+        )
+        if existing is not None:
+            return wishlist(db, user)
+        raise HTTPException(status_code=400, detail="Unable to add this product to the wishlist.")
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Unable to update wishlist.")
@@ -947,6 +1005,23 @@ def delete_wishlist(product_id: int, db: Session = Depends(get_db), user: User =
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Unable to remove from wishlist.")
+
+
+@router.get("/admin/ops/metrics")
+def admin_ops_metrics(_: User = Depends(require_admin)) -> dict[str, object]:
+    """Return bounded process-local operational metrics without prompts or credentials."""
+    from app.core.observability import request_metrics
+    from app.core.resilience import provider_breaker_stats
+    from app.services.live_search import live_search_cache_stats, serpapi_breaker_stats
+
+    return {
+        "http": request_metrics.snapshot(),
+        "live_search_cache": live_search_cache_stats(),
+        "circuit_breakers": {
+            "serpapi": serpapi_breaker_stats(),
+            "ai_providers": provider_breaker_stats(),
+        },
+    }
 
 
 @router.get("/admin/analytics")

@@ -137,3 +137,21 @@ test("a stalled AI stream fails with a distinct bounded timeout", async () => {
     globalThis.fetch = previousFetch;
   }
 });
+
+
+test("an oversized SSE answer is rejected and the reader is cleaned up", async () => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(
+    `data: ${JSON.stringify({ token: "x".repeat(32) })}\n\ndata: [DONE]\n\n`,
+    { status: 200, headers: { "Content-Type": "text/event-stream" } }
+  );
+
+  try {
+    await assert.rejects(
+      streamAIResponse({ url: "/api/test/stream", body: {}, maxResponseChars: 8 }),
+      (error) => error?.name === "ResponseLimitError"
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});

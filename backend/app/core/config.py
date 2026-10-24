@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     db_max_overflow: int = Field(default=10, ge=0, le=50)
     db_pool_timeout_seconds: int = Field(default=30, ge=1, le=120)
     db_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86400)
+    db_lock_timeout_ms: int = Field(default=5000, ge=100, le=120000)
+    db_statement_timeout_ms: int = Field(default=30000, ge=1000, le=300000)
+    max_request_body_bytes: int = Field(default=10485760, ge=1048576, le=52428800)
 
     # Live retailer search snapshots are process-local and deliberately bounded.
     live_search_cache_ttl_seconds: int = Field(default=900, ge=1, le=86400)
@@ -67,7 +70,8 @@ class Settings(BaseSettings):
         "https://shopsense-gmeelq7ml-sahil-jain-s-projects.vercel.app"
     )
 
-    cors_origin_regex: str = r"^https://shopsense.*\.vercel\.app$"
+    # Dynamic previews are limited to the ShopSense Vercel project/team slug; known public origins remain exact-listed above.
+    cors_origin_regex: str = r"^https://shopsense(?:-[a-z0-9-]+)?-sahil-jain-s-projects\.vercel\.app$"
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -81,12 +85,17 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_jwt_secret(self) -> "Settings":
         env = (self.environment or "").lower()
-        dummy = "shopsense-hackathon-secure-secret-key-2026-production"
+        dummy = "replace-with-a-random-32-byte-or-longer-secret"
+        legacy_dummies = {
+            "shopsense-hackathon-secure-secret-key-2026-production",
+            "shopsense-development-jwt-secret-key-2026-fixed",
+            "shopsense-super-secret-jwt-key-change-in-production-2026",
+        }
         if env == "production":
-            if not self.jwt_secret or self.jwt_secret == dummy:
-                raise RuntimeError("CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be set in production.")
+            if not self.jwt_secret or len(self.jwt_secret) < 32 or self.jwt_secret in legacy_dummies or self.jwt_secret == dummy or self.jwt_secret.startswith("replace-"):
+                raise RuntimeError("CRITICAL SECURITY ERROR: set a non-placeholder JWT_SECRET with at least 32 characters in production.")
         elif not self.jwt_secret:
-            self.jwt_secret = "shopsense-development-jwt-secret-key-2026-fixed"
+            self.jwt_secret = secrets.token_urlsafe(32)
         return self
 
     model_config = SettingsConfigDict(
