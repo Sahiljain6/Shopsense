@@ -9,6 +9,7 @@ from ollama import Client
 from openai import OpenAI
 
 from app.core.config import get_settings
+from app.core.resilience import retry_delay_seconds, should_try_model_fallback
 from app.models.entities import Product
 from app.schemas.api import ChatResponse, LiveDeal
 from app.services.catalog import CatalogService
@@ -720,7 +721,20 @@ class AIOrchestrator:
                                     if content and content.strip():
                                         return content.strip()
                     except Exception as hf_err:
-                        logger.warning("[AI PROVIDER FAILURE] provider=huggingface model=%s error=%s", model_name, hf_err)
+                        logger.warning(
+                            "[AI PROVIDER FAILURE] provider=huggingface model=%s error_type=%s",
+                            model_name,
+                            type(hf_err).__name__,
+                        )
+                        if not should_try_model_fallback(hf_err):
+                            break
+                        delay = retry_delay_seconds(
+                            hf_models.index(model_name),
+                            max_seconds=0.5,
+                            remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
+                        )
+                        if delay:
+                            time.sleep(delay)
 
         if self.provider == "gemini" and self.gemini_api_key:
             # Try official Gemini REST endpoint with live production models
@@ -755,10 +769,40 @@ class AIOrchestrator:
                                 parts = candidates[0].get("content", {}).get("parts", [])
                                 if parts:
                                     return parts[0].get("text")
-                        logger.warning("[AI PROVIDER FAILURE] provider=gemini model=%s status=%s error=%s", model_name, resp.status_code, resp.text[:150])
+                        logger.warning(
+                            "[AI PROVIDER FAILURE] provider=gemini model=%s status=%s",
+                            model_name,
+                            resp.status_code,
+                        )
+                        failure = type("ProviderResponseFailure", (), {
+                            "status_code": resp.status_code,
+                            "message": resp.text[:500],
+                        })()
+                        if not should_try_model_fallback(failure):
+                            return None
+                        delay = retry_delay_seconds(
+                            list(models_to_try).index(model_name),
+                            max_seconds=0.5,
+                            remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
+                        )
+                        if delay:
+                            time.sleep(delay)
                         continue
                 except Exception as err:
-                    logger.warning("[AI PROVIDER FAILURE] provider=gemini model=%s error=%s", model_name, err)
+                    logger.warning(
+                        "[AI PROVIDER FAILURE] provider=gemini model=%s error_type=%s",
+                        model_name,
+                        type(err).__name__,
+                    )
+                    if not should_try_model_fallback(err):
+                        return None
+                    delay = retry_delay_seconds(
+                        list(models_to_try).index(model_name),
+                        max_seconds=0.5,
+                        remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
+                    )
+                    if delay:
+                        time.sleep(delay)
                     continue
 
         if not self.client and self.provider != "gemini":
@@ -776,7 +820,7 @@ class AIOrchestrator:
 
         if self.provider == "openai" and self.client:
             candidate_models = [self.model, "gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
-            for model_name in candidate_models:
+            for attempt, model_name in enumerate(candidate_models):
                 remaining = provider_deadline - time.monotonic()
                 if remaining <= 0:
                     logger.warning("AI provider budget exhausted provider=openai")
@@ -795,7 +839,20 @@ class AIOrchestrator:
                     if response and response.choices:
                         return response.choices[0].message.content
                 except Exception as error:
-                    logger.warning("[AI PROVIDER FAILURE] provider=openai model=%s error=%s", model_name, error)
+                    logger.warning(
+                        "[AI PROVIDER FAILURE] provider=openai model=%s error_type=%s",
+                        model_name,
+                        type(error).__name__,
+                    )
+                    if not should_try_model_fallback(error):
+                        return None
+                    delay = retry_delay_seconds(
+                        attempt,
+                        max_seconds=0.5,
+                        remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
+                    )
+                    if delay:
+                        time.sleep(delay)
                     continue
             return None
 
@@ -821,7 +878,20 @@ class AIOrchestrator:
                     if response and response.choices:
                         return response.choices[0].message.content
                 except Exception as error:
-                    logger.warning("[AI PROVIDER FAILURE] provider=groq model=%s error=%s", model_name, error)
+                    logger.warning(
+                        "[AI PROVIDER FAILURE] provider=groq model=%s error_type=%s",
+                        model_name,
+                        type(error).__name__,
+                    )
+                    if not should_try_model_fallback(error):
+                        return None
+                    delay = retry_delay_seconds(
+                        attempt,
+                        max_seconds=0.5,
+                        remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
+                    )
+                    if delay:
+                        time.sleep(delay)
                     continue
             return None
 
@@ -844,7 +914,12 @@ class AIOrchestrator:
                 )
                 return response.message.content
             except Exception as error:
-                logger.warning("[AI PROVIDER FAILURE] provider=%s model=%s error=%s", self.provider, self.model, error)
+                logger.warning(
+                    "[AI PROVIDER FAILURE] provider=%s model=%s error_type=%s",
+                    self.provider,
+                    self.model,
+                    type(error).__name__,
+                )
                 return None
 
         logger.warning("All AI LLM providers failed or returned None for user prompt: '%s...' (provider: %s)", user[:60], self.provider)
