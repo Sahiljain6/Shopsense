@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     db_max_overflow: int = Field(default=10, ge=0, le=50)
     db_pool_timeout_seconds: int = Field(default=30, ge=1, le=120)
     db_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86400)
+    db_lock_timeout_ms: int = Field(default=5000, ge=100, le=120000)
+    db_statement_timeout_ms: int = Field(default=30000, ge=1000, le=300000)
 
     # Live retailer search snapshots are process-local and deliberately bounded.
     live_search_cache_ttl_seconds: int = Field(default=900, ge=1, le=86400)
@@ -86,7 +88,7 @@ class Settings(BaseSettings):
             if not self.jwt_secret or self.jwt_secret == dummy:
                 raise RuntimeError("CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be set in production.")
         elif not self.jwt_secret:
-            self.jwt_secret = "shopsense-development-jwt-secret-key-2026-fixed"
+            self.jwt_secret = secrets.token_urlsafe(32)
         return self
 
     model_config = SettingsConfigDict(
