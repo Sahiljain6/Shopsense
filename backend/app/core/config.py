@@ -86,9 +86,13 @@ class Settings(BaseSettings):
     def validate_jwt_secret(self) -> "Settings":
         env = (self.environment or "").lower()
         dummy = "replace-with-a-random-32-byte-or-longer-secret"
-        legacy_dummy = "shopsense-hackathon-secure-secret-key-2026-production"
+        legacy_dummies = {
+            "shopsense-hackathon-secure-secret-key-2026-production",
+            "shopsense-development-jwt-secret-key-2026-fixed",
+            "shopsense-super-secret-jwt-key-change-in-production-2026",
+        }
         if env == "production":
-            if not self.jwt_secret or len(self.jwt_secret) < 32 or self.jwt_secret in {dummy, legacy_dummy} or self.jwt_secret.startswith("replace-"):
+            if not self.jwt_secret or len(self.jwt_secret) < 32 or self.jwt_secret in legacy_dummies or self.jwt_secret == dummy or self.jwt_secret.startswith("replace-"):
                 raise RuntimeError("CRITICAL SECURITY ERROR: set a non-placeholder JWT_SECRET with at least 32 characters in production.")
         elif not self.jwt_secret:
             self.jwt_secret = secrets.token_urlsafe(32)
