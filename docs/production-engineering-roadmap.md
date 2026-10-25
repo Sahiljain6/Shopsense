@@ -2,7 +2,7 @@
 
 **Project:** [ShopSense](https://github.com/Sahiljain6/Shopsense) — React + Vite frontend, FastAPI backend, SQLAlchemy storage, AI shopping assistant, and optional SerpApi live retailer search.
 
-**Status:** Part 1 is merged into `main` (PR #36). Parts 2–5 are in open PR #37 from `feature/parts-02-05-performance`. Parts 6–10 are implemented on `feature/parts-06-10-caching-timeouts` as a stacked change; load-balancer and separate API-gateway infrastructure remain intentionally deferred pending measurements/requirements. Parts 11–20 remain planned work.
+**Status:** Part 1 is merged into `main` (PR #36). Parts 2–5 are in open PR #37; Parts 6–10 are in open PR #38. Parts 11–16 and 18–20 are implemented on `feature/parts-11-20-reliability-security`; Part 17 (webhooks) is explicitly deferred because there is no trusted event producer. Tests and CI for this latest branch are pending. Load-balancer and separate API-gateway infrastructure remain intentionally deferred pending measurements/requirements.
 
 **Part 2–5 implementation notes:** monthly token usage and active reservations are database-backed and atomic on SQLite/PostgreSQL; the sliding-window request limiter is thread-safe and memory-bounded but remains process-local; managed-host deployments do not get an unnecessary extra reverse proxy; PostgreSQL pool settings and reusable outbound HTTP clients are bounded; product/category queries use eager loading to avoid N+1 category reads. See [docs/deployment-hardening.md](./deployment-hardening.md).
 
@@ -336,14 +336,31 @@ See [docs/caching-scaling-and-api-governance.md](./caching-scaling-and-api-gover
 
 ---
 
+## Parts 11–20 — Implementation status (feature branch)
+
+**Status:** Implemented on `feature/parts-11-20-reliability-security`; review and test verification are pending.
+
+- **Part 11:** Restrict browser retries to safe reads or keyed idempotent mutations; classify AI provider/model fallback errors; redact raw upstream exceptions.
+- **Part 12:** Add capped exponential backoff with jitter and support numeric/HTTP-date `Retry-After` within request deadlines.
+- **Part 13:** Add process-local closed/open/half-open circuit breakers for configured AI providers and SerpApi.
+- **Part 14:** Enforce wishlist uniqueness in the database and handle concurrent duplicate adds safely alongside chat idempotency.
+- **Part 15:** Apply configurable DB lock/statement timeouts and keep rollback/cleanup behavior explicit.
+- **Part 16:** Bound declared request bodies, uploaded images, chat history/cart sizes, SSE event buffering and accumulated answer text; release readers on completion/failure.
+- **Part 17:** Deferred by design. No webhook endpoint is exposed until ShopSense has a trusted producer, authentication/signature contract, replay defense and a concrete event use case.
+- **Part 18:** Restrict CORS to exact configured origins plus ShopSense team-scoped Vercel previews; explicitly allow required methods/headers.
+- **Part 19:** Generate random development JWT secrets when unset, reject production placeholders, and redact prompts/credential-bearing upstream errors from AI logs.
+- **Part 20:** Add server-generated `X-Request-ID`, bounded request duration/error aggregates, and admin-only `GET /admin/ops/metrics`.
+
+See [docs/reliability-security-operations.md](./reliability-security-operations.md) for limits, scope, verification commands, limitations and rollback guidance. Webhooks, multi-replica cache/rate-limit coordination, a separate gateway and additional load-balancer infrastructure remain conditional rather than being added without a real requirement.
+
 ## Suggested implementation order
 
-1. **Part 1 — Idempotency keys** (current feature branch; run CI and review before merge).
-2. **Parts 10–13 — Timeouts, retries, backoff, circuit breakers** (provider reliability).
-3. **Parts 2, 19, 20 — Quotas, secrets, observability** (cost and operational safety).
+1. **Parts 1–10 — Idempotency, quotas, pooling, cache, and request budgets** (in the open stacked PRs #37 and #38; review/CI before merge).
+2. **Parts 11–13 — Retry classification, jitter, and circuit breakers** (implemented on the current reliability branch; verify before merge).
+3. **Parts 2, 19, 20 — Quotas, secrets, observability** (verify cost and operational safety).
 4. **Parts 14–16, 4–5 — Race conditions, lock contention, resources, pools, query patterns** (concurrency and data layer).
 5. **Parts 6–7 — Caching and invalidation** (freshness and quota control).
 6. **Parts 18, 3 — CORS and ingress/proxy behavior** (deployment hardening).
-7. **Parts 8–9, 17 — Load balancing, gateways, webhooks** only when traffic or a concrete integration warrants them.
+7. **Parts 8–9, 17 — Load balancing, gateways, webhooks** only when traffic or a concrete integration warrants them; webhooks remain deferred until a trusted event producer exists.
 
 Every part should be reviewed and verified separately. A roadmap item may be explicitly deferred when the current architecture does not need it; it should not be implemented just to add infrastructure.

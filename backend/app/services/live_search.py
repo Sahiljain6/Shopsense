@@ -19,6 +19,8 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.http_client import get_http_client
+from app.core.observability import current_request_id
+from app.core.resilience import CircuitBreaker, is_transient_upstream_failure
 from app.services.trust_engine import evaluate_store_trust, filter_and_rank_trustworthy_deals
 
 logger = logging.getLogger("shopsense.live_search")
@@ -42,6 +44,8 @@ CACHE_SCHEMA_VERSION = 2
 _CACHE_LOCK = threading.RLock()
 _DEAL_CACHE: dict[str, tuple[float, list[dict[str, object]]]] = {}
 _CACHE_METRICS: dict[str, int] = {"hits": 0, "misses": 0, "expirations": 0, "evictions": 0}
+
+_SERPAPI_BREAKER = CircuitBreaker(failure_threshold=5, reset_timeout_seconds=30.0)
 
 
 def _cache_ttl_seconds(settings: object | None = None) -> int:
@@ -67,6 +71,11 @@ def clear_live_search_cache(*, reset_metrics: bool = True) -> None:
         if reset_metrics:
             for name in _CACHE_METRICS:
                 _CACHE_METRICS[name] = 0
+
+
+def serpapi_breaker_stats() -> dict[str, int | float | str]:
+    """Expose only local breaker state, never provider credentials or query content."""
+    return _SERPAPI_BREAKER.snapshot()
 
 
 def live_search_cache_stats() -> dict[str, int | str]:
@@ -249,6 +258,9 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
     api_key = (getattr(settings, "serpapi_api_key", "") or os.getenv("SERPAPI_API_KEY") or "").strip().strip("'").strip('"')
     if not api_key:
         return False, []
+    if not _SERPAPI_BREAKER.allow_request():
+        logger.warning("live_search request_id=%s provider=serpapi outcome=circuit_open", current_request_id())
+        return False, []
 
     location = (
         getattr(settings, "serpapi_location", "")
@@ -268,18 +280,21 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
     try:
         response = get_http_client(timeout=9.0).get(SERPAPI_ENDPOINT, params=params, timeout=9.0)
         response.raise_for_status()
+        # A successful HTTP exchange resolves a half-open probe even if the API
+        # returns an application-level error or malformed result schema.
+        _SERPAPI_BREAKER.record_success()
         payload = response.json()
         if not isinstance(payload, dict) or payload.get("error"):
-            logger.warning("SerpApi Google Shopping returned an API error; using fallback search.")
+            logger.warning("live_search request_id=%s provider=serpapi outcome=api_error", current_request_id())
             return False, []
         shopping_results = payload.get("shopping_results")
         if shopping_results is not None and not isinstance(shopping_results, list):
-            logger.warning("SerpApi Google Shopping returned malformed results; using fallback search.")
+            logger.warning("live_search request_id=%s provider=serpapi outcome=malformed_results", current_request_id())
             return False, []
         if isinstance(shopping_results, list) and shopping_results and not any(
             isinstance(item, dict) for item in shopping_results
         ):
-            logger.warning("SerpApi Google Shopping returned malformed result entries; using fallback search.")
+            logger.warning("live_search request_id=%s provider=serpapi outcome=malformed_entries", current_request_id())
             return False, []
         fetched_at = _retrieved_at()
         normalized: list[dict[str, object]] = []
@@ -298,11 +313,20 @@ def _search_serpapi(query: str, max_results: int) -> tuple[bool, list[dict[str, 
             if len(normalized) >= max(1, min(max_results, 20)):
                 break
         if shopping_results and not normalized:
-            logger.warning("SerpApi Google Shopping results contained no usable listings; using fallback search.")
+            logger.warning("live_search request_id=%s provider=serpapi outcome=no_usable_listings", current_request_id())
             return False, []
         return True, normalized
     except (httpx.HTTPError, ValueError, TypeError) as error:
-        logger.warning("SerpApi Google Shopping request failed (%s); trying fallback search.", type(error).__name__)
+        if is_transient_upstream_failure(error):
+            _SERPAPI_BREAKER.record_failure()
+        else:
+            # Resolve half-open probes for permanent auth/input failures; they are not outages.
+            _SERPAPI_BREAKER.record_success()
+        logger.warning(
+            "live_search request_id=%s provider=serpapi outcome=request_failed error_type=%s",
+            current_request_id(),
+            type(error).__name__,
+        )
         return False, []
 
 
@@ -362,7 +386,7 @@ def _search_ddg(query: str, max_results: int) -> list[dict[str, object]]:
                 "warning": trust.get("warning"),
             })
     except Exception as error:
-        logger.warning("Fallback product search failed (%s).", type(error).__name__)
+        logger.warning("live_search request_id=%s provider=ddg outcome=request_failed error_type=%s", current_request_id(), type(error).__name__)
     return filter_and_rank_trustworthy_deals(raw_deals, min_trust_score=30)[:max_results]
 
 

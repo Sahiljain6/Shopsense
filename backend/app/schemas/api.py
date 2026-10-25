@@ -92,8 +92,8 @@ class ProductRead(ProductBase):
 
 
 class ChatTurn(BaseModel):
-    role: str
-    content: str
+    role: str = Field(max_length=16)
+    content: str = Field(max_length=4000)
 
 
 CHAT_MESSAGE_MAX_LENGTH = 4000
@@ -102,8 +102,8 @@ CHAT_MESSAGE_MAX_LENGTH = 4000
 class ChatRequest(BaseModel):
     message: str = Field(max_length=CHAT_MESSAGE_MAX_LENGTH, description="Shopping prompt, up to 4,000 characters")
     mode: str | None = None
-    history: list[ChatTurn] = Field(default_factory=list)
-    cart: list[dict[str, object]] = Field(default_factory=list)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=20)
+    cart: list[dict[str, object]] = Field(default_factory=list, max_length=50)
     model: str | None = "Sonnet 4.5"
     conversation_id: str | None = None
     idempotency_key: str | None = Field(
