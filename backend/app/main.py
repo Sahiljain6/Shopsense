@@ -12,6 +12,7 @@ from app.models.entities import Category, Product, Review, SeedVersion
 from app.core.config import get_settings
 from app.core.http_client import close_http_clients
 from app.core.gateway_middleware import GatewayAuthMiddleware
+from app.core.observability import RequestBodyLimitMiddleware, RequestObservabilityMiddleware
 
 Base.metadata.create_all(bind=engine)
 
@@ -56,6 +57,34 @@ def ensure_schema_upgrades() -> None:
 
 
 ensure_schema_upgrades()
+
+
+def ensure_wishlist_uniqueness() -> None:
+    """Repair historical duplicate wishlist rows before enforcing the unique key."""
+    try:
+        with engine.begin() as conn:
+            if engine.dialect.name == "postgresql":
+                conn.execute(text(
+                    "DELETE FROM wishlist older USING wishlist newer "
+                    "WHERE older.user_id = newer.user_id AND older.product_id = newer.product_id "
+                    "AND older.id > newer.id"
+                ))
+            elif engine.dialect.name == "sqlite":
+                conn.execute(text(
+                    "DELETE FROM wishlist WHERE id NOT IN "
+                    "(SELECT MIN(id) FROM wishlist GROUP BY user_id, product_id)"
+                ))
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_wishlist_user_product "
+                "ON wishlist (user_id, product_id)"
+            ))
+    except Exception as err:
+        # Do not silently claim the uniqueness invariant is installed; keep a generic
+        # startup warning without dumping connection details or user data.
+        print(f"Notice while applying wishlist uniqueness constraint ({type(err).__name__}).")
+
+
+ensure_wishlist_uniqueness()
 
 # Bump this number whenever seed_data changes (new products, price updates, etc.)
 SEED_VERSION = 3
@@ -615,16 +644,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         },
     )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_origin_regex=settings.cors_origin_regex,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
@@ -645,6 +664,28 @@ async def security_headers_middleware(request: Request, call_next):
 
 
 app.add_middleware(GatewayAuthMiddleware)
+app.add_middleware(RequestBodyLimitMiddleware)
+app.add_middleware(RequestObservabilityMiddleware)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_origin_regex=settings.cors_origin_regex,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Accept",
+        "Authorization",
+        "Content-Type",
+        "X-CSRF-Token",
+        "X-Client-Platform",
+        "X-Client-Version",
+        "X-Request-ID",
+        "Idempotency-Key",
+    ],
+)
+
+
 app.include_router(router)
 app.include_router(conv_router)
 
