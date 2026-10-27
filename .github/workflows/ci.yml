@@ -61,3 +61,41 @@ jobs:
           JWT_SECRET: "test-jwt-secret-key-32-chars-long"
         run: |
           pytest -v
+
+  live-site-smoke-audit:
+    name: Live ShopSense Website Smoke Audit
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'qa/live-site-smoke-audit' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install disposable Playwright runtime
+        run: |
+          mkdir -p "$RUNNER_TEMP/shopsense-audit"
+          npm install --prefix "$RUNNER_TEMP/shopsense-audit" --no-save playwright
+          "$RUNNER_TEMP/shopsense-audit/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Run read-only public website and API audit
+        run: node scripts/live-site-audit.mjs
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+          SHOPSENSE_API_URL: https://shopsense-api-pb2g.onrender.com
+          SHOPSENSE_FRONTEND_CANDIDATES: https://shopsense-4444.vercel.app,https://shopsense.vercel.app,https://shopsense-gmeelq7ml-sahil-jain-s-projects.vercel.app,https://shopsense-4444-l2msp2txf-sahil-jain-s-projects.vercel.app
+          AUDIT_ARTIFACT_DIR: artifacts/live-site-audit
+
+      - name: Upload browser screenshots and JSON results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shopsense-live-site-audit
+          path: artifacts/live-site-audit/
+          if-no-files-found: warn
+          retention-days: 14
+
