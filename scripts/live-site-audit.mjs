@@ -117,7 +117,7 @@ for (const [label, query] of [
   const test = await fetchJson(`/products?q=${encodeURIComponent(query)}&limit=3`);
   const contentType = test.headers?.["content-type"] || "";
   const edgeBlocked = !test.error && test.response.status === 403 &&
-    contentType.toLowerCase().includes("text/html") && /<title>\\s*Blocked\\s*<\\/title>/i.test(test.body);
+    contentType.toLowerCase().includes("text/html") && test.body.toLowerCase().includes("<title>blocked</title>");
   const ok = !test.error && test.response.status < 500 && contentType.toLowerCase().includes("application/json");
   if (edgeBlocked) {
     record(label, "WARN",
