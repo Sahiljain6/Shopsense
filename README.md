@@ -19,6 +19,7 @@
 - [Run with Docker Compose](#run-with-docker-compose)
 - [Environment variables](#environment-variables)
 - [Production engineering roadmap](#production-engineering-roadmap)
+- [Production readiness and hardening plan](#production-readiness-and-hardening-plan)
 - [Deployment hardening](#deployment-hardening)
 - [Reliability and security operations](#reliability-and-security-operations)
 - [API overview](#api-overview)
@@ -357,7 +358,19 @@ See [docs/reliability-security-operations.md](./docs/reliability-security-operat
 
 ## Production engineering roadmap
 
-The 20-part reliability and hardening plan is tracked in [docs/production-engineering-roadmap.md](./docs/production-engineering-roadmap.md). Implementation is reviewed in parts and should preserve the current shopping experience and AI-provider behavior.
+The original 20-part reliability roadmap is tracked in [docs/production-engineering-roadmap.md](./docs/production-engineering-roadmap.md). It covers request idempotency, rate limiting and quota accounting, connection pooling, product query performance, bounded caching, request budgets, retries, circuit breakers, resource limits, CORS, secrets, and observability.
+
+## Production readiness and hardening plan
+
+The expanded [20-part production-readiness hardening plan](./docs/production-readiness-hardening-plan.md) organizes work into three phases:
+
+1. **Security and data boundaries:** database recovery, baseline tests, environment separation, Git-history secret scanning, authorization, input validation, and abuse controls.
+2. **Resiliency and architecture:** safe database migrations, external-service failure handling, idempotent retries, graceful degradation, data recovery, focused architecture cleanup, and privacy-safe logging.
+3. **Observability and operations:** dependency scanning, CI quality gates, safe deployments, environment isolation, failure-injection tests, monitoring, and rollback procedures.
+
+**Implementation order matters.** Start by verifying whether the configured PostgreSQL database is active, suspended, recoverable, or deleted. Preserve any available backup before attempting schema changes or creating a replacement. A fresh database can be reseeded with the sample catalog, but it cannot recreate deleted user accounts, conversations, wishlists, or orders unless a usable backup exists.
+
+The plan is intended to be implemented in small, reviewed changes. Existing reliability controls should be verified and strengthened rather than rewritten blindly. Keep the current UI, API contracts, authentication, cart behavior, shopping logic, AI-provider precedence, and SSE behavior compatible unless a specific reviewed change requires otherwise. Each implementation step should pass backend tests, frontend tests/build, migration checks where relevant, and security scans before deployment. The plan describes intended work; consult merged code and CI results to determine what is actually implemented and verified.
 
 ## Deployment hardening
 
