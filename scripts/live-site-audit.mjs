@@ -116,10 +116,18 @@ for (const [label, query] of [
 ]) {
   const test = await fetchJson(`/products?q=${encodeURIComponent(query)}&limit=3`);
   const contentType = test.headers?.["content-type"] || "";
+  const edgeBlocked = !test.error && test.response.status === 403 &&
+    contentType.toLowerCase().includes("text/html") && /<title>\\s*Blocked\\s*<\\/title>/i.test(test.body);
   const ok = !test.error && test.response.status < 500 && contentType.toLowerCase().includes("application/json");
-  record(label, ok ? "PASS" : "FAIL",
-    test.error || { status: test.response?.status, contentType, bodySample: ok ? undefined : test.body.slice(0, 300) },
-    "high");
+  if (edgeBlocked) {
+    record(label, "WARN",
+      { status: 403, result: "The hosting edge returned its generic Blocked page for this injection-shaped request; this is not evidence of an application injection flaw and does not prove the route's SQL safety either." },
+      "medium");
+  } else {
+    record(label, ok ? "PASS" : "FAIL",
+      test.error || { status: test.response?.status, contentType, bodySample: ok ? undefined : test.body.slice(0, 300) },
+      "high");
+  }
 }
 
 // Security checks must not use a token and must not mutate state.
