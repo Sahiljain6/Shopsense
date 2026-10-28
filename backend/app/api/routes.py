@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import logging
+import secrets
 import time
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -1200,6 +1201,8 @@ def create_payment_checkout(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="One or more cart products are no longer available.")
 
     item_snapshot: list[dict[str, object]] = []
+    checkout_token = secrets.token_urlsafe(32)
+    checkout_token_hash = hashlib.sha256(checkout_token.encode("utf-8")).hexdigest()
     total = Decimal("0.00")
     for product_id, quantity in quantities.items():
         product = products[product_id]
@@ -1238,6 +1241,7 @@ def create_payment_checkout(
             amount=float(total),
             currency="INR",
             provider="parbad-virtual",
+            checkout_token_hash=checkout_token_hash,
             status="pending",
             items=item_snapshot,
         )
@@ -1258,7 +1262,7 @@ def create_payment_checkout(
         "currency": attempt.currency,
         "order_status": order.status,
         "payment_mode": "sandbox",
-        "payment_url": f"{public_base}/api/payments/start?attempt_id={attempt.id}",
+        "payment_url": f"{public_base}/api/payments/start?token={checkout_token}",
         "notice": "Parbad Virtual Gateway only simulates a payment. No real money is charged.",
     }
 
@@ -1289,16 +1293,19 @@ def get_payment_order(
     }
 
 
-@router.get("/payments/parbad/authorize/{attempt_id}")
+@router.get("/payments/parbad/authorize")
 def authorize_parbad_payment_attempt(
-    attempt_id: int,
+    token: str,
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
-    """Internal endpoint used by the .NET service to retrieve a server-priced attempt once."""
+    """Internal endpoint exchanges an opaque one-use checkout token for server-priced details."""
     settings = get_settings()
     _require_parbad_internal_key(request, settings)
-    attempt = db.get(PaymentAttempt, attempt_id)
+    if not 32 <= len(token) <= 128:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment attempt not found.")
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    attempt = db.scalar(select(PaymentAttempt).where(PaymentAttempt.checkout_token_hash == token_hash))
     if attempt is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment attempt not found.")
     if attempt.status != "pending":
