@@ -2158,7 +2158,7 @@ RESPONSE RULES:
             # Match complete terms: "earphone" must never trigger the "phone" category.
             matched_keywords = [
                 keyword for keyword in keywords
-                if re.search(rf"(?<!\\w){re.escape(keyword)}(?!\\w)", lowered)
+                if re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", lowered)
             ]
             if matched_keywords:
                 search_query = " ".join(matched_keywords)
@@ -2171,7 +2171,7 @@ RESPONSE RULES:
 
             # Fallback 3: Audio-category recommendations come before phone matching.
             # Use whole-word category checks so "earphone" cannot be interpreted as "phone".
-            if re.search(r"\\b(?:earbuds?|earphones?|headphones?|headsets?|tws|audio)\\b", lowered):
+            if re.search(r"\b(?:earbuds?|earphones?|headphones?|headsets?|tws|audio)\b", lowered):
                 audio_products = self.catalog.search("earbuds", limit=4)
                 if budget is not None:
                     audio_products = [p for p in audio_products if p.price <= budget]
@@ -2188,7 +2188,7 @@ RESPONSE RULES:
                 )
 
             # Fallback 4: Phone recommendations; only match actual phone-category terms.
-            if re.search(r"\\b(?:phones?|smartphones?|mobiles?|iphones?)\\b", lowered):
+            if re.search(r"\b(?:phones?|smartphones?|mobiles?|iphones?)\b", lowered):
                 budget_phones = self.catalog.search("phone", limit=10)
                 if budget is not None:
                     budget_phones = [p for p in budget_phones if p.price <= budget]
@@ -2205,7 +2205,7 @@ RESPONSE RULES:
                 )
 
             # Fallback 5: Keyboard recommendations with the same budget guarantee.
-            if re.search(r"\\b(?:keyboards?|mechanical keyboards?|gaming keyboards?)\\b", lowered):
+            if re.search(r"\b(?:keyboards?|mechanical keyboards?|gaming keyboards?)\b", lowered):
                 keyboards = self.catalog.search("keyboard", limit=4)
                 if budget is not None:
                     keyboards = [p for p in keyboards if p.price <= budget]
