@@ -27,7 +27,7 @@ def is_transient_upstream_failure(error: BaseException | Any) -> bool:
     if status is not None:
         return status in {408, 409, 425, 429} or status >= 500
     name = type(error).__name__.lower()
-    return any(token in name for token in ("timeout", "connection", "network", "temporarilyunavailable"))
+    return any(token in name for token in ("timeout", "connection", "connect", "network", "temporarilyunavailable"))
 
 
 def should_try_model_fallback(error: BaseException | Any) -> bool:

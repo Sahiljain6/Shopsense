@@ -93,7 +93,7 @@ class Settings(BaseSettings):
         }
         if env == "production":
             if not self.jwt_secret or len(self.jwt_secret) < 32 or self.jwt_secret in legacy_dummies or self.jwt_secret == dummy or self.jwt_secret.startswith("replace-"):
-                raise RuntimeError("CRITICAL SECURITY ERROR: set a non-placeholder JWT_SECRET with at least 32 characters in production.")
+                raise RuntimeError("CRITICAL SECURITY ERROR: JWT_SECRET must be set to a non-placeholder value of at least 32 characters in production.")
         elif not self.jwt_secret:
             self.jwt_secret = secrets.token_urlsafe(32)
         return self

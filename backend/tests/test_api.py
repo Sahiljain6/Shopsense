@@ -242,6 +242,19 @@ def test_alembic_upgrade_on_fresh_empty_database() -> None:
 
 
 
+def test_validation_errors_do_not_echo_or_log_submitted_values(client, capsys, caplog) -> None:
+    secret_marker = "SENSITIVE-VALIDATION-PAYLOAD-DO-NOT-LOG-9842"
+    response = client.post("/compare", json={"product_ids": [secret_marker, 2]})
+
+    assert response.status_code == 422
+    captured = capsys.readouterr()
+    assert secret_marker not in response.text
+    assert secret_marker not in captured.out
+    assert secret_marker not in captured.err
+    assert secret_marker not in caplog.text
+    assert "Invalid request value." in response.text
+
+
 def test_jwt_secret_validation_in_production_and_dev(monkeypatch) -> None:
     """Ensure Settings raises a RuntimeError if JWT_SECRET is not set in production,
     and generates a random-per-run secret in development."""

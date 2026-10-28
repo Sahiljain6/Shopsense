@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user, oauth2_scheme
+from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.conversation import Conversation, ConversationSummary, Message
 from app.models.entities import User
@@ -29,16 +29,17 @@ logger = logging.getLogger("shopsense.api.conversation")
 conv_router = APIRouter(tags=["conversations"])
 
 
-def get_optional_user(
-    request: Request,
-    token: str | None = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-) -> User | None:
-    """Optional user dependency for guest or authenticated conversation sessions."""
-    try:
-        return get_current_user(request, token, db)
-    except Exception:
-        return None
+def _require_conversation_owner(conversation: Conversation | None, user: User) -> Conversation:
+    """Hide other users' and legacy guest-owned conversations from this caller."""
+    if conversation is None or conversation.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    return conversation
+
+
+def _require_message_owner(db: Session, message: Message, user: User) -> None:
+    """Authorize a message operation through its owning conversation."""
+    conversation = db.get(Conversation, message.conversation_id)
+    _require_conversation_owner(conversation, user)
 
 
 # ---------------------------------------------------------------------------
@@ -49,10 +50,10 @@ def get_optional_user(
 def create_conversation(
     payload: ConversationCreate,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> Conversation:
     """Create a new conversation session with state management."""
-    user_id = user.id if user else None
+    user_id = user.id
     return ConversationService.create_conversation(
         db=db,
         user_id=user_id,
@@ -72,13 +73,12 @@ def list_conversations(
     tag: str | None = Query(default=None),
     sort: Literal["updated_desc", "created_desc"] = Query(default="updated_desc"),
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> dict:
     """List conversations with filtering, sorting, and pagination."""
     query = select(Conversation)
 
-    if user:
-        query = query.where(Conversation.user_id == user.id)
+    query = query.where(Conversation.user_id == user.id)
 
     if not include_archived:
         query = query.where(Conversation.archived_at.is_(None))
@@ -116,7 +116,7 @@ def search_conversations(
     limit: int = Query(default=10, ge=1, le=50),
     include_archived: bool = Query(default=False),
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> dict:
     """
     Hybrid Search: Combines keyword search on titles/messages with dense vector similarity.
@@ -131,8 +131,7 @@ def search_conversations(
         .where(Message.is_deleted == False)  # noqa: E712
     )
 
-    if user:
-        msg_query = msg_query.where(Conversation.user_id == user.id)
+    msg_query = msg_query.where(Conversation.user_id == user.id)
     if not include_archived:
         msg_query = msg_query.where(Conversation.archived_at.is_(None))
 
@@ -185,14 +184,13 @@ def search_conversations(
 def get_conversation(
     conversation_id: str,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> Conversation:
     """Retrieve conversation details by ID."""
     conv = ConversationService.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    if user and conv.user_id and conv.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    _require_conversation_owner(conv, user)
     return conv
 
 
@@ -201,14 +199,13 @@ def update_conversation(
     conversation_id: str,
     payload: ConversationUpdate,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> Conversation:
     """Update conversation metadata, title, system prompt, or flag."""
     conv = ConversationService.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    if user and conv.user_id and conv.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    _require_conversation_owner(conv, user)
 
     if payload.title is not None:
         conv.title = payload.title
@@ -236,14 +233,13 @@ def get_conversation_history(
     limit: int = Query(default=50, ge=1, le=100),
     before_seq: int | None = Query(default=None, description="Fetch turns prior to this sequence number"),
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve chronological message turns with cursor pagination and latest summary."""
     conv = ConversationService.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    if user and conv.user_id and conv.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    _require_conversation_owner(conv, user)
 
     query = (
         select(Message)
@@ -290,14 +286,13 @@ def add_message_turn(
     payload: MessageCreate,
     expected_version: int | None = Query(default=None, description="Optimistic locking version number"),
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> Message:
     """Add a message turn atomically with sequence ordering and OCC validation."""
     conv = ConversationService.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    if user and conv.user_id and conv.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    _require_conversation_owner(conv, user)
 
     try:
         return ConversationService.add_message(
@@ -317,14 +312,13 @@ def branch_conversation(
     conversation_id: str,
     payload: ConversationBranchRequest,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> Conversation:
     """Fork conversation from a specific historical message turn."""
     conv = ConversationService.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    if user and conv.user_id and conv.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    _require_conversation_owner(conv, user)
 
     try:
         return ConversationService.branch_conversation(
@@ -343,14 +337,13 @@ def trigger_summarization(
     conversation_id: str,
     preserve_recent_turns: int = Query(default=12, ge=4, le=50),
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> ConversationSummary:
     """Trigger recursive compaction / summarization of older conversational turns."""
     conv = ConversationService.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    if user and conv.user_id and conv.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    _require_conversation_owner(conv, user)
 
     summary = SummarizationService.execute_summarization(
         db=db,
@@ -370,14 +363,13 @@ def export_conversation(
     conversation_id: str,
     format: Literal["json", "markdown", "csv"] = Query(default="json"),
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> dict:
     """Export complete conversation state into JSON, Markdown, or CSV."""
     conv = ConversationService.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    if user and conv.user_id and conv.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    _require_conversation_owner(conv, user)
 
     exported_content = ConversationService.export_conversation(db, conversation_id, export_format=format)
     return {
@@ -392,14 +384,13 @@ def export_conversation(
 def archive_conversation(
     conversation_id: str,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> Conversation:
     """Archive a conversation and compress old message turns."""
     conv = ConversationService.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    if user and conv.user_id and conv.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    _require_conversation_owner(conv, user)
 
     return ConversationService.archive_conversation(db, conversation_id, compress=True)
 
@@ -408,14 +399,13 @@ def archive_conversation(
 def unarchive_conversation(
     conversation_id: str,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> Conversation:
     """Restore an archived conversation and decompress message turns."""
     conv = ConversationService.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    if user and conv.user_id and conv.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    _require_conversation_owner(conv, user)
 
     return ConversationService.unarchive_conversation(db, conversation_id)
 
@@ -428,11 +418,13 @@ def unarchive_conversation(
 def get_message(
     message_id: str,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> Message:
     """Retrieve message details by ID."""
     msg = db.scalar(select(Message).where(Message.id == message_id))
     if not msg or msg.is_deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    _require_message_owner(db, msg, user)
     return msg
 
 
@@ -441,8 +433,13 @@ def edit_message(
     message_id: str,
     payload: MessageUpdate,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> Message:
-    """Edit message with revision check."""
+    """Edit an owned message with revision check."""
+    msg = db.scalar(select(Message).where(Message.id == message_id, Message.is_deleted.is_(False)))
+    if not msg:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    _require_message_owner(db, msg, user)
     try:
         return ConversationService.edit_message(
             db=db,
@@ -460,8 +457,13 @@ def edit_message(
 def delete_message(
     message_id: str,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> dict:
-    """Soft-delete message."""
+    """Soft-delete an owned message."""
+    msg = db.scalar(select(Message).where(Message.id == message_id, Message.is_deleted.is_(False)))
+    if not msg:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    _require_message_owner(db, msg, user)
     try:
         ConversationService.soft_delete_message(db, message_id)
         return {"data": {"id": message_id, "status": "deleted", "deleted_at": datetime.utcnow().isoformat()}}

@@ -49,6 +49,18 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
+def _conversation_auth_headers(client, email: str) -> dict[str, str]:
+    password = "ConversationTest123!"
+    register = client.post(
+        "/auth/register",
+        json={"email": email, "password": password, "full_name": "Conversation Test"},
+    )
+    assert register.status_code == 200
+    login = client.post("/auth/login", json={"email": email, "password": password})
+    assert login.status_code == 200
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
 def test_conversation_creation_and_metadata(db_session):
     conv = ConversationService.create_conversation(
         db=db_session,
@@ -277,47 +289,97 @@ def test_conversation_export_formats(db_session):
 
 
 def test_rest_api_conversation_flow(client):
+    headers = _conversation_auth_headers(client, "conversation-flow@example.com")
     # 1. Create conversation via REST
-    resp = client.post("/conversations", json={"title": "API Test Conv", "model_used": "gpt-4o"})
+    resp = client.post("/conversations", json={"title": "API Test Conv", "model_used": "gpt-4o"}, headers=headers)
     assert resp.status_code == 201
     conv_data = resp.json()
     conv_id = conv_data["id"]
 
     # 2. Add message turn
-    resp = client.post(f"/conversations/{conv_id}/messages", json={"content": "Suggest a high refresh monitor", "role": "user"})
+    resp = client.post(f"/conversations/{conv_id}/messages", json={"content": "Suggest a high refresh monitor", "role": "user"}, headers=headers)
     assert resp.status_code == 201
     msg_id = resp.json()["id"]
 
     # 3. Get history
-    resp = client.get(f"/conversations/{conv_id}/history")
+    resp = client.get(f"/conversations/{conv_id}/history", headers=headers)
     assert resp.status_code == 200
     assert len(resp.json()["messages"]) == 1
 
     # 4. Search conversations
-    resp = client.get("/conversations/search?q=monitor")
+    resp = client.get("/conversations/search?q=monitor", headers=headers)
     assert resp.status_code == 200
     assert resp.json()["results_count"] >= 1
 
     # 5. Edit message
-    resp = client.patch(f"/messages/{msg_id}", json={"content": "Suggest a 240Hz monitor", "revision": 1})
+    resp = client.patch(f"/messages/{msg_id}", json={"content": "Suggest a 240Hz monitor", "revision": 1}, headers=headers)
     assert resp.status_code == 200
     assert resp.json()["content"] == "Suggest a 240Hz monitor"
 
     # 6. Branch conversation
-    resp = client.post(f"/conversations/{conv_id}/branch", json={"branch_from_message_id": msg_id, "title": "Branched Path"})
+    resp = client.post(f"/conversations/{conv_id}/branch", json={"branch_from_message_id": msg_id, "title": "Branched Path"}, headers=headers)
     assert resp.status_code == 201
     assert resp.json()["title"] == "Branched Path"
 
     # 7. Export conversation
-    resp = client.get(f"/conversations/{conv_id}/export?format=markdown")
+    resp = client.get(f"/conversations/{conv_id}/export?format=markdown", headers=headers)
     assert resp.status_code == 200
     assert "240Hz monitor" in resp.json()["content"]
 
     # 8. Archive & Unarchive
-    resp = client.post(f"/conversations/{conv_id}/archive")
+    resp = client.post(f"/conversations/{conv_id}/archive", headers=headers)
     assert resp.status_code == 200
     assert resp.json()["archived_at"] is not None
 
-    resp = client.post(f"/conversations/{conv_id}/unarchive")
+    resp = client.post(f"/conversations/{conv_id}/unarchive", headers=headers)
     assert resp.status_code == 200
     assert resp.json()["archived_at"] is None
+
+
+
+def test_conversation_routes_enforce_authentication_and_owner_scope(client):
+    client.cookies.clear()
+    assert client.get("/conversations").status_code == 401
+
+    owner_headers = _conversation_auth_headers(client, "owner-scope@example.com")
+    create = client.post("/conversations", json={"title": "Private owner conversation"}, headers=owner_headers)
+    assert create.status_code == 201
+    conversation_id = create.json()["id"]
+    add = client.post(
+        f"/conversations/{conversation_id}/messages",
+        json={"content": "Private owner message", "role": "user"},
+        headers=owner_headers,
+    )
+    assert add.status_code == 201
+    message_id = add.json()["id"]
+
+    other_headers = _conversation_auth_headers(client, "other-scope@example.com")
+    assert client.get("/conversations", headers=other_headers).json()["total"] == 0
+    assert client.get(f"/conversations/{conversation_id}", headers=other_headers).status_code == 404
+    assert client.patch(
+        f"/conversations/{conversation_id}", json={"title": "Stolen title"}, headers=other_headers
+    ).status_code == 404
+    assert client.get(f"/conversations/{conversation_id}/history", headers=other_headers).status_code == 404
+    assert client.get(f"/conversations/{conversation_id}/export", headers=other_headers).status_code == 404
+    assert client.get(f"/messages/{message_id}", headers=other_headers).status_code == 404
+    assert client.patch(
+        f"/messages/{message_id}", json={"content": "Tampered message", "revision": 1}, headers=other_headers
+    ).status_code == 404
+    assert client.delete(f"/messages/{message_id}", headers=other_headers).status_code == 404
+    assert client.post(
+        f"/conversations/{conversation_id}/messages",
+        json={"content": "Unauthorized append", "role": "user"},
+        headers=other_headers,
+    ).status_code == 404
+    search = client.get("/conversations/search?q=Private", headers=other_headers)
+    assert search.status_code == 200
+    assert all(item["conversation_id"] != conversation_id for item in search.json()["results"])
+
+
+def test_message_create_rejects_assistant_or_system_role():
+    from pydantic import ValidationError
+    from app.schemas.conversation import MessageCreate
+
+    for role in ("assistant", "system", "tool"):
+        with pytest.raises(ValidationError):
+            MessageCreate(content="role spoof attempt", role=role)
