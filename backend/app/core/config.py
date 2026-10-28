@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     pincode_api_key: str = ""
     pincode_api_url: str = ""
 
+    # Parbad Virtual Gateway is explicitly sandbox-only; real-money processing is not enabled here.
+    parbad_mode: str = "disabled"
+    parbad_public_base_url: str = ""
+    parbad_internal_key: str = ""
+
     database_url: str = "sqlite:///./shopsense.db"
     db_pool_size: int = Field(default=5, ge=1, le=30)
     db_max_overflow: int = Field(default=10, ge=0, le=50)
