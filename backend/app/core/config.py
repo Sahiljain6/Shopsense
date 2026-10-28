@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     parbad_internal_key: str = ""
     parbad_allow_virtual_in_production: bool = False
 
+    # Production INR gateway. Disabled until merchant keys and webhook secret are configured.
+    payments_provider: str = "disabled"  # disabled | razorpay | parbad_virtual
+    razorpay_mode: str = "test"  # test | live
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+    razorpay_webhook_secret: str = ""
+
     database_url: str = "sqlite:///./shopsense.db"
     db_pool_size: int = Field(default=5, ge=1, le=30)
     db_max_overflow: int = Field(default=10, ge=0, le=50)
