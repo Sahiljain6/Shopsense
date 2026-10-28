@@ -360,7 +360,7 @@ def test_conversation_routes_enforce_authentication_and_owner_scope(client, db_s
     assert add.status_code == 201
     message_id = add.json()["id"]
 
-    other_headers = _conversation_auth_headers(client, "other-scope@example.com")
+    other_headers = _conversation_auth_headers(db_session, "other-scope@example.com")
     assert client.get("/conversations", headers=other_headers).json()["total"] == 0
     assert client.get(f"/conversations/{conversation_id}", headers=other_headers).status_code == 404
     assert client.patch(
