@@ -4,6 +4,7 @@ import CartDrawer from "./CartDrawer";
 import HeaderBrandMark from "./HeaderBrandMark";
 import UserProfileMenu from "./UserProfileMenu";
 import UiIcon from "./UiIcon";
+import { apiFetch, friendlyError } from "../api.js";
 
 export default function Hero({ authed, onLogout, onOpenAuth }) {
   const { cartItems, cartCount, cartTotal, removeFromCart, updateQty, clearCart } = useCart();
@@ -19,18 +20,108 @@ export default function Hero({ authed, onLogout, onOpenAuth }) {
     }
   }, [authed]);
 
-  const total = cartTotal;
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
+
+  // Close drawer immediately if user logs out.
+  useEffect(() => {
+    if (!authed) {
+      setCartOpen(false);
+      setCheckoutStep("cart");
+    }
+  }, [authed]);
+
+  // The redirect query is only a hint. Confirm final status with the authenticated API.
+  useEffect(() => {
+    if (!authed || typeof window === "undefined") return undefined;
+
+    const returnUrl = new URL(window.location.href);
+    const paymentResult = returnUrl.searchParams.get("payment");
+    const rawOrderId = returnUrl.searchParams.get("order_id");
+    if (!["success", "failed"].includes(paymentResult) || !rawOrderId) return undefined;
+
+    const parsedOrderId = Number(rawOrderId);
+    if (!Number.isSafeInteger(parsedOrderId) || parsedOrderId <= 0) return undefined;
+
+    let active = true;
+    const clearPaymentReturnQuery = () => {
+      returnUrl.searchParams.delete("payment");
+      returnUrl.searchParams.delete("order_id");
+      window.history.replaceState({}, "", returnUrl.pathname + returnUrl.search + returnUrl.hash);
+    };
+
+    apiFetch("/payments/orders/" + parsedOrderId, {
+      method: "GET",
+      retries: 0,
+      timeoutMs: 10000,
+      totalTimeoutMs: 15000,
+    }).then((order) => {
+      if (!active) return;
+      setOrderId(String(order.id));
+      setCartOpen(true);
+
+      if (paymentResult === "success" && order.status === "paid" && order.payment_status === "paid") {
+        clearCart();
+        setCheckoutStep("success");
+        setPaymentError("");
+      } else {
+        setCheckoutStep("checkout");
+        setPaymentError("ShopSense did not confirm a successful payment. Your cart has been kept; you can retry checkout.");
+      }
+      clearPaymentReturnQuery();
+    }).catch(() => {
+      if (!active) return;
+      setOrderId(String(parsedOrderId));
+      setCartOpen(true);
+      setCheckoutStep("checkout");
+      setPaymentError("ShopSense could not verify the order status yet. Your cart has been kept; refresh the order status before retrying.");
+      clearPaymentReturnQuery();
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [authed, clearCart]);
 
   const handleOpenCart = () => {
+    setPaymentError("");
     setCheckoutStep("cart");
     setCartOpen(true);
   };
 
-  const handleSimulateRazorpay = () => {
-    const generatedId = `SS-2026-${Math.floor(100000 + Math.random() * 900000)}`;
-    setOrderId(generatedId);
-    clearCart();
-    setCheckoutStep("success");
+  const handleStartParbadPayment = async () => {
+    if (paymentLoading || cartItems.length === 0) return;
+    setPaymentError("");
+    setPaymentLoading(true);
+
+    try {
+      const checkout = await apiFetch("/payments/checkout", {
+        method: "POST",
+        body: JSON.stringify({
+          items: cartItems.map((item) => ({
+            product_id: Number(item.id),
+            quantity: Number(item.qty || 1),
+          })),
+        }),
+        retries: 0,
+        timeoutMs: 15000,
+        totalTimeoutMs: 20000,
+      });
+
+      if (!checkout || typeof checkout.payment_url !== "string") {
+        throw new Error("ShopSense did not return a valid payment link.");
+      }
+
+      const paymentUrl = new URL(checkout.payment_url, window.location.origin);
+      if (!["http:", "https:"].includes(paymentUrl.protocol)) {
+        throw new Error("ShopSense returned an unsupported payment URL.");
+      }
+      window.location.assign(paymentUrl.href);
+    } catch (error) {
+      setPaymentError(friendlyError(error));
+    } finally {
+      setPaymentLoading(false);
+    }
   };
 
   return (
@@ -107,7 +198,9 @@ export default function Hero({ authed, onLogout, onOpenAuth }) {
         removeFromCart={removeFromCart}
         clearCart={clearCart}
         orderId={orderId}
-        onSimulateRazorpay={handleSimulateRazorpay}
+        onStartParbadPayment={handleStartParbadPayment}
+        paymentLoading={paymentLoading}
+        paymentError={paymentError}
       />
     </>
   );
