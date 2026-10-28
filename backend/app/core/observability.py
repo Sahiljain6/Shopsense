@@ -38,8 +38,11 @@ class RequestMetrics:
             self._total += 1
             if status_code >= 500:
                 self._errors += 1
-            if key not in self._routes and len(self._routes) >= self.max_routes:
-                key = "OTHER /bounded-route-cardinality"
+            overflow_key = "OTHER /bounded-route-cardinality"
+            # Reserve one slot for the overflow bucket so route cardinality never
+            # exceeds max_routes, even on the first unseen route after the cap.
+            if key not in self._routes and key != overflow_key and len(self._routes) >= self.max_routes - 1:
+                key = overflow_key
             row = self._routes.setdefault(key, {
                 "count": 0,
                 "errors_4xx": 0,

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +14,9 @@ from app.models.entities import Category, Product, Review, SeedVersion
 from app.core.config import get_settings
 from app.core.http_client import close_http_clients
 from app.core.gateway_middleware import GatewayAuthMiddleware
-from app.core.observability import RequestBodyLimitMiddleware, RequestObservabilityMiddleware
+from app.core.observability import RequestBodyLimitMiddleware, RequestObservabilityMiddleware, current_request_id
+
+logger = logging.getLogger("shopsense.api.main")
 
 Base.metadata.create_all(bind=engine)
 
@@ -631,15 +635,35 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Log every 422 with the field-level errors so auth schema mismatches are immediately visible in logs."""
-    print(
-        f"[VALIDATION ERROR] {request.method} {request.url.path} — "
-        f"errors: {exc.errors()} — body: {exc.body!r}"
+    """Return safe field-level errors without logging or echoing submitted values."""
+    route_path = getattr(request.scope.get("route"), "path", "/unmatched")
+    safe_errors = []
+    error_types = []
+    for error in exc.errors():
+        location = error.get("loc", ())
+        safe_location = [
+            str(part) if isinstance(part, (str, int)) else type(part).__name__
+            for part in location[:8]
+        ]
+        error_type = str(error.get("type") or "validation_error")[:80]
+        safe_errors.append({
+            "loc": safe_location,
+            "msg": "Invalid request value.",
+            "type": error_type,
+        })
+        error_types.append(error_type)
+
+    logger.warning(
+        "request_validation_failed request_id=%s method=%s route=%s error_types=%s",
+        current_request_id(),
+        request.method,
+        route_path,
+        ",".join(error_types[:20]),
     )
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
-            "detail": exc.errors(),
+            "detail": safe_errors,
             "hint": "Check that all required fields are present and meet the schema requirements.",
         },
     )
@@ -696,9 +720,15 @@ def health() -> dict[str, str]:
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc: Exception):
-    import traceback
-    print(f"Unhandled server error: {exc}\n{traceback.format_exc()}")
+async def global_exception_handler(request: Request, exc: Exception):
+    route_path = getattr(request.scope.get("route"), "path", "/unmatched")
+    logger.error(
+        "unhandled_server_error request_id=%s method=%s route=%s error_type=%s",
+        current_request_id(),
+        request.method,
+        route_path,
+        type(exc).__name__,
+    )
     from fastapi.responses import JSONResponse
     return JSONResponse(
         status_code=500,

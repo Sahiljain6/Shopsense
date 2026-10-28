@@ -117,32 +117,45 @@ def test_quota_exceeded_mid_request_blocks_llm(client, db_session) -> None:
 
 
 def test_tier_downgrade_mid_session_invalidates_jwt(client, db_session) -> None:
-    """
-    Scenario: Pro user downgrades to Free tier mid-session.
-    Expected: Token version increments, existing 15-minute Pro JWT is rejected with 401 on next call.
-    """
+    """Admin-mediated tier changes immediately invalidate the target user's old token."""
     user = create_user_with_tier(db_session, "downgrade_actor@example.com", tier="pro")
+    admin = create_user_with_tier(db_session, "tier_admin@example.com", tier="admin", is_admin=True)
     pro_token = create_access_token(user.email, user=user)
-    headers = {"Authorization": f"Bearer {pro_token}"}
+    admin_token = create_access_token(admin.email, user=admin)
+    user_headers = {"Authorization": f"Bearer {pro_token}"}
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # Verify token works initially
-    res_before = client.get("/auth/session", headers=headers)
+    res_before = client.get("/auth/session", headers=user_headers)
     assert res_before.status_code == 200
     assert res_before.json()["tier"] == "pro"
 
-    # Simulate tier downgrade (e.g., from billing webhook or /auth/tier endpoint)
-    downgrade_res = client.post(
-        "/auth/tier",
+    downgrade_res = client.patch(
+        f"/admin/users/{user.id}/tier",
         params={"tier": "free"},
-        headers=headers,
+        headers=admin_headers,
     )
     assert downgrade_res.status_code == 200
-    assert downgrade_res.json()["token_version"] == 2
+    assert downgrade_res.json()["token_version"] > 1
+    db_session.refresh(user)
+    assert downgrade_res.json()["token_version"] == user.token_version
 
-    # Using the OLD Pro token must now be rejected immediately without contacting database
-    res_after = client.get("/auth/session", headers=headers)
+    res_after = client.get("/auth/session", headers=user_headers)
     assert res_after.status_code == 401
     assert "superseded or tier updated" in res_after.json()["error"] or "superseded or tier updated" in res_after.json()["detail"]
+
+
+def test_non_admin_cannot_change_own_tier(client, db_session) -> None:
+    user = create_user_with_tier(db_session, "self_tier_escalation@example.com", tier="free")
+    token = create_access_token(user.email, user=user)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    for requested_tier in ("pro", "admin"):
+        response = client.post("/auth/tier", params={"tier": requested_tier}, headers=headers)
+        assert response.status_code == 403
+
+    db_session.refresh(user)
+    assert user.tier == "free"
+    assert user.is_admin is False
 
 
 def test_cross_tenant_data_isolation(client, db_session) -> None:

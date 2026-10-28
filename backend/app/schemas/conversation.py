@@ -37,7 +37,7 @@ class MessageRead(BaseModel):
 
 class MessageCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=16000)
-    role: Literal["user", "assistant", "system", "tool"] = "user"
+    role: Literal["user"] = "user"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -352,11 +352,10 @@ def get_current_session(context: SecurityContext = Depends(get_security_context)
 def update_user_tier(
     tier: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_admin),
 ) -> dict[str, object]:
     """
-    Update user subscription tier and trigger immediate session revocation / version bump
-    so outdated JWT tokens are instantly rejected on their next call.
+    Admin-only legacy endpoint: update the admin's tier and invalidate old sessions.
     """
     valid_tiers = [t.value for t in UserTier]
     if tier.lower() not in valid_tiers:
