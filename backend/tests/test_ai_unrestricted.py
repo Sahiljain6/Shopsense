@@ -383,3 +383,30 @@ def test_claude_style_comparison_synthesis(db_session) -> None:
     assert not ans.endswith("...")
 
 
+
+
+def test_earphone_fallback_never_returns_phone_options_or_breaks_budget(monkeypatch, db_session) -> None:
+    """An audio request must not enter the phone fallback through the substring 'phone'."""
+    orchestrator = AIOrchestrator(db_session)
+    monkeypatch.setattr(orchestrator, "_chat", lambda *args, **kwargs: None)
+
+    search_queries = []
+
+    def no_catalog_results(query, limit=10):
+        search_queries.append(query)
+        return []
+
+    monkeypatch.setattr(orchestrator.catalog, "search", no_catalog_results)
+
+    response = orchestrator._general_ai_response(
+        "best earphone under 2000",
+        live_deals_override=[],
+    )
+
+    assert "audio products under ₹2,000" in response.answer
+    assert "Top 5G Phones Under" not in response.answer
+    assert "Motorola Moto G34" not in response.answer
+    assert "Realme Buds Air 6 Pro" not in response.answer
+    assert "earphone" in search_queries
+    assert "phone" not in search_queries
+
