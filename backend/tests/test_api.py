@@ -1,4 +1,4 @@
-from app.models.entities import Category, Product
+from app.models.entities import Category, Order, PaymentAttempt, Product
 
 
 def seed_phone(db_session) -> Product:
@@ -509,3 +509,105 @@ def test_security_headers_middleware(client) -> None:
 
 
 
+
+
+def test_parbad_checkout_uses_catalog_prices_and_requires_verified_internal_events(client, db_session, monkeypatch) -> None:
+    """Checkout prices come from the DB; only authenticated Parbad events can mark an order paid."""
+    from types import SimpleNamespace
+
+    product = seed_phone(db_session)
+    shared_key = "local-test-parbad-internal-key-with-40-characters"
+    settings = SimpleNamespace(
+        parbad_mode="virtual",
+        parbad_public_base_url="http://localhost:8081",
+        parbad_internal_key=shared_key,
+        environment="test",
+        parbad_allow_virtual_in_production=False,
+    )
+    monkeypatch.setattr("app.api.routes.get_settings", lambda: settings)
+    headers = _register_and_login(client)
+
+    checkout = client.post(
+        "/payments/checkout",
+        json={"items": [{"product_id": product.id, "quantity": 2, "price": 1, "name": "Client-supplied fake item"}]},
+        headers=headers,
+    )
+    assert checkout.status_code == 201
+    body = checkout.json()
+    assert body["amount"] == product.price * 2
+    assert body["currency"] == "INR"
+    assert body["payment_mode"] == "sandbox"
+    assert body["payment_url"] == f"http://localhost:8081/api/payments/start?attempt_id={body['attempt_id']}"
+    assert "No real money is charged" in body["notice"]
+
+    order = db_session.get(Order, body["order_id"])
+    attempt = db_session.get(PaymentAttempt, body["attempt_id"])
+    assert order is not None and order.status == "pending_payment"
+    assert attempt is not None and attempt.status == "pending"
+    assert attempt.items[0]["unit_price"] == product.price
+    assert attempt.items[0]["quantity"] == 2
+
+    event_body = {"attempt_id": attempt.id, "status": "paid", "transaction_code": "untrusted-direct-payment"}
+    assert client.post("/payments/parbad/events", json=event_body).status_code == 401
+    premature = client.post(
+        "/payments/parbad/events",
+        json=event_body,
+        headers={"X-ShopSense-Internal-Key": shared_key},
+    )
+    assert premature.status_code == 409
+
+    authorized = client.get(
+        f"/payments/parbad/authorize/{attempt.id}",
+        headers={"X-ShopSense-Internal-Key": shared_key},
+    )
+    assert authorized.status_code == 200
+    assert authorized.json()["amount"] == product.price * 2
+    assert client.get(
+        f"/payments/parbad/authorize/{attempt.id}",
+        headers={"X-ShopSense-Internal-Key": shared_key},
+    ).status_code == 409
+
+    initiated = client.post(
+        "/payments/parbad/events",
+        json={"attempt_id": attempt.id, "status": "initiated"},
+        headers={"X-ShopSense-Internal-Key": shared_key},
+    )
+    assert initiated.status_code == 200
+    paid = client.post(
+        "/payments/parbad/events",
+        json={"attempt_id": attempt.id, "status": "paid", "transaction_code": "verified-sandbox-tx"},
+        headers={"X-ShopSense-Internal-Key": shared_key},
+    )
+    assert paid.status_code == 200
+    assert paid.json()["status"] == "paid"
+
+    status_response = client.get(f"/payments/orders/{order.id}", headers=headers)
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "paid"
+    assert status_response.json()["payment_status"] == "paid"
+    db_session.refresh(order)
+    assert order.status == "paid"
+
+
+def test_parbad_virtual_checkout_is_disabled_in_production_by_default(client, db_session, monkeypatch) -> None:
+    """A live deployment cannot accidentally expose the Parbad simulator."""
+    from types import SimpleNamespace
+
+    product = seed_phone(db_session)
+    settings = SimpleNamespace(
+        parbad_mode="virtual",
+        parbad_public_base_url="https://payment.example.test",
+        parbad_internal_key="production-test-key-with-at-least-32-characters",
+        environment="production",
+        parbad_allow_virtual_in_production=False,
+    )
+    monkeypatch.setattr("app.api.routes.get_settings", lambda: settings)
+
+    response = client.post(
+        "/payments/checkout",
+        json={"items": [{"product_id": product.id, "quantity": 1}]},
+        headers=_register_and_login(client),
+    )
+    assert response.status_code == 503
+    assert db_session.query(Order).count() == 0
+    assert db_session.query(PaymentAttempt).count() == 0
