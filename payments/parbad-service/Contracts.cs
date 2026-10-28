@@ -1,18 +1,20 @@
+using System.Text.Json.Serialization;
+
 namespace ShopSense.ParbadService;
 
 public sealed record AuthorizedPayment(
-    int AttemptId,
-    long TrackingNumber,
-    int OrderId,
-    decimal Amount,
-    string Currency);
+    [property: JsonPropertyName("attempt_id")] int AttemptId,
+    [property: JsonPropertyName("tracking_number")] long TrackingNumber,
+    [property: JsonPropertyName("order_id")] int OrderId,
+    [property: JsonPropertyName("amount")] decimal Amount,
+    [property: JsonPropertyName("currency")] string Currency);
 
 public sealed record PaymentEventRequest(
-    int AttemptId,
-    string Status,
-    string? TransactionCode = null);
+    [property: JsonPropertyName("attempt_id")] int AttemptId,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("transaction_code")] string? TransactionCode = null);
 
 public sealed record PaymentEventResponse(
-    bool Ok,
-    int OrderId,
-    string Status);
+    [property: JsonPropertyName("ok")] bool Ok,
+    [property: JsonPropertyName("order_id")] int OrderId,
+    [property: JsonPropertyName("status")] string Status);
