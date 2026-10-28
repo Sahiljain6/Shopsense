@@ -537,7 +537,9 @@ def test_parbad_checkout_uses_catalog_prices_and_requires_verified_internal_even
     assert body["amount"] == product.price * 2
     assert body["currency"] == "INR"
     assert body["payment_mode"] == "sandbox"
-    assert body["payment_url"] == f"http://localhost:8081/api/payments/start?attempt_id={body['attempt_id']}"
+    assert body["payment_url"].startswith("http://localhost:8081/api/payments/start?token=")
+    checkout_token = body["payment_url"].split("token=", 1)[1]
+    assert len(checkout_token) >= 32
     assert "No real money is charged" in body["notice"]
 
     order = db_session.get(Order, body["order_id"])
@@ -556,14 +558,18 @@ def test_parbad_checkout_uses_catalog_prices_and_requires_verified_internal_even
     )
     assert premature.status_code == 409
 
+    assert client.get(
+        "/payments/parbad/authorize?token=" + checkout_token,
+    ).status_code == 401
     authorized = client.get(
-        f"/payments/parbad/authorize/{attempt.id}",
+        "/payments/parbad/authorize?token=" + checkout_token,
         headers={"X-ShopSense-Internal-Key": shared_key},
     )
     assert authorized.status_code == 200
     assert authorized.json()["amount"] == product.price * 2
+    assert authorized.json()["tracking_number"] == attempt.id
     assert client.get(
-        f"/payments/parbad/authorize/{attempt.id}",
+        "/payments/parbad/authorize?token=" + checkout_token,
         headers={"X-ShopSense-Internal-Key": shared_key},
     ).status_code == 409
 
