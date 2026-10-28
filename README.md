@@ -233,6 +233,14 @@ ShopSense includes an optional-to-use **Parbad Virtual Gateway** service built w
 
 See [the Parbad service guide](payments/parbad-service/README.md) for its architecture and setup. Keep `PARBAD_INTERNAL_KEY` private and identical in both services; Docker Compose uses a local-only fallback only for development and supports overriding it from a repository-root `.env`.
 
+### Public Parbad sandbox on Render
+
+The deployment Blueprint defines an isolated online demo at `https://shopsense-parbad-sandbox.onrender.com`, with a separate API, Parbad Virtual Gateway service, and sandbox database. It does not change the production ShopSense API's payment mode.
+
+The Render Blueprint adds a separate paid Postgres database so simulated payments cannot mark live orders as paid. Review the database plan and any resulting charges before syncing the Blueprint. Render generates the sandbox JWT and internal service key; keep those values in the Render service environment, not in Git. For deployment instructions and service URLs, see [the Parbad sandbox guide](payments/parbad-service/README.md).
+
+Parbad Virtual Gateway is a simulator only. It cannot collect real INR/UPI/card payments.
+
 ## Environment variables
 
 All secrets belong in backend environment variables or backend/.env, never in client-side source code.
