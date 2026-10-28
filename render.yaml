@@ -61,10 +61,9 @@ services:
         value: "https://shopsense-parbad-sandbox.onrender.com"
       - key: ENABLE_MULTI_AGENT
         value: "false"
+      # Free-tier sandbox uses ephemeral SQLite. Data resets on restart/spin-down/redeploy.
       - key: DATABASE_URL
-        fromDatabase:
-          name: shopsense-parbad-sandbox-db
-          property: connectionString
+        value: sqlite:///./shopsense.db
       - key: PARBAD_MODE
         value: virtual
       - key: PARBAD_PUBLIC_BASE_URL
@@ -108,9 +107,3 @@ databases:
     databaseName: shopsense
     user: shopsense
 
-  # Paid plan is intentional: this must be a separate persistent database, not live orders.
-  - name: shopsense-parbad-sandbox-db
-    plan: basic-256mb
-    databaseName: shopsense_parbad_sandbox
-    user: shopsense_parbad_sandbox
-    region: oregon
