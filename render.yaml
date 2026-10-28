@@ -86,8 +86,6 @@ services:
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
-      - key: PORT
-        value: "10000"
       - key: PARBAD_MODE
         value: virtual
       - key: PARBAD_PUBLIC_BASE_URL
