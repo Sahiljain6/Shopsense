@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   CART DRAWER & CHECKOUT SANDBOX (ShopSense Glassmorphic Architecture)
+   CART DRAWER & PARBAD VIRTUAL CHECKOUT SANDBOX
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .cart-overlay {
@@ -284,10 +284,27 @@
   border-radius: 9999px;
 }
 
-.checkout-demo-description {
+ .checkout-demo-description {
   font-size: 0.84rem;
   color: #94a3b8;
   line-height: 1.5;
+}
+
+.checkout-error {
+  margin: 0;
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  background: rgba(127, 29, 29, 0.16);
+  color: #fca5a5;
+  padding: 0.7rem 0.8rem;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.cart-checkout-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  filter: saturate(0.6);
 }
 
 .checkout-breakdown {
