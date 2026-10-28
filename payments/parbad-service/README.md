@@ -34,6 +34,20 @@ To deploy, merge the deployment pull request only after reviewing the database c
 
 The public URL is for payment-flow demonstrations only. It cannot collect or settle real money. Render free web services may sleep and Parbad uses in-memory gateway state, so expect cold starts and don't use the virtual gateway as a production checkout.
 
+## Public online sandbox on Render
+
+The root `render.yaml` defines a free demo stack with these expected URLs:
+
+- Frontend: `https://shopsense-parbad-sandbox.onrender.com`
+- Sandbox API: `https://shopsense-parbad-sandbox-api.onrender.com`
+- Parbad Virtual Gateway: `https://shopsense-parbad-payment-sandbox.onrender.com`
+
+The sandbox API uses its own **ephemeral SQLite database**, and does not use the live ShopSense Postgres database. No paid database is provisioned by this Blueprint. As with other Render free web services, the SQLite file is lost when the API restarts, redeploys, or spins down, and free services may take about a minute to wake. A payment demo is therefore not reliable for preserving order history.
+
+Render generates the sandbox JWT and internal callback secret. The callback secret is shared with the .NET service through a Render service reference; secret values are not committed to Git.
+
+Parbad Virtual Gateway remains a simulator only. Do not connect this sandbox to the production order database or use it to accept real money.
+
 ## Environment variables
 
 ### ShopSense backend
