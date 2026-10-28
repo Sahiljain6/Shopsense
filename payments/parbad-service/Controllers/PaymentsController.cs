@@ -168,7 +168,7 @@ public sealed class PaymentsController : ControllerBase
                     var alreadyPaid = await NotifyShopSenseAsync(
                         backendBase, internalKey, attemptId, "paid", null, cancellationToken);
                     return Redirect(BuildFrontendReturnUrl(
-                        alreadyPaid?.Status == "paid" ? "success" : "failed",
+                        alreadyPaid?.Status == "sandbox_paid" ? "success" : "failed",
                         alreadyPaid?.OrderId));
                 }
 
@@ -195,7 +195,7 @@ public sealed class PaymentsController : ControllerBase
                 cancellationToken);
 
             return Redirect(BuildFrontendReturnUrl(
-                completion?.Status == "paid" ? "success" : "failed",
+                completion?.Status == "sandbox_paid" ? "success" : "failed",
                 completion?.OrderId));
         }
         catch (Exception exception)
