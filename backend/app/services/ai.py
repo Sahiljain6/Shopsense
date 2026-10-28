@@ -2147,10 +2147,19 @@ RESPONSE RULES:
                 )
 
             # Fallback 2: Intelligent Catalog Search Matching with strict budget filtering
-            keywords = ["keyboard", "earbuds", "phone", "iphone", "samsung", "apple", "laptop", "macbook", "audio", "watch", "gaming", "tws"]
+            keywords = [
+                "mechanical keyboard", "keyboards", "keyboard",
+                "earphones", "earphone", "headphones", "headphone", "earbuds", "earbud", "audio", "tws",
+                "smartphones", "smartphone", "phones", "phone", "mobiles", "mobile", "iphone",
+                "samsung", "apple", "laptops", "laptop", "macbook", "watch", "gaming",
+            ]
             lowered = message.lower()
             budget = extract_budget(message)
-            matched_keywords = [k for k in keywords if k in lowered]
+            # Match complete terms: "earphone" must never trigger the "phone" category.
+            matched_keywords = [
+                keyword for keyword in keywords
+                if re.search(rf"(?<!\\w){re.escape(keyword)}(?!\\w)", lowered)
+            ]
             if matched_keywords:
                 search_query = " ".join(matched_keywords)
                 fallback_products = self.catalog.search(search_query, limit=8)
@@ -2160,50 +2169,55 @@ RESPONSE RULES:
                 if fallback_products:
                     return self._structured_response(fallback_products)
 
-            # Fallback 3: Dedicated Budget Phones Under ₹15,000 / ₹20,000 Breakdown
-            if any(w in lowered for w in ["phone", "mobile", "smartphone"]):
+            # Fallback 3: Audio-category recommendations come before phone matching.
+            # Use whole-word category checks so "earphone" cannot be interpreted as "phone".
+            if re.search(r"\\b(?:earbuds?|earphones?|headphones?|headsets?|tws|audio)\\b", lowered):
+                audio_products = self.catalog.search("earbuds", limit=4)
+                if budget is not None:
+                    audio_products = [p for p in audio_products if p.price <= budget]
+                audio_products = filter_and_rank_products(audio_products, extract_constraints(message))
+                if audio_products:
+                    return self._structured_response(audio_products)
+                budget_detail = f" under ₹{budget:,.0f}" if budget is not None else ""
+                return ChatResponse(
+                    answer=(
+                        f"I couldn't find catalog-verified audio products{budget_detail} in the current catalog. "
+                        "I won't substitute phones or recommend items above your budget. "
+                        "Try a broader budget or ask me to check live retailer listings."
+                    )
+                )
+
+            # Fallback 4: Phone recommendations; only match actual phone-category terms.
+            if re.search(r"\\b(?:phones?|smartphones?|mobiles?|iphones?)\\b", lowered):
                 budget_phones = self.catalog.search("phone", limit=10)
                 if budget is not None:
                     budget_phones = [p for p in budget_phones if p.price <= budget]
+                budget_phones = filter_and_rank_products(budget_phones, extract_constraints(message))
                 if budget_phones:
                     return self._structured_response(budget_phones)
+                budget_detail = f" under ₹{budget:,.0f}" if budget is not None else ""
                 return ChatResponse(
                     answer=(
-                        "### 📱 Top 5G Phones Under ₹15,000 in India\n\n"
-                        "• **Best Overall Value**: **Motorola Moto G34 5G** (₹11,999) — Snapdragon 695 5G, 120Hz display, clean stock Android 14.\n"
-                        "• **Best Performance & Design**: **CMF Phone 1 by Nothing** (₹14,999) — Dimensity 7300 4nm, 120Hz Super AMOLED.\n"
-                        "• **Fastest Charging Champion**: **Realme 12x 5G** (₹11,999) — 45W SUPERVOOC, 50MP AI camera, Dimensity 6100+ 5G.\n"
-                        "• **Best Premium Glass Design**: **Poco M6 Pro 5G** (₹10,999) — Snapdragon 4 Gen 2, glass back, 90Hz FHD+.\n"
-                        "• **Most Affordable 5G Choice**: **Redmi 13C 5G** (₹9,999) — 50MP AI camera, 5000mAh battery."
+                        f"I couldn't find catalog-verified phone options{budget_detail} in the current catalog. "
+                        "I won't recommend over-budget or unverified alternatives. "
+                        "Try a broader budget or ask me to check live retailer listings."
                     )
                 )
 
-            # Fallback 4: Category-specific expert breakdown
-            if any(w in lowered for w in ["earbud", "earbuds", "tws", "headphone", "earphone", "audio"]):
-                earbuds = self.catalog.search("earbuds", limit=4)
-                if budget is not None:
-                    earbuds = [p for p in earbuds if p.price <= budget]
-                if earbuds:
-                    return self._structured_response(earbuds)
-                return ChatResponse(
-                    answer=(
-                        "### 🎧 Top Wireless Earbuds in India (Best Value to Flagship)\n\n"
-                        "• **Budget King (Under ₹2,000)**: **boAt Airdopes 141 ANC** (₹1,499) — 32dB ANC, 42H battery, low latency beast.\n"
-                        "• **Mid-Range Champion (Under ₹5,000)**: **Realme Buds Air 6 Pro** (₹4,999) — 50dB ANC, Hi-Res LDAC audio, dual drivers.\n"
-                        "• **Flagship Excellence (Under ₹10,000)**: **OnePlus Buds Pro 2** (₹8,999) — Dynaudio tuning, Spatial Audio, 48dB ANC."
-                    )
-                )
-
-            if any(w in lowered for w in ["keyboard", "keyboards", "mechanical keyboard", "gaming keyboard"]):
+            # Fallback 5: Keyboard recommendations with the same budget guarantee.
+            if re.search(r"\\b(?:keyboards?|mechanical keyboards?|gaming keyboards?)\\b", lowered):
                 keyboards = self.catalog.search("keyboard", limit=4)
+                if budget is not None:
+                    keyboards = [p for p in keyboards if p.price <= budget]
+                keyboards = filter_and_rank_products(keyboards, extract_constraints(message))
                 if keyboards:
                     return self._structured_response(keyboards)
+                budget_detail = f" under ₹{budget:,.0f}" if budget is not None else ""
                 return ChatResponse(
                     answer=(
-                        "### ⌨️ Top Mechanical Keyboards in India (Budget to Premium)\n\n"
-                        "• **Best Budget TKL (Under ₹2,500)**: **Cosmic Byte CB-GK-16 Firefly** (₹2,199) — Outemu Blue tactile clicky switches, per-key RGB.\n"
-                        "• **Best Durable Gaming (Under ₹3,500)**: **Redragon K552 Kumara RGB** (₹2,790) — Metal base, red linear switches, splash-proof.\n"
-                        "• **Best Wireless & Typing (Under ₹8,000)**: **Keychron K2 V2 Wireless** (₹7,999) — Hot-swappable Gateron Brown, Mac/Win support, 4000mAh battery."
+                        f"I couldn't find catalog-verified keyboard options{budget_detail} in the current catalog. "
+                        "I won't recommend items above your budget or invent product details. "
+                        "Try a broader budget or ask me to check live retailer listings."
                     )
                 )
 
