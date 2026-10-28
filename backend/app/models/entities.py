@@ -74,6 +74,7 @@ class PaymentAttempt(Base):
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), default="INR", nullable=False)
     provider: Mapped[str] = mapped_column(String(40), default="parbad-virtual", nullable=False)
+    provider_order_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True, nullable=True)
     checkout_token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="pending", index=True, nullable=False)
     items: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list, nullable=False)
