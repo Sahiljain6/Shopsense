@@ -17,6 +17,7 @@
 - [Live product search with SerpApi](#live-product-search-with-serpapi)
 - [Run locally](#run-locally)
 - [Run with Docker Compose](#run-with-docker-compose)
+- [Parbad payment sandbox](#parbad-payment-sandbox)
 - [Environment variables](#environment-variables)
 - [Production engineering roadmap](#production-engineering-roadmap)
 - [Production readiness and hardening plan](#production-readiness-and-hardening-plan)
@@ -212,7 +213,7 @@ Open the local URL printed by Vite (normally [http://localhost:5173](http://loca
 
 ## Run with Docker Compose
 
-Docker Compose starts PostgreSQL, the backend, and the frontend together.
+Docker Compose starts PostgreSQL, the backend, the frontend, and the Parbad virtual payment sandbox together.
 
 1. Copy **backend/.env.example** to **backend/.env**.
 2. Add your LLM API key and optional SERPAPI_API_KEY.
@@ -223,6 +224,14 @@ docker compose up --build
 ~~~
 
 Open [http://localhost:3000](http://localhost:3000). Compose configures the backend to connect to the PostgreSQL service and points the frontend at the local API. To stop the services, run **docker compose down**; add **-v** only if you also intend to remove the persisted database volume.
+
+## Parbad payment sandbox
+
+ShopSense includes an optional-to-use **Parbad Virtual Gateway** service built with .NET 9. It exercises server-priced checkout, the gateway redirect, callback verification, and order status updates. Local Docker Compose runs this service at [http://localhost:8081](http://localhost:8081).
+
+**This is strictly a test payment flow; no real money is charged.** Parbad's upstream package lists real gateways primarily for Iran and is not a drop-in provider for ShopSense's current INR-priced Indian storefront. The app deliberately disables this virtual gateway in production by default. Do not set `PARBAD_ALLOW_VIRTUAL_IN_PRODUCTION=true` on the live store. For production payments, integrate a supported Indian provider and complete its server-side verification, webhook-signature, refund, and reconciliation requirements.
+
+See [the Parbad service guide](payments/parbad-service/README.md) for its architecture and setup. Keep `PARBAD_INTERNAL_KEY` private and identical in both services; Docker Compose uses a local-only fallback only for development and supports overriding it from a repository-root `.env`.
 
 ## Environment variables
 
@@ -255,6 +264,10 @@ All secrets belong in backend environment variables or backend/.env, never in cl
 | ENABLE_MULTI_AGENT | Optional | Enables the LangGraph path when set to true |
 | GOOGLE_CLIENT_ID | Optional | Google identity sign-in configuration |
 | PINCODE_API_KEY, PINCODE_API_URL | Optional | Configuration for supported PIN-code integration |
+| PARBAD_MODE | Local sandbox only | Set to virtual only to enable the Parbad Virtual Gateway |
+| PARBAD_PUBLIC_BASE_URL | Local sandbox only | Browser-accessible Parbad service URL, e.g. http://localhost:8081 |
+| PARBAD_INTERNAL_KEY | Required for sandbox callback | Shared random secret between the FastAPI backend and .NET payment service |
+| PARBAD_ALLOW_VIRTUAL_IN_PRODUCTION | Do not enable | Explicit sandbox-only escape hatch; leave false in production |
 
 Provider selection follows the backend's configured precedence. Configure the provider you intend to use and review **backend/app/core/config.py** and **backend/app/services/ai.py** if you change provider routing.
 
