@@ -19,6 +19,21 @@ This small .NET 9 service integrates Parbad with ShopSense's Python/FastAPI back
 
 The backend computes the total from current database product prices and stock; it ignores client-submitted prices/names/totals. Service callbacks use `X-ShopSense-Internal-Key`, and the backend validates the order/attempt state before accepting events.
 
+## Public online sandbox on Render
+
+The root `render.yaml` now describes a separate public sandbox stack:
+
+- Frontend: `https://shopsense-parbad-sandbox.onrender.com`
+- Sandbox API: `https://shopsense-parbad-sandbox-api.onrender.com`
+- Parbad Virtual Gateway: `https://shopsense-parbad-payment-sandbox.onrender.com`
+- Database: `shopsense-parbad-sandbox-db`, separate from the live ShopSense database
+
+To deploy, merge the deployment pull request only after reviewing the database cost, then open the Render Blueprint connected to this repository and sync the updated `render.yaml`. Render generates the API's JWT and internal callback secrets and passes the callback key to the payment service through a service reference; no secret values are committed.
+
+**This blueprint provisions a separate paid Render Postgres database** to protect live orders from simulated sandbox payments. Don't point this sandbox API at the production database and don't enable the virtual gateway on the live `shopsense-api`. Free Render Postgres databases expire after 30 days and Render currently allows only one active free Postgres database per workspace, so the blueprint deliberately uses a persistent paid database rather than sharing production order data.
+
+The public URL is for payment-flow demonstrations only. It cannot collect or settle real money. Render free web services may sleep and Parbad uses in-memory gateway state, so expect cold starts and don't use the virtual gateway as a production checkout.
+
 ## Environment variables
 
 ### ShopSense backend
