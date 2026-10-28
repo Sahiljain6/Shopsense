@@ -195,7 +195,7 @@ public sealed class PaymentsController : ControllerBase
                 cancellationToken);
 
             return Redirect(BuildFrontendReturnUrl(
-                completion?.Status == "sandbox_paid" ? "success" : "failed",
+                completion?.Status == "paid" ? "success" : "failed",
                 completion?.OrderId));
         }
         catch (Exception exception)
