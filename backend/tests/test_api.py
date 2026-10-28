@@ -1,4 +1,5 @@
-from app.models.entities import Category, Order, PaymentAttempt, Product
+from app.core.security import create_access_token
+from app.models.entities import Category, Order, PaymentAttempt, Product, User
 
 
 def seed_phone(db_session) -> Product:
@@ -511,6 +512,23 @@ def test_security_headers_middleware(client) -> None:
 
 
 
+def _parbad_test_auth_headers(db_session, email: str) -> dict[str, str]:
+    """Create an isolated test user directly to avoid exercising signup rate limits."""
+    user = User(
+        email=email,
+        hashed_password=None,
+        full_name="Payment Test",
+        is_admin=False,
+        tier="free",
+        token_version=1,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    token = create_access_token(user.email, user=user)
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_parbad_checkout_uses_catalog_prices_and_requires_verified_internal_events(client, db_session, monkeypatch) -> None:
     """Checkout prices come from the DB; only authenticated Parbad events can mark an order paid."""
     from types import SimpleNamespace
@@ -525,7 +543,7 @@ def test_parbad_checkout_uses_catalog_prices_and_requires_verified_internal_even
         parbad_allow_virtual_in_production=False,
     )
     monkeypatch.setattr("app.api.routes.get_settings", lambda: settings)
-    headers = _register_and_login(client)
+    headers = _parbad_test_auth_headers(db_session, "parbad-owner@example.com")
 
     checkout = client.post(
         "/payments/checkout",
@@ -612,7 +630,7 @@ def test_parbad_virtual_checkout_is_disabled_in_production_by_default(client, db
     response = client.post(
         "/payments/checkout",
         json={"items": [{"product_id": product.id, "quantity": 1}]},
-        headers=_register_and_login(client),
+        headers=_parbad_test_auth_headers(db_session, "parbad-production@example.com"),
     )
     assert response.status_code == 503
     assert db_session.query(Order).count() == 0
