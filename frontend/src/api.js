@@ -2,7 +2,7 @@ import { streamAIResponse } from "./utils/aiStreamClient.js";
 
 const API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL ? import.meta.env.VITE_API_URL.trim() : null) || "https://shopsense-api-pb2g.onrender.com";
 const TOKEN_KEY = "shopsense_token";
-const PROTECTED_PATHS = ["/chat", "/chat/stream", "/compare", "/reviews/summary", "/history", "/wishlist"];
+const PROTECTED_PATHS = ["/chat", "/chat/stream", "/compare", "/reviews/summary", "/history", "/wishlist", "/payments"];
 
 export class ApiError extends Error {
   constructor(status, message) {
