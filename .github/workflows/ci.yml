@@ -61,3 +61,21 @@ jobs:
           JWT_SECRET: "test-jwt-secret-key-32-chars-long"
         run: |
           pytest -v
+
+  parbad-payment-build:
+    name: Parbad .NET 9 Payment Service Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore Parbad service
+        run: dotnet restore payments/parbad-service/ShopSense.ParbadService.csproj
+
+      - name: Build Parbad service
+        run: dotnet build payments/parbad-service/ShopSense.ParbadService.csproj --configuration Release --no-restore

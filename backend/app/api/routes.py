@@ -1,10 +1,13 @@
 import asyncio
 from contextvars import copy_context
 import hashlib
+import hmac
 import json
 import logging
+import secrets
 import time
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -37,8 +40,8 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db
-from app.models.entities import ChatHistory, ChatIdempotency, Order, Product, Review, SeedVersion, User, Wishlist
-from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, GoogleAuthRequest, PriceHistoryResponse, ProductCreate, ProductRead, RefreshTokenRequest, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
+from app.models.entities import ChatHistory, ChatIdempotency, Order, PaymentAttempt, Product, Review, SeedVersion, User, Wishlist
+from app.schemas.api import ChatRequest, ChatResponse, CompareRequest, FetchLinkRequest, FetchLinkResponse, GoogleAuthRequest, ParbadPaymentEvent, PaymentCheckoutRequest, PriceHistoryResponse, ProductCreate, ProductRead, RefreshTokenRequest, ReviewRead, ReviewSummaryRequest, Token, UserCreate, UserLogin, UserRead, WishlistRequest
 from app.services.ai import AIOrchestrator
 from app.services.barcode_lookup import lookup_barcode
 from app.services.catalog import CatalogService
@@ -1149,6 +1152,222 @@ def admin_orders(db: Session = Depends(get_db), _: User = Depends(require_admin)
     except Exception:
         db.rollback()
         return []
+
+
+
+def _require_parbad_internal_key(request: Request, settings: object) -> None:
+    """Authenticate only the private ShopSense-to-Parbad service callbacks."""
+    expected = str(getattr(settings, "parbad_internal_key", "") or "")
+    supplied = request.headers.get("X-ShopSense-Internal-Key", "")
+    if len(expected) < 32 or not hmac.compare_digest(expected, supplied):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid internal payment service credentials.")
+
+
+def _parbad_sandbox_is_available(settings: object) -> bool:
+    mode = str(getattr(settings, "parbad_mode", "disabled") or "disabled").lower()
+    public_url = str(getattr(settings, "parbad_public_base_url", "") or "").strip()
+    key = str(getattr(settings, "parbad_internal_key", "") or "")
+    in_production = str(getattr(settings, "environment", "development") or "").lower() == "production"
+    production_opt_in = bool(getattr(settings, "parbad_allow_virtual_in_production", False))
+    return mode == "virtual" and bool(public_url) and len(key) >= 32 and (not in_production or production_opt_in)
+
+
+@router.post("/payments/checkout", status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
+def create_payment_checkout(
+    request: Request,
+    payload: PaymentCheckoutRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    """Create an INR order from catalog prices and return a Parbad sandbox URL."""
+    settings = get_settings()
+    if not _parbad_sandbox_is_available(settings):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Parbad Virtual Gateway is not enabled for this deployment. No order or payment was created.",
+        )
+
+    quantities: dict[int, int] = {}
+    for item in payload.items:
+        quantities[item.product_id] = quantities.get(item.product_id, 0) + item.quantity
+        if quantities[item.product_id] > 20:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Maximum quantity per product is 20.")
+
+    product_rows = list(db.scalars(select(Product).where(Product.id.in_(list(quantities)))).all())
+    products = {product.id: product for product in product_rows}
+    missing_ids = sorted(set(quantities) - set(products))
+    if missing_ids:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="One or more cart products are no longer available.")
+
+    item_snapshot: list[dict[str, object]] = []
+    checkout_token = secrets.token_urlsafe(32)
+    checkout_token_hash = hashlib.sha256(checkout_token.encode("utf-8")).hexdigest()
+    total = Decimal("0.00")
+    for product_id, quantity in quantities.items():
+        product = products[product_id]
+        if str(product.currency or "INR").strip().upper() not in {"INR", "RS", "RS.", "₹"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Parbad sandbox checkout currently supports INR-priced ShopSense items only.")
+        if quantity > max(0, int(product.stock or 0)):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {product.name}. Refresh the product before checking out.")
+        try:
+            unit_price = Decimal(str(product.price))
+        except (InvalidOperation, TypeError, ValueError):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A cart item has an invalid catalog price.")
+        if not unit_price.is_finite() or unit_price < 0:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A cart item has an invalid catalog price.")
+        subtotal = (unit_price * quantity).quantize(Decimal("0.01"))
+        total += subtotal
+        item_snapshot.append({
+            "product_id": product.id,
+            "name": product.name,
+            "brand": product.brand,
+            "unit_price": float(unit_price),
+            "quantity": quantity,
+            "subtotal": float(subtotal),
+        })
+
+    total = total.quantize(Decimal("0.01"))
+    if total <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Checkout total must be greater than zero.")
+
+    try:
+        order = Order(user_id=user.id, total=float(total), status="pending_payment")
+        db.add(order)
+        db.flush()
+        attempt = PaymentAttempt(
+            order_id=order.id,
+            user_id=user.id,
+            amount=float(total),
+            currency="INR",
+            provider="parbad-virtual",
+            checkout_token_hash=checkout_token_hash,
+            status="pending",
+            items=item_snapshot,
+        )
+        db.add(attempt)
+        db.commit()
+        db.refresh(order)
+        db.refresh(attempt)
+    except Exception as exc:
+        db.rollback()
+        logger.error("payment_checkout request_id=%s outcome=failed error_type=%s", current_request_id(), type(exc).__name__)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not create the checkout. Please try again.") from exc
+
+    public_base = str(settings.parbad_public_base_url).rstrip("/")
+    return {
+        "order_id": order.id,
+        "attempt_id": attempt.id,
+        "amount": attempt.amount,
+        "currency": attempt.currency,
+        "order_status": order.status,
+        "payment_mode": "sandbox",
+        "payment_url": f"{public_base}/api/payments/start?token={checkout_token}",
+        "notice": "Parbad Virtual Gateway only simulates a payment. No real money is charged.",
+    }
+
+
+@router.get("/payments/orders/{order_id}")
+def get_payment_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    """Return payment state only to the authenticated order owner."""
+    order = db.scalar(select(Order).where(Order.id == order_id, Order.user_id == user.id))
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
+    attempt = db.scalar(
+        select(PaymentAttempt).where(
+            PaymentAttempt.order_id == order.id,
+            PaymentAttempt.user_id == user.id,
+        ).order_by(PaymentAttempt.id.desc())
+    )
+    return {
+        "id": order.id,
+        "status": order.status,
+        "total": order.total,
+        "currency": attempt.currency if attempt else "INR",
+        "payment_status": attempt.status if attempt else "not_started",
+        "provider": attempt.provider if attempt else None,
+    }
+
+
+@router.get("/payments/parbad/authorize")
+def authorize_parbad_payment_attempt(
+    token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Internal endpoint exchanges an opaque one-use checkout token for server-priced details."""
+    settings = get_settings()
+    _require_parbad_internal_key(request, settings)
+    if not 32 <= len(token) <= 128:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment attempt not found.")
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    attempt = db.scalar(select(PaymentAttempt).where(PaymentAttempt.checkout_token_hash == token_hash))
+    if attempt is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment attempt not found.")
+    if attempt.status != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment attempt is no longer available.")
+    if attempt.currency != "INR" or attempt.amount <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Payment attempt has unsupported amount or currency.")
+    order = db.get(Order, attempt.order_id)
+    if order is None or order.user_id != attempt.user_id or order.status != "pending_payment":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order is not payable.")
+    attempt.status = "initiating"
+    attempt.updated_at = datetime.utcnow()
+    db.commit()
+    return {
+        "attempt_id": attempt.id,
+        "tracking_number": attempt.id,
+        "order_id": order.id,
+        "amount": attempt.amount,
+        "currency": attempt.currency,
+    }
+
+
+@router.post("/payments/parbad/events")
+def receive_parbad_payment_event(
+    payload: ParbadPaymentEvent,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Accept only authenticated server-to-server events after the Parbad service verifies the callback."""
+    settings = get_settings()
+    _require_parbad_internal_key(request, settings)
+    attempt = db.get(PaymentAttempt, payload.attempt_id)
+    if attempt is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment attempt not found.")
+    order = db.get(Order, attempt.order_id)
+    if order is None or order.user_id != attempt.user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment order not found.")
+
+    if attempt.status == "paid" or order.status == "paid":
+        return {"ok": True, "order_id": order.id, "status": "paid"}
+
+    if payload.status == "initiated":
+        if attempt.status == "initiated":
+            return {"ok": True, "order_id": order.id, "status": "initiated"}
+        if attempt.status != "initiating":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment attempt cannot be initiated in its current state.")
+        attempt.status = "initiated"
+    elif payload.status == "paid":
+        if attempt.status != "initiated":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only an initiated payment can be marked paid.")
+        attempt.status = "paid"
+        attempt.transaction_code = payload.transaction_code
+        attempt.verified_at = datetime.utcnow()
+        order.status = "paid"
+    else:
+        if attempt.status not in {"pending", "initiating", "initiated"}:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment attempt cannot be changed in its current state.")
+        attempt.status = payload.status
+        order.status = "payment_cancelled" if payload.status == "cancelled" else "payment_failed"
+
+    attempt.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "order_id": order.id, "status": attempt.status}
 
 
 @router.post("/admin/products/{product_id}", response_model=ProductRead)

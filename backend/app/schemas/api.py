@@ -1,5 +1,6 @@
 import re
 from enum import Enum
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
@@ -179,6 +180,21 @@ class ReviewRead(BaseModel):
 
 class WishlistRequest(BaseModel):
     product_id: int
+
+
+class PaymentCheckoutItem(BaseModel):
+    product_id: int = Field(ge=1)
+    quantity: int = Field(default=1, ge=1, le=20)
+
+
+class PaymentCheckoutRequest(BaseModel):
+    items: list[PaymentCheckoutItem] = Field(min_length=1, max_length=30)
+
+
+class ParbadPaymentEvent(BaseModel):
+    attempt_id: int = Field(ge=1)
+    status: Literal["initiated", "paid", "failed", "cancelled"]
+    transaction_code: str | None = Field(default=None, max_length=200)
 
 
 class FetchLinkRequest(BaseModel):

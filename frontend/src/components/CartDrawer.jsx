@@ -14,7 +14,9 @@ export default function CartDrawer({
   removeFromCart,
   clearCart,
   orderId,
-  onSimulateRazorpay,
+  onStartParbadPayment,
+  paymentLoading = false,
+  paymentError = "",
 }) {
   const drawerRef = useRef(null);
   const closeButtonRef = useRef(null);
@@ -110,8 +112,8 @@ export default function CartDrawer({
         <div className="cart-drawer-header">
           <h3 id={titleId}>
             {checkoutStep === "cart" && `Your Cart (${cartCount})`}
-            {checkoutStep === "checkout" && "Demo Checkout"}
-            {checkoutStep === "success" && "Order Confirmed!"}
+            {checkoutStep === "checkout" && "Checkout"}
+            {checkoutStep === "success" && "Sandbox Payment Confirmed!"}
           </h3>
           <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close cart">
             <UiIcon name="x" size={18} />
@@ -184,13 +186,13 @@ export default function CartDrawer({
             </>
           ))}
 
-        {/* STEP 2: DEMO CHECKOUT & RAZORPAY PREVIEW */}
+        {/* STEP 2: PARBAD VIRTUAL GATEWAY SANDBOX */}
         {checkoutStep === "checkout" && (
           <div className="checkout-view-container">
             <div className="checkout-summary-card">
-              <div className="checkout-badge-pill"><UiIcon name="zap" size={13} /> Razorpay Test Mode</div>
+              <div className="checkout-badge-pill"><UiIcon name="zap" size={13} /> Parbad Virtual Gateway · Sandbox</div>
               <p className="checkout-demo-description">
-                This is a live sandbox preview for the ShopSense demo. Transactions are simulated with no real charge.
+                Test flow only: Parbad simulates the payment and does not charge real money. ShopSense recalculates the total from catalog prices and stock before checkout.
               </p>
 
               <div className="checkout-breakdown">
@@ -216,10 +218,13 @@ export default function CartDrawer({
               <button
                 type="button"
                 className="cart-checkout-btn checkout-pay-btn"
-                onClick={onSimulateRazorpay}
+                onClick={onStartParbadPayment}
+                disabled={paymentLoading || cartItems.length === 0}
+                aria-busy={paymentLoading}
               >
-                <UiIcon name="zap" size={15} /> Pay with Razorpay (₹{Number(cartTotal).toLocaleString("en-IN")})
+                <UiIcon name="zap" size={15} /> {paymentLoading ? "Starting sandbox…" : "Continue to Parbad Sandbox (₹" + Number(cartTotal).toLocaleString("en-IN") + ")"}
               </button>
+              {paymentError && <p className="checkout-error" role="alert">{paymentError}</p>}
               <button
                 type="button"
                 className="cart-clear-btn"
@@ -240,7 +245,7 @@ export default function CartDrawer({
               Order ID: <code>{orderId}</code>
             </p>
             <p className="checkout-success-hint">
-              Your demo order has been verified and registered. The cart has been cleared.
+              The Parbad test transaction was verified and ShopSense recorded the order. No real money was charged.
             </p>
 
             <button

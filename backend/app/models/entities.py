@@ -63,6 +63,26 @@ class Order(Base):
     status: Mapped[str] = mapped_column(String(60), default="created")
 
 
+class PaymentAttempt(Base):
+    """Server-priced payment attempt linked to an authenticated ShopSense order."""
+
+    __tablename__ = "payment_attempts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="INR", nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), default="parbad-virtual", nullable=False)
+    checkout_token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True, nullable=False)
+    items: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list, nullable=False)
+    transaction_code: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class ChatHistory(Base):
     __tablename__ = "chat_history"
     id: Mapped[int] = mapped_column(primary_key=True)
