@@ -168,7 +168,7 @@ public sealed class PaymentsController : ControllerBase
                     var alreadyPaid = await NotifyShopSenseAsync(
                         backendBase, internalKey, attemptId, "paid", null, cancellationToken);
                     return Redirect(BuildFrontendReturnUrl(
-                        alreadyPaid?.Status == "sandbox_paid" ? "success" : "failed",
+                        alreadyPaid?.Status == "paid" ? "success" : "failed",
                         alreadyPaid?.OrderId));
                 }
 
