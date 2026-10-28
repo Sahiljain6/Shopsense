@@ -34,11 +34,11 @@ public sealed class PaymentsController : ControllerBase
     }
 
     [HttpGet("start")]
-    public async Task<IActionResult> Start([FromQuery(Name = "attempt_id")] int attemptId, CancellationToken cancellationToken)
+    public async Task<IActionResult> Start([FromQuery(Name = "token")] string token, CancellationToken cancellationToken)
     {
-        if (attemptId <= 0)
+        if (string.IsNullOrWhiteSpace(token) || token.Length is < 32 or > 128)
         {
-            return BadRequest("Invalid payment attempt.");
+            return BadRequest("Invalid payment session.");
         }
 
         if (!IsVirtualGatewayEnabled())
@@ -62,7 +62,7 @@ public sealed class PaymentsController : ControllerBase
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
-                $"{backendBase}/payments/parbad/authorize/{attemptId}");
+                $"{backendBase}/payments/parbad/authorize?token={Uri.EscapeDataString(token)}");
             request.Headers.TryAddWithoutValidation(InternalKeyHeader, internalKey);
             using var response = await _httpClientFactory.CreateClient("shopsense-api")
                 .SendAsync(request, cancellationToken);
@@ -82,8 +82,14 @@ public sealed class PaymentsController : ControllerBase
             return StatusCode(StatusCodes.Status502BadGateway, "Could not validate the checkout with ShopSense.");
         }
 
-        if (payment is null || payment.AttemptId != attemptId ||
-            payment.TrackingNumber <= 0 || payment.Amount <= 0 ||
+        if (payment is null)
+        {
+            return BadRequest("The payment session could not be validated.");
+        }
+
+        var attemptId = payment.AttemptId;
+        if (payment.AttemptId <= 0 || payment.TrackingNumber != payment.AttemptId ||
+            payment.Amount <= 0 ||
             !string.Equals(payment.Currency, "INR", StringComparison.OrdinalIgnoreCase))
         {
             await NotifyShopSenseAsync(backendBase, internalKey, attemptId, "failed", null, cancellationToken);
