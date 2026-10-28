@@ -3,9 +3,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.security import create_access_token
 from app.db.session import Base, get_db
 from app.main import app
 from app.models.conversation import Conversation, ConversationSummary, Message
+from app.models.entities import User
 from app.services.context_manager import ContextWindowManager, SummarizationService, estimate_tokens
 from app.services.conversation_service import ConcurrencyConflictError, ConversationService
 
@@ -49,16 +51,21 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
-def _conversation_auth_headers(client, email: str) -> dict[str, str]:
-    password = "ConversationTest123!"
-    register = client.post(
-        "/auth/register",
-        json={"email": email, "password": password, "full_name": "Conversation Test"},
+def _conversation_auth_headers(db_session, email: str) -> dict[str, str]:
+    """Create an isolated test user without consuming the public signup rate limit."""
+    user = User(
+        email=email,
+        hashed_password=None,
+        full_name="Conversation Test",
+        is_admin=False,
+        tier="free",
+        token_version=1,
     )
-    assert register.status_code == 200
-    login = client.post("/auth/login", json={"email": email, "password": password})
-    assert login.status_code == 200
-    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    token = create_access_token(user.email, user=user)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_conversation_creation_and_metadata(db_session):
@@ -288,8 +295,8 @@ def test_conversation_export_formats(db_session):
     assert "sequence_number,role,content,tokens_total" in csv_out
 
 
-def test_rest_api_conversation_flow(client):
-    headers = _conversation_auth_headers(client, "conversation-flow@example.com")
+def test_rest_api_conversation_flow(client, db_session):
+    headers = _conversation_auth_headers(db_session, "conversation-flow@example.com")
     # 1. Create conversation via REST
     resp = client.post("/conversations", json={"title": "API Test Conv", "model_used": "gpt-4o"}, headers=headers)
     assert resp.status_code == 201
@@ -337,11 +344,11 @@ def test_rest_api_conversation_flow(client):
 
 
 
-def test_conversation_routes_enforce_authentication_and_owner_scope(client):
+def test_conversation_routes_enforce_authentication_and_owner_scope(client, db_session):
     client.cookies.clear()
     assert client.get("/conversations").status_code == 401
 
-    owner_headers = _conversation_auth_headers(client, "owner-scope@example.com")
+    owner_headers = _conversation_auth_headers(db_session, "owner-scope@example.com")
     create = client.post("/conversations", json={"title": "Private owner conversation"}, headers=owner_headers)
     assert create.status_code == 201
     conversation_id = create.json()["id"]
