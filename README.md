@@ -237,7 +237,7 @@ See [the Parbad service guide](payments/parbad-service/README.md) for its archit
 
 The deployment Blueprint defines an isolated online demo at `https://shopsense-parbad-sandbox.onrender.com`, with a separate API, Parbad Virtual Gateway service, and sandbox database. It does not change the production ShopSense API's payment mode.
 
-The Render Blueprint adds a separate paid Postgres database so simulated payments cannot mark live orders as paid. Review the database plan and any resulting charges before syncing the Blueprint. Render generates the sandbox JWT and internal service key; keep those values in the Render service environment, not in Git. For deployment instructions and service URLs, see [the Parbad sandbox guide](payments/parbad-service/README.md).
+The Render Blueprint keeps the sandbox on free web services and uses an isolated, ephemeral SQLite database so simulated payments cannot mark live orders as paid. No paid database is provisioned. Render generates the sandbox JWT and internal service key; keep those values in the Render service environment, not in Git. The SQLite database is lost on restart, redeploy, or idle spin-down, and free services can take about a minute to wake. For deployment instructions and service URLs, see [the Parbad sandbox guide](payments/parbad-service/README.md).
 
 Parbad Virtual Gateway is a simulator only. It cannot collect real INR/UPI/card payments.
 
