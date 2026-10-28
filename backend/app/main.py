@@ -35,6 +35,11 @@ def ensure_schema_upgrades() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS org_id VARCHAR(64);"))
                 conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1;"))
                 conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS feature_flags JSON DEFAULT '[]';"))
+                conn.execute(text("ALTER TABLE payment_attempts ADD COLUMN IF NOT EXISTS checkout_token_hash VARCHAR(64);"))
+                conn.execute(text("ALTER TABLE payment_attempts ADD COLUMN IF NOT EXISTS provider_order_id VARCHAR(100);"))
+                conn.execute(text("ALTER TABLE payment_attempts ADD COLUMN IF NOT EXISTS transaction_code VARCHAR(200);"))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_payment_attempts_checkout_token_hash ON payment_attempts (checkout_token_hash);"))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_payment_attempts_provider_order_id ON payment_attempts (provider_order_id);"))
                 conn.commit()
             elif engine.dialect.name == "sqlite":
                 cols = [r[1] for r in conn.execute(text("PRAGMA table_info(products);")).fetchall()]
@@ -56,8 +61,20 @@ def ensure_schema_upgrades() -> None:
                     if "feature_flags" not in u_cols:
                         conn.execute(text("ALTER TABLE users ADD COLUMN feature_flags JSON DEFAULT '[]';"))
                     conn.commit()
+
+            payment_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(payment_attempts);")).fetchall()] if engine.dialect.name == "sqlite" else []
+            if engine.dialect.name == "sqlite" and payment_cols:
+                if "checkout_token_hash" not in payment_cols:
+                    conn.execute(text("ALTER TABLE payment_attempts ADD COLUMN checkout_token_hash VARCHAR(64);"))
+                if "provider_order_id" not in payment_cols:
+                    conn.execute(text("ALTER TABLE payment_attempts ADD COLUMN provider_order_id VARCHAR(100);"))
+                if "transaction_code" not in payment_cols:
+                    conn.execute(text("ALTER TABLE payment_attempts ADD COLUMN transaction_code VARCHAR(200);"))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_payment_attempts_checkout_token_hash ON payment_attempts (checkout_token_hash);"))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_payment_attempts_provider_order_id ON payment_attempts (provider_order_id);"))
+                conn.commit()
     except Exception as err:
-        print(f"Notice during schema upgrade check: {err}")
+        print(f"Notice during schema upgrade check ({type(err).__name__}).")
 
 
 ensure_schema_upgrades()
@@ -677,9 +694,9 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "connect-src 'self' https://accounts.google.com https://router.huggingface.co; "
-        "script-src 'self' https://accounts.google.com https://apis.google.com; "
-        "frame-src https://accounts.google.com; "
+        "connect-src 'self' https://accounts.google.com https://router.huggingface.co https://api.razorpay.com; "
+        "script-src 'self' https://accounts.google.com https://apis.google.com https://checkout.razorpay.com; "
+        "frame-src https://accounts.google.com https://api.razorpay.com https://checkout.razorpay.com; "
         "img-src 'self' data: https:; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com;"
