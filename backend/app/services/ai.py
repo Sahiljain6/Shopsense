@@ -875,7 +875,7 @@ class AIOrchestrator:
                                     return None
                                 delay = retry_delay_seconds(
                                     hf_models.index(model_name),
-                                    retry_after=resp.headers.get("Retry-After"),
+                                    retry_after=(getattr(resp, "headers", {}) or {}).get("Retry-After"),
                                     max_seconds=0.5,
                                     remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
                                 )
@@ -953,7 +953,7 @@ class AIOrchestrator:
                         _cooldown_gemini_model(
                             model_name,
                             resp.status_code,
-                            retry_after=resp.headers.get("Retry-After"),
+                            retry_after=(getattr(resp, "headers", {}) or {}).get("Retry-After"),
                             error_text=resp.text[:1000],
                         )
                         logger.warning(
@@ -972,7 +972,7 @@ class AIOrchestrator:
                             return None
                         delay = retry_delay_seconds(
                             list(models_to_try).index(model_name),
-                            retry_after=resp.headers.get("Retry-After"),
+                            retry_after=(getattr(resp, "headers", {}) or {}).get("Retry-After"),
                             max_seconds=0.5,
                             remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
                         )
@@ -1453,7 +1453,7 @@ class AIOrchestrator:
                             _cooldown_gemini_model(
                                 model_name,
                                 resp.status_code,
-                                retry_after=resp.headers.get("Retry-After"),
+                                retry_after=(getattr(resp, "headers", {}) or {}).get("Retry-After"),
                                 error_text=resp.text[:1000],
                             )
                             logger.warning(
@@ -1508,7 +1508,7 @@ class AIOrchestrator:
                                 _cooldown_gemini_model(
                                     model_name,
                                     resp2.status_code,
-                                    retry_after=resp2.headers.get("Retry-After"),
+                                    retry_after=(getattr(resp2, "headers", {}) or {}).get("Retry-After"),
                                     error_text=resp2.text[:1000],
                                 )
                                 logger.warning(
