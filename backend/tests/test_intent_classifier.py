@@ -86,3 +86,26 @@ def test_every_result_uses_a_declared_taxonomy_label() -> None:
     result = classify_intent("Recommend a laptop under ₹60,000")
     assert isinstance(result.intent, ShoppingIntent)
     assert all(isinstance(intent, ShoppingIntent) for intent in result.secondary_intents)
+
+
+
+def test_alternative_follow_up_uses_previous_shopping_context() -> None:
+    history = [
+        {"role": "user", "content": "Find wireless earbuds under ₹2,000"},
+        {"role": "assistant", "content": "Here are a few wireless earbuds within your budget."},
+    ]
+    for message in ("some other option", "another option", "show me more options", "something else"):
+        result = classify_intent(message, history=history)
+        assert result.intent is ShoppingIntent.PRODUCT_RECOMMENDATION
+
+
+def test_alternative_follow_up_without_context_asks_for_category() -> None:
+    result = classify_intent("some other option")
+    assert result.intent is ShoppingIntent.CLARIFICATION_REQUIRED
+
+
+def test_headphones_are_audio_not_phone_category() -> None:
+    from app.services.search import resolve_category
+
+    assert resolve_category("wireless headphones under 5000") == "Audio"
+    assert resolve_category("phone under 15000") == "Phones"
