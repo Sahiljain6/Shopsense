@@ -10,8 +10,8 @@ def test_high_headroom_text_models_are_prioritized() -> None:
     assert ai.ACTIVE_GEMINI_MODELS == [
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
-        "gemini-3.8-flash",
         "gemini-3.6-flash",
+        "gemini-3.8-flash",
         "gemini-3.1-pro-preview",
     ]
     assert not any(model.startswith("gemini-2.5-") for model in ai.ACTIVE_GEMINI_MODELS)
@@ -211,3 +211,53 @@ def test_gemini_discovery_failure_never_adds_live_models(monkeypatch) -> None:
 
     monkeypatch.setattr(httpx, "Client", FakeClient)
     assert ai.get_active_gemini_models(api_key) == ["gemini-3.5-flash-lite"]
+
+
+def test_gemini_text_out_uses_longer_timeout_for_quota_available_models(monkeypatch, db_session):
+    calls = []
+    captured_timeouts = []
+
+    class FakeResponse:
+        status_code = 200
+        text = "ok"
+
+        def json(self):
+            return {
+                "candidates": [
+                    {"content": {"parts": [{"text": "Gemini response succeeded."}]}}
+                ]
+            }
+
+    class FakeClient:
+        def __init__(self, timeout=None):
+            captured_timeouts.append(timeout)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def post(self, url, json=None, timeout=None):
+            calls.append(url)
+            return FakeResponse()
+
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    monkeypatch.setattr(ai, "_GEMINI_MODEL_COOLDOWNS", {})
+    orchestrator = ai.AIOrchestrator(db_session)
+    orchestrator.provider = "gemini"
+    orchestrator.gemini_api_key = "test-only-key"
+    orchestrator.active_gemini_models = [
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-3.6-flash",
+    ]
+    orchestrator.hf_token = None
+
+    result = orchestrator._chat_with_tools("system prompt", "find earbuds")
+
+    assert result == "Gemini response succeeded."
+    assert calls[0].find("/models/gemini-3.5-flash-lite:") >= 0
+    assert captured_timeouts
+    assert captured_timeouts[0].read >= 5.9
+    assert captured_timeouts[0].read <= 20.0
