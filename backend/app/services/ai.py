@@ -1559,7 +1559,19 @@ class AIOrchestrator:
                 + json.dumps(current_listing_context, ensure_ascii=False, default=str)
             )
 
-        answer = self._chat_with_tools(system_prompt, message, history)
+        tool_message = message
+        if is_alternative_follow_up(message) and fallback_message != message:
+            # Keep the user's original request in history, but make the active turn
+            # actionable for the existing model/tool call. This avoids a second
+            # classifier/model request and prevents a vague phrase from losing its
+            # resolved category and budget.
+            tool_message = (
+                f"{message}\n\nResolved shopping request: find different options for "
+                f"{fallback_message}. Use recent conversation history for other relevant "
+                "preferences and avoid repeating products already recommended."
+            )
+
+        answer = self._chat_with_tools(system_prompt, tool_message, history)
 
         if answer is None:
             if self._live_search_prefetched:
