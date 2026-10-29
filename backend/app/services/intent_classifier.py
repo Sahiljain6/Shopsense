@@ -58,6 +58,7 @@ _PATTERNS: dict[str, re.Pattern[str]] = {
     "deal": re.compile(r"\b(deal|deals|discount|discounts|offer|offers|coupon|promo code|price drop|on sale|sale price|best price|cashback|save money)\b", re.I),
     "compare": re.compile(r"\b(compare|comparison|versus|\bvs\.?\b|which is better|difference between|cheaper overall|side.by.side)\b", re.I),
     "recommend": re.compile(r"\b(recommend|recommendation|recommendations|suggest|suggestion|suggestions|which .* should i buy|what should i buy|best .* for|find(?: me)?|show me .* under|looking for|gift ideas)\b", re.I),
+    "alternative": re.compile(r"\b(?:some\s+other(?:\s+(?:product|option|options|one|ones|choice|choices))?|any\s+other(?:\s+(?:product|option|options|one|ones|choice|choices))?|another\s+(?:option|product|one|choice)|other\s+options?|different\s+(?:option|product|one|choice)|more\s+options?|alternatives?|something\s+else|anything\s+else|something\s+better|anything\s+better|cheaper\s+(?:option|one|alternative)|one\s+more)\b", re.I),
     "product_info": re.compile(r"\b(specifications?|features?|compatib(?:le|ility)|supports?|support for|battery life|processor|ram|storage|dimensions|warranty|what does .* have|tell me about this product)\b", re.I),
     "ambiguous": re.compile(r"^(?:which one is best|compare it with that one|find the best one|calculate the payment|is it good|and this one|what about (?:it|this|that|this one|that one|the other one|battery(?: life)?|camera|display|price|performance|quality|warranty|storage|ram|processor|delivery|reviews?|offers?|discounts?))\??$", re.I),
     "shopping_context": re.compile(r"\b(shop(?:ping)?|buy(?:ing)?|purchase|products?|laptops?|phones?|smartphones?|headphones?|earbuds?|monitors?|chairs?|cameras?|keyboards?|mice|mouse|prices?|budgets?|brands?|oled|lcd|gifts?|catalog|stores?|retailer|e-?commerce|iphones?|macbooks?|ipads?|galaxy|pixel|oneplus|redmi|poco|samsung|apple|xiaomi|realme|vivo|oppo|sony|bose|jbl|boat|dell|hp|lenovo|asus|acer|msi|razer|keychron|logitech|watches?|tablets?|printers?|routers?|projectors?|televisions?|tv)\b", re.I),
@@ -115,6 +116,16 @@ def classify_intent(
             reason="The request explicitly asks for a non-shopping task.",
         )
 
+    if (
+        _PATTERNS["alternative"].search(lowered)
+        and not has_context
+        and not _PATTERNS["shopping_context"].search(lowered)
+    ):
+        return IntentResult(
+            ShoppingIntent.CLARIFICATION_REQUIRED,
+            reason="The request asks for an alternative but no prior product context is available.",
+        )
+
     if _PATTERNS["ambiguous"].match(lowered) and not has_context:
         return IntentResult(
             ShoppingIntent.CLARIFICATION_REQUIRED,
@@ -152,6 +163,9 @@ def classify_intent(
     elif _PATTERNS["compare"].search(lowered):
         primary = ShoppingIntent.PRODUCT_COMPARISON
         reason = "The request explicitly asks to compare alternatives."
+    elif _PATTERNS["alternative"].search(lowered) and _PATTERNS["shopping_context"].search(combined):
+        primary = ShoppingIntent.PRODUCT_RECOMMENDATION
+        reason = "The shopper requests different alternatives to products already discussed."
     elif _PATTERNS["recommend"].search(lowered):
         primary = ShoppingIntent.PRODUCT_RECOMMENDATION
         reason = "The request asks for product suggestions or buying choices."
@@ -161,7 +175,7 @@ def classify_intent(
     elif _PATTERNS["shopping_context"].search(lowered):
         primary = ShoppingIntent.GENERAL_SHOPPING_QUERY
         reason = "The request is shopping-related but does not match a more specific intent."
-    elif has_context and re.search(r"\b(it|that|this|they|them|same|another|what about|and the)\b", lowered):
+    elif has_context and re.search(r"\b(it|that|this|they|them|same|another|other|option|options|alternative|alternatives|more|else|different|what about|and the)\b", lowered):
         # Follow-ups such as "what about battery?" need context from the previous turn.
         if _PATTERNS["compare"].search(combined):
             primary = ShoppingIntent.PRODUCT_COMPARISON
