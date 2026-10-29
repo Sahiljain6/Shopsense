@@ -1584,7 +1584,7 @@ class AIOrchestrator:
 
             # LLM is offline / no API key configured — resolve catalog products before generic fallback
             from app.services.search import resolve_products
-            resolved = resolve_products(message=fallback_message, history=history, cart=cart, db=self.db, limit=8)
+            resolved = resolve_products(message=message, history=history, cart=cart, db=self.db, limit=8)
             fallback_products = filter_and_rank_products(
                 resolved.products,
                 getattr(self, "_active_constraints", extract_constraints(message)),
