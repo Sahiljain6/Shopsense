@@ -310,15 +310,13 @@ def get_active_groq_models(api_key: str) -> list[str]:
     return fallback
 
 
-# Prioritize Text-out models that show the highest quota headroom in the user's
-# AI Studio dashboard. Do not use Gemini 2.0: those model endpoints were shut down
-# in June 2026. Live, audio-specialist, and image-generation models use different
-# capabilities and must not be sent through ShopSense's text chat path.
+# Prioritize currently listed text-out models with the strongest quota headroom.
+# The deployed project's logs returned 404 for both Gemini 2.5 Flash-Lite and
+# Gemini 2.5 Flash, so do not keep forcing those IDs into the text chat chain.
+# Live/audio/image models use separate capabilities and are excluded below.
 ACTIVE_GEMINI_MODELS = [
-    "gemini-2.5-flash-lite",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
-    "gemini-2.5-flash",
     "gemini-3.8-flash",
     "gemini-3.6-flash",
     "gemini-3.1-pro-preview",
@@ -326,14 +324,81 @@ ACTIVE_GEMINI_MODELS = [
 PRIMARY_GEMINI_MODELS = ACTIVE_GEMINI_MODELS
 IMAGE_GEMINI_MODEL = "gemini-3.1-flash-image"
 
+# Cool down model IDs that are missing or quota-limited so every new chat does
+# not repeat the same guaranteed failure. This state is intentionally process-local.
+_GEMINI_MODEL_COOLDOWNS: dict[str, tuple[float, int]] = {}
+_GEMINI_MODEL_COOLDOWNS_LOCK = threading.RLock()
+
+
+def _gemini_model_cooldown_remaining(model_name: str) -> tuple[float, int] | None:
+    now = time.monotonic()
+    with _GEMINI_MODEL_COOLDOWNS_LOCK:
+        entry = _GEMINI_MODEL_COOLDOWNS.get(model_name)
+        if not entry:
+            return None
+        until, status = entry
+        if until <= now:
+            _GEMINI_MODEL_COOLDOWNS.pop(model_name, None)
+            return None
+        return until - now, status
+
+
+def _cooldown_gemini_model(
+    model_name: str,
+    status: int,
+    *,
+    retry_after: str | int | float | None = None,
+    error_text: str = "",
+) -> None:
+    """Temporarily skip models that are inaccessible or quota-limited."""
+    if status == 404:
+        # A missing / inaccessible model ID should not be retried on every chat.
+        cooldown_seconds = 6 * 60 * 60
+    elif status == 429:
+        lowered = (error_text or "").lower()
+        if any(token in lowered for token in ("per day", "per-day", "daily limit", "requests per day", "rpd")):
+            default_seconds = 6 * 60 * 60
+        elif any(token in lowered for token in ("per minute", "per-minute", "requests per minute", "rpm")):
+            default_seconds = 60
+        else:
+            # The error body may not describe which quota was exceeded.
+            default_seconds = 5 * 60
+        if retry_after is not None:
+            cooldown_seconds = max(
+                default_seconds if not str(retry_after).strip() else 0,
+                retry_delay_seconds(
+                    0,
+                    retry_after=retry_after,
+                    base_seconds=default_seconds,
+                    max_seconds=6 * 60 * 60,
+                    remaining_seconds=6 * 60 * 60,
+                    random_uniform=lambda low, high: high,
+                ),
+            )
+        else:
+            cooldown_seconds = default_seconds
+    elif status == 408 or status >= 500:
+        cooldown_seconds = 20
+    else:
+        return
+
+    with _GEMINI_MODEL_COOLDOWNS_LOCK:
+        _GEMINI_MODEL_COOLDOWNS[model_name] = (time.monotonic() + cooldown_seconds, status)
+    logger.info(
+        "ai_gemini_model_cooldown model=%s status=%s cooldown_seconds=%s",
+        model_name,
+        status,
+        int(cooldown_seconds),
+    )
+
 
 def get_active_gemini_models(api_key: str) -> list[str]:
-    """Discover Gemini models while preferring high-headroom text-out models.
+    """Discover text-out models supported by this specific Gemini API key.
 
-    The dashboard can show generous or unlimited quotas for Live API models, but
-    those use a separate real-time interface. ShopSense uses REST generateContent,
-    so Live/audio-only endpoints are excluded. Preferred text-out IDs are attempted
-    first even if ListModels omits them; an unavailable ID falls through on 404.
+    Models absent from Google's ListModels response are not forced into the list:
+    the project may not have access to them even if they appear in a generic quota
+    table. When discovery itself is unavailable, use the small known text-out
+    fallback list and let per-model cooldowns learn unavailable IDs.
     """
     clean_key = api_key.strip().strip("'").strip('"')
     if not clean_key:
@@ -368,16 +433,15 @@ def get_active_gemini_models(api_key: str) -> list[str]:
                             continue
                         valid_ids.append(name)
                 if valid_ids:
-                    # Keep known text-out fallbacks at the front even when the
-                    # model-list endpoint returns an incomplete/stale inventory.
-                    # Missing/inaccessible IDs are skipped naturally on provider 404.
-                    prioritized = list(ACTIVE_GEMINI_MODELS)
-                    for other in valid_ids:
-                        if (
-                            other not in prioritized
-                            and not any(ex in other.lower() for ex in EXCLUDE_SUBSTRINGS)
-                        ):
-                            prioritized.append(other)
+                    # Prefer high-headroom candidates only when this API key's
+                    # ListModels response confirms they support generateContent.
+                    prioritized = [
+                        preferred for preferred in ACTIVE_GEMINI_MODELS
+                        if preferred in valid_ids
+                    ]
+                    prioritized.extend(
+                        other for other in valid_ids if other not in prioritized
+                    )
                     if prioritized:
                         with _MODEL_CACHE_LOCK:
                             _GEMINI_MODELS_CACHE[clean_key] = (time.time(), prioritized)
@@ -811,7 +875,7 @@ class AIOrchestrator:
                                     return None
                                 delay = retry_delay_seconds(
                                     hf_models.index(model_name),
-                                    retry_after=resp.headers.get("Retry-After"),
+                                    retry_after=(getattr(resp, "headers", {}) or {}).get("Retry-After"),
                                     max_seconds=0.5,
                                     remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
                                 )
@@ -843,6 +907,14 @@ class AIOrchestrator:
             models_to_try = getattr(self, "active_gemini_models", None) or list(PRIMARY_GEMINI_MODELS)
             import httpx
             for model_name in models_to_try:
+                cooldown = _gemini_model_cooldown_remaining(model_name)
+                if cooldown:
+                    remaining_cooldown, previous_status = cooldown
+                    logger.info(
+                        "ai_provider request_id=%s provider=gemini outcome=skipped_cooldown model=%s previous_status=%s remaining_seconds=%.0f",
+                        current_request_id(), model_name, previous_status, remaining_cooldown,
+                    )
+                    continue
                 remaining = provider_deadline - time.monotonic()
                 if remaining <= 0:
                     logger.warning("ai_provider request_id=%s outcome=budget_exhausted provider=gemini", current_request_id())
@@ -868,8 +940,22 @@ class AIOrchestrator:
                             candidates = data.get("candidates", [])
                             if candidates:
                                 parts = candidates[0].get("content", {}).get("parts", [])
-                                if parts:
-                                    return parts[0].get("text")
+                                text_parts = [part["text"] for part in parts if part.get("text")]
+                                if text_parts:
+                                    return "\n".join(text_parts)
+                            logger.warning(
+                                "ai_provider request_id=%s provider=gemini outcome=empty_response model=%s",
+                                current_request_id(),
+                                model_name,
+                            )
+                            continue
+
+                        _cooldown_gemini_model(
+                            model_name,
+                            resp.status_code,
+                            retry_after=(getattr(resp, "headers", {}) or {}).get("Retry-After"),
+                            error_text=resp.text[:1000],
+                        )
                         logger.warning(
                             "ai_provider request_id=%s provider=gemini outcome=http_error model=%s status=%s",
                             current_request_id(),
@@ -886,7 +972,7 @@ class AIOrchestrator:
                             return None
                         delay = retry_delay_seconds(
                             list(models_to_try).index(model_name),
-                            retry_after=resp.headers.get("Retry-After"),
+                            retry_after=(getattr(resp, "headers", {}) or {}).get("Retry-After"),
                             max_seconds=0.5,
                             remaining_seconds=max(0.0, provider_deadline - time.monotonic()),
                         )
@@ -896,6 +982,8 @@ class AIOrchestrator:
                 except Exception as err:
                     if is_transient_upstream_failure(err):
                         self._transient_failure_seen = True
+                    if isinstance(err, TimeoutError) or "timeout" in type(err).__name__.lower():
+                        _cooldown_gemini_model(model_name, 408)
                     logger.warning(
                         "ai_provider request_id=%s provider=gemini outcome=failed model=%s error_type=%s",
                         current_request_id(),
@@ -1341,6 +1429,14 @@ class AIOrchestrator:
             # Strict per-attempt timeout: connect 1.5s, read 2.5s to preserve overall 20s budget
             _gemini_timeout = _httpx.Timeout(connect=1.5, read=2.5, write=1.5, pool=1.0)
             for model_name in models_to_try:
+                cooldown = _gemini_model_cooldown_remaining(model_name)
+                if cooldown:
+                    remaining_cooldown, previous_status = cooldown
+                    logger.info(
+                        "ai_tool_calling request_id=%s provider=gemini outcome=skipped_cooldown model=%s previous_status=%s remaining_seconds=%.0f",
+                        current_request_id(), model_name, previous_status, remaining_cooldown,
+                    )
+                    continue
                 if not _budget_ok(f"Gemini/{model_name}"):
                     break
                 _attempt_start = time.monotonic()
@@ -1354,6 +1450,12 @@ class AIOrchestrator:
                     with _httpx.Client(timeout=_gemini_timeout) as client:
                         resp = client.post(url, json=payload)
                         if resp.status_code != 200:
+                            _cooldown_gemini_model(
+                                model_name,
+                                resp.status_code,
+                                retry_after=(getattr(resp, "headers", {}) or {}).get("Retry-After"),
+                                error_text=resp.text[:1000],
+                            )
                             logger.warning(
                                 "ai_tool_calling request_id=%s provider=gemini outcome=http_error model=%s status=%s",
                                 current_request_id(), model_name, resp.status_code,
@@ -1362,6 +1464,10 @@ class AIOrchestrator:
                         data = resp.json()
                         candidates = data.get("candidates", [])
                         if not candidates:
+                            logger.warning(
+                                "ai_tool_calling request_id=%s provider=gemini outcome=empty_candidates model=%s",
+                                current_request_id(), model_name,
+                            )
                             continue
 
                         parts = candidates[0].get("content", {}).get("parts", [])
@@ -1394,13 +1500,33 @@ class AIOrchestrator:
                                     text_parts = [p["text"] for p in parts2 if "text" in p]
                                     if text_parts:
                                         return "\n".join(text_parts)
+                                logger.warning(
+                                    "ai_tool_calling request_id=%s provider=gemini outcome=empty_tool_followup model=%s",
+                                    current_request_id(), model_name,
+                                )
+                            else:
+                                _cooldown_gemini_model(
+                                    model_name,
+                                    resp2.status_code,
+                                    retry_after=(getattr(resp2, "headers", {}) or {}).get("Retry-After"),
+                                    error_text=resp2.text[:1000],
+                                )
+                                logger.warning(
+                                    "ai_tool_calling request_id=%s provider=gemini outcome=tool_followup_http_error model=%s status=%s",
+                                    current_request_id(), model_name, resp2.status_code,
+                                )
 
                         # Direct text response
                         text_parts = [p["text"] for p in parts if "text" in p]
                         if text_parts:
                             return "\n".join(text_parts)
+                        logger.warning(
+                            "ai_tool_calling request_id=%s provider=gemini outcome=empty_text model=%s",
+                            current_request_id(), model_name,
+                        )
                 except _httpx.TimeoutException as err:
-                    # Distinct log so Render logs show TIMEOUT vs. other failures at a glance
+                    # Brief cooldown prevents a slow model from delaying every chat.
+                    _cooldown_gemini_model(model_name, 408)
                     logger.warning(
                         "ai_tool_calling request_id=%s provider=gemini outcome=timeout model=%s elapsed_seconds=%.1f",
                         current_request_id(), model_name, time.monotonic() - _attempt_start,
