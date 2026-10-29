@@ -15,27 +15,33 @@ CATEGORY_KEYWORDS = {
 
 
 def _matches_category(text: str, keywords: list[str]) -> bool:
-    """Matches text against category keywords with space-insensitivity, normalization, and fuzzy matching."""
+    """Match complete category terms while allowing common spacing and typo variants."""
     lowered = text.lower()
-    lowered_nospaces = re.sub(r'[\s\-_]+', '', lowered)
+    words = re.findall(r"[a-z0-9]+", lowered)
 
     for kw in keywords:
         kw_lower = kw.lower()
-        # 1. Direct substring match
-        if kw_lower in lowered:
+        if re.search(rf"(?<!\w){re.escape(kw_lower)}(?!\w)", lowered):
             return True
-        # 2. Spaceless match (e.g. "mac book" matches "macbook", "one plus" matches "oneplus", "i phone" matches "iphone")
-        kw_nospaces = re.sub(r'[\s\-_]+', '', kw_lower)
-        if kw_nospaces in lowered_nospaces:
-            return True
-        # 3. Fuzzy match for single words of length >= 4 (handles common typos like "mackbook", "samusng", "keybaord")
+
+        # Match compounds such as "mac book" -> "macbook" by joining adjacent
+        # tokens, rather than substring-matching "phone" inside "headphones".
+        kw_nospaces = re.sub(r"[\s\-_]+", "", kw_lower)
+        for start_index in range(len(words)):
+            joined = ""
+            for end_index in range(start_index, min(start_index + 3, len(words))):
+                joined += words[end_index]
+                if joined == kw_nospaces:
+                    return True
+
+        # Fuzzy match only against a whole token, never a substring of a longer word.
         if len(kw_nospaces) >= 4:
-            for word in lowered.split():
+            for word in words:
                 if abs(len(word) - len(kw_nospaces)) <= 2:
                     if difflib.SequenceMatcher(None, word, kw_nospaces).ratio() >= 0.85:
                         return True
-    return False
 
+    return False
 
 def extract_budget(message: str) -> float | None:
     text = message.lower().replace(",", "")
@@ -163,6 +169,141 @@ def resolve_category(
     return None
 
 
+
+_ALTERNATIVE_FOLLOWUP_PATTERN = re.compile(
+    r"\b(?:some\s+other(?:\s+(?:product|option|options|one|ones|choice|choices))?"
+    r"|any\s+other(?:\s+(?:product|option|options|one|ones|choice|choices))?"
+    r"|another\s+(?:option|product|one|choice)|other\s+options?"
+    r"|different\s+(?:option|product|one|choice)|more\s+options?"
+    r"|alternatives?|something\s+else|anything\s+else|something\s+better"
+    r"|anything\s+better|cheaper\s+(?:option|one|alternative)|one\s+more)\b",
+    re.IGNORECASE,
+)
+
+
+def is_alternative_follow_up(message: str) -> bool:
+    """Return True for short requests that ask for a different recommendation."""
+    text = (message or "").strip()
+    return (
+        len(text.split()) <= 10
+        and bool(_ALTERNATIVE_FOLLOWUP_PATTERN.search(text))
+    )
+
+
+def _recent_category_context(
+    history: list[dict[str, str]] | None,
+) -> tuple[str | None, float | None, str]:
+    """Find the most recent user-stated category and its budget, without LLM calls."""
+    if not history:
+        return None, None, ""
+
+    recent = history[-12:]
+    for turn in reversed(recent):
+        if not isinstance(turn, dict) or turn.get("role") != "user":
+            continue
+        content = turn.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        category = resolve_category(content)
+        if category:
+            return category, extract_budget(content), content.strip()
+
+    # Some clients only include assistant history (e.g. an imported chat). Use its
+    # category as a last resort, but do not infer a budget from assistant prices.
+    for turn in reversed(recent):
+        if not isinstance(turn, dict) or turn.get("role") != "assistant":
+            continue
+        content = turn.get("content")
+        if isinstance(content, str) and content.strip():
+            category = resolve_category(content)
+            if category:
+                return category, None, content.strip()
+
+    return None, None, ""
+
+
+def resolve_follow_up_query(
+    message: str,
+    history: list[dict[str, str]] | None = None,
+) -> str:
+    """Resolve a short alternative request into a category/budget search query.
+
+    This is deterministic and local: it reuses conversation context and adds no
+    model/API call. Explicit current category and budget always take priority.
+    """
+    if not is_alternative_follow_up(message):
+        return message
+
+    current_category = resolve_category(message)
+    current_budget = extract_budget(message)
+    context_category, context_budget, context_text = _recent_category_context(history)
+
+    category = current_category or context_category
+    if not category:
+        return message
+
+    budget = current_budget
+    if budget is None and (current_category is None or context_category == current_category):
+        budget = context_budget
+
+    source = message if current_category else context_text
+    if category == "Audio":
+        if re.search(r"\bheadphones?\b", source, re.IGNORECASE):
+            term = "headphones"
+        elif re.search(r"\bearphones?\b", source, re.IGNORECASE):
+            term = "earphones"
+        else:
+            term = "earbuds"
+    elif category == "Laptops":
+        term = "laptops"
+    elif category == "Phones":
+        term = "phones"
+    elif category == "Peripherals":
+        if re.search(r"\b(?:smartwatches?|watches?)\b", source, re.IGNORECASE):
+            term = "smartwatch"
+        elif re.search(r"\bmice|mouse\b", source, re.IGNORECASE):
+            term = "mouse"
+        else:
+            term = "keyboard"
+    else:
+        return message
+
+    query = term
+    if budget is not None:
+        budget_text = str(int(budget)) if float(budget).is_integer() else f"{budget:g}"
+        query += f" under ₹{budget_text}"
+    return query
+
+
+def _filter_previously_suggested(
+    products: list[Product],
+    history: list[dict[str, str]] | None,
+) -> list[Product]:
+    """Prefer catalog alternatives not named in recent assistant turns."""
+    if not products or not history:
+        return products
+
+    assistant_text = " ".join(
+        str(turn.get("content") or "")
+        for turn in history[-6:]
+        if isinstance(turn, dict) and turn.get("role") == "assistant"
+    )
+    normalized_history = re.sub(r"[^a-z0-9]+", "", assistant_text.casefold())
+    if not normalized_history:
+        return products
+
+    alternatives = []
+    for product in products:
+        normalized_name = re.sub(r"[^a-z0-9]+", "", str(product.name).casefold())
+        if normalized_name and len(normalized_name) >= 6 and normalized_name in normalized_history:
+            continue
+        alternatives.append(product)
+
+    # Never turn a valid category search into an empty result set solely because
+    # the conversation mentioned every available catalog item.
+    return alternatives or products
+
+
 def resolve_products(
     message: str,
     history: list[dict[str, str]] | None = None,
@@ -170,8 +311,10 @@ def resolve_products(
     db: Session | None = None,
     limit: int = 12
 ) -> ResolvedSearch:
-    budget = extract_budget(message)
-    normalized = normalize_query(message)
+    alternative_follow_up = is_alternative_follow_up(message)
+    search_message = resolve_follow_up_query(message, history) if alternative_follow_up else message
+    budget = extract_budget(search_message)
+    normalized = normalize_query(search_message)
     cleaned = clean_search_terms(normalized, budget=budget)
 
     if db is None:
@@ -184,7 +327,7 @@ def resolve_products(
         )
 
     try:
-        category_name = resolve_category(message, history, cart, db)
+        category_name = resolve_category(search_message, history, cart, db)
 
         # 1. Primary Filter by Category Relationship & Budget in SQL
         if category_name:
@@ -251,6 +394,8 @@ def resolve_products(
                 # return top-rated products in that category.
                 stmt = stmt.order_by(Product.rating.desc()).limit(limit)
                 results = list(db.scalars(stmt).all())
+                if alternative_follow_up:
+                    results = _filter_previously_suggested(results, history)
                 return ResolvedSearch(
                     query=message,
                     cleaned_query=cleaned,

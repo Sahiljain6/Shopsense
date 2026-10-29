@@ -162,3 +162,30 @@ def test_execute_search_catalog_signals_live_search_when_empty(db_session) -> No
     data = json.loads(result_str)
     assert data["count"] == 0
     assert "search_live_web" in data.get("message", "")
+
+
+
+def test_alternative_follow_up_inherits_category_budget_and_avoids_repeat(db_session) -> None:
+    auto_seed_catalog(db_session)
+    from app.services.search import resolve_follow_up_query, resolve_products
+
+    seed_results = resolve_products("earbuds under 5000", db=db_session, limit=20).products
+    assert seed_results, "The seeded catalog should contain audio products"
+    previous_pick = seed_results[0]
+
+    history = [
+        {"role": "user", "content": "Find earbuds under ₹5,000"},
+        {"role": "assistant", "content": f"My top recommendation is **{previous_pick.name}**."},
+        {"role": "user", "content": "What about battery life?"},
+    ]
+
+    assert resolve_follow_up_query("some other option", history) == "earbuds under ₹5000"
+
+    result = resolve_products("some other option", history=history, db=db_session, limit=20)
+    assert result.category_name == "Audio"
+    assert result.budget == 5000
+    assert result.products
+    assert all(product.category and product.category.name == "Audio" for product in result.products)
+    assert all(product.price <= 5000 for product in result.products)
+    if len(seed_results) > 1:
+        assert previous_pick.id not in {product.id for product in result.products}
