@@ -310,12 +310,15 @@ def get_active_groq_models(api_key: str) -> list[str]:
     return fallback
 
 
-# Prefer text-generation models with the strongest headroom shown in this project's
-# AI Studio quota dashboard. "Live" API models use a different real-time interface
-# and must not be sent to the REST generateContent endpoint used by ShopSense.
+# Prioritize Text-out models that show the highest quota headroom in the user's
+# AI Studio dashboard. Do not use Gemini 2.0: those model endpoints were shut down
+# in June 2026. Live, audio-specialist, and image-generation models use different
+# capabilities and must not be sent through ShopSense's text chat path.
 ACTIVE_GEMINI_MODELS = [
+    "gemini-2.5-flash-lite",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
     "gemini-3.8-flash",
     "gemini-3.6-flash",
     "gemini-3.1-pro-preview",
@@ -353,9 +356,9 @@ def get_active_gemini_models(api_key: str) -> list[str]:
                 models_data = data.get("models", [])
                 valid_ids = []
                 EXCLUDE_SUBSTRINGS = [
-                    "tts", "embedding", "whisper", "imagen", "learnlm", "aqa",
+                    "tts", "embedding", "whisper", "imagen", "image", "learnlm", "aqa",
                     "realtime", "robotics", "preview-tts", "live", "transcribe",
-                    "translate",
+                    "translate", "gemini-2.0-flash",
                 ]
                 for m in models_data:
                     methods = m.get("supportedGenerationMethods", [])
@@ -658,10 +661,12 @@ class AIOrchestrator:
             self.provider = "gemini"
             self.gemini_api_key = gemini_key.strip().strip("'").strip('"')
             self.active_gemini_models = get_active_models_nonblocking("gemini", self.gemini_api_key)
+            # Keep the reported/default model aligned with the first model attempted
+            # by the ordered quota-aware failover chain.
             self.model = (
-                settings.gemini_model
-                if (settings.gemini_model and not any(r in settings.gemini_model.lower() for r in ["tts", "embedding", "2.5-flash"]))
-                else (self.active_gemini_models[0] if self.active_gemini_models else "gemini-3.8-flash")
+                self.active_gemini_models[0]
+                if self.active_gemini_models
+                else ACTIVE_GEMINI_MODELS[0]
             )
 
         elif groq_key and groq_key.strip():
