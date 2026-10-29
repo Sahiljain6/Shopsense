@@ -15,27 +15,33 @@ CATEGORY_KEYWORDS = {
 
 
 def _matches_category(text: str, keywords: list[str]) -> bool:
-    """Matches text against category keywords with space-insensitivity, normalization, and fuzzy matching."""
+    """Match complete category terms while allowing common spacing and typo variants."""
     lowered = text.lower()
-    lowered_nospaces = re.sub(r'[\s\-_]+', '', lowered)
+    words = re.findall(r"[a-z0-9]+", lowered)
 
     for kw in keywords:
         kw_lower = kw.lower()
-        # 1. Whole-word/phrase match (so "headphones" cannot match "phone").
-        if re.search(rf"(?<!\\w){re.escape(kw_lower)}(?!\\w)", lowered):
+        if re.search(rf"(?<!\w){re.escape(kw_lower)}(?!\w)", lowered):
             return True
-        # 2. Spaceless match (e.g. "mac book" matches "macbook", "one plus" matches "oneplus", "i phone" matches "iphone")
-        kw_nospaces = re.sub(r'[\s\-_]+', '', kw_lower)
-        if kw_nospaces in lowered_nospaces:
-            return True
-        # 3. Fuzzy match for single words of length >= 4 (handles common typos like "mackbook", "samusng", "keybaord")
+
+        # Match compounds such as "mac book" -> "macbook" by joining adjacent
+        # tokens, rather than substring-matching "phone" inside "headphones".
+        kw_nospaces = re.sub(r"[\s\-_]+", "", kw_lower)
+        for start_index in range(len(words)):
+            joined = ""
+            for end_index in range(start_index, min(start_index + 3, len(words))):
+                joined += words[end_index]
+                if joined == kw_nospaces:
+                    return True
+
+        # Fuzzy match only against a whole token, never a substring of a longer word.
         if len(kw_nospaces) >= 4:
-            for word in lowered.split():
+            for word in words:
                 if abs(len(word) - len(kw_nospaces)) <= 2:
                     if difflib.SequenceMatcher(None, word, kw_nospaces).ratio() >= 0.85:
                         return True
-    return False
 
+    return False
 
 def extract_budget(message: str) -> float | None:
     text = message.lower().replace(",", "")
