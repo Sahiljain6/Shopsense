@@ -706,61 +706,27 @@ class AIOrchestrator:
         self.model = None
         self.active_models: list[str] = []
 
-        openai_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+        # ShopSense chat is intentionally Gemini Text-out only. Keep other
+        # provider credentials in settings for compatibility, but never route
+        # customer prompts through OpenAI, Groq, Hugging Face, or Ollama.
         gemini_key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
-        groq_key = settings.groq_api_key or os.getenv("GROQ_API_KEY")
-        ollama_key = settings.ollama_api_key or os.getenv("OLLAMA_API_KEY")
+        self.hf_token = None
 
-        hf_key = settings.hf_token or os.getenv("HF_TOKEN") or settings.huggingface_api_key or os.getenv("HUGGINGFACE_API_KEY")
-
-        self.hf_token = hf_key.strip().strip("'").strip('"') if hf_key and hf_key.strip() else None
-
-        if openai_key and openai_key.strip():
-            clean_key = openai_key.strip().strip("'").strip('"')
-            self.client = OpenAI(api_key=clean_key, timeout=provider_timeout, max_retries=0)
-            self.provider = "openai"
-            self.model = settings.openai_model or "gpt-4o-mini"
-
-        elif gemini_key and gemini_key.strip():
+        if gemini_key and gemini_key.strip():
             self.provider = "gemini"
             self.gemini_api_key = gemini_key.strip().strip("'").strip('"')
             self.active_gemini_models = get_active_models_nonblocking("gemini", self.gemini_api_key)
-            # Keep the reported/default model aligned with the first model attempted
-            # by the ordered quota-aware failover chain.
             self.model = (
                 self.active_gemini_models[0]
                 if self.active_gemini_models
                 else ACTIVE_GEMINI_MODELS[0]
             )
-
-        elif groq_key and groq_key.strip():
-            clean_key = groq_key.strip().strip("'").strip('"')
-            self.client = OpenAI(
-                base_url="https://api.groq.com/openai/v1",
-                api_key=clean_key,
-                timeout=provider_timeout,
-                max_retries=0,
-            )
-            self.provider = "groq"
-            self.active_models = get_active_models_nonblocking("groq", clean_key)
-            self.model = self.active_models[0] if self.active_models else "llama-3.3-70b-versatile"
-
-        elif self.hf_token:
-            self.provider = "huggingface"
-            self.model = "meta-llama/Llama-3.3-70B-Instruct"
-
-        elif ollama_key and ollama_key.strip():
-            clean_key = ollama_key.strip().strip("'").strip('"')
-            self.client = Client(
-                host="https://ollama.com",
-                headers={
-                    "Authorization": f"Bearer {clean_key}"
-                },
-                timeout=provider_timeout,
-            )
-            self.provider = "ollama"
-            self.model = settings.ollama_model
-
+        else:
+            # The response layer can still use the local catalog; do not silently
+            # route to a different provider if the Gemini key is missing.
+            self.provider = None
+            self.model = None
+            self.active_gemini_models = []
     @_measure_ai_stage("provider_text_call")
     def _chat(
         self,
@@ -818,8 +784,8 @@ class AIOrchestrator:
         )
 
         # 1. Try Hugging Face Multi-Model Serverless API (via new router.huggingface.co)
-        if self.hf_token or self.provider == "huggingface":
-            hf_token = self.hf_token or os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_API_KEY")
+        if self.provider == "huggingface" and self.hf_token:
+            hf_token = self.hf_token
             if hf_token:
                 hf_models = [
                     "meta-llama/Llama-3.3-70B-Instruct",
@@ -1538,7 +1504,7 @@ class AIOrchestrator:
         # --- HuggingFace fallback (prompt-based tool instructions) ---
         if not _budget_ok("HuggingFace"):
             return None
-        if self.hf_token or self.provider == "huggingface":
+        if self.provider == "huggingface" and self.hf_token:
             tool_prompt = (
                 f"{system}\n\n"
                 "You have access to these tools:\n"
