@@ -315,10 +315,12 @@ def get_active_groq_models(api_key: str) -> list[str]:
 # Gemini 2.5 Flash, so do not keep forcing those IDs into the text chat chain.
 # Live/audio/image models use separate capabilities and are excluded below.
 ACTIVE_GEMINI_MODELS = [
+    # Current AI Studio screenshot: these two Text-out models show RPM/RPD headroom.
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
-    "gemini-3.8-flash",
+    # Also has headroom in the screenshot; prioritize over exhausted candidates.
     "gemini-3.6-flash",
+    "gemini-3.8-flash",
     "gemini-3.1-pro-preview",
 ]
 PRIMARY_GEMINI_MODELS = ACTIVE_GEMINI_MODELS
@@ -1392,8 +1394,9 @@ class AIOrchestrator:
             import httpx as _httpx
             gemini_contents = _build_gemini_contents(user, history)
             models_to_try = getattr(self, "active_gemini_models", None) or list(PRIMARY_GEMINI_MODELS)
-            # Strict per-attempt timeout: connect 1.5s, read 2.5s to preserve overall 20s budget
-            _gemini_timeout = _httpx.Timeout(connect=1.5, read=2.5, write=1.5, pool=1.0)
+            # The Flash-Lite models timed out at ~3.3s with the previous 2.5s
+            # read timeout. Give text generation up to 6s, capped by the remaining
+            # 20s chain budget, so viable models have time to produce an answer.
             for model_name in models_to_try:
                 cooldown = _gemini_model_cooldown_remaining(model_name)
                 if cooldown:
@@ -1405,6 +1408,13 @@ class AIOrchestrator:
                     continue
                 if not _budget_ok(f"Gemini/{model_name}"):
                     break
+                _remaining = max(0.1, _deadline - time.monotonic())
+                _gemini_timeout = _httpx.Timeout(
+                    connect=min(1.5, _remaining),
+                    read=min(6.0, _remaining),
+                    write=min(1.5, _remaining),
+                    pool=min(1.0, _remaining),
+                )
                 _attempt_start = time.monotonic()
                 try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_api_key}"
@@ -1457,7 +1467,20 @@ class AIOrchestrator:
                                 "system_instruction": {"parts": [{"text": system}]},
                                 "contents": followup_contents
                             }
-                            resp2 = client.post(url, json=payload2)
+                            _followup_remaining = _deadline - time.monotonic()
+                            if _followup_remaining <= 0:
+                                logger.warning(
+                                    "ai_tool_calling request_id=%s outcome=budget_exhausted stage=Gemini_tool_followup model=%s",
+                                    current_request_id(), model_name,
+                                )
+                                continue
+                            _followup_timeout = _httpx.Timeout(
+                                connect=min(1.5, _followup_remaining),
+                                read=min(6.0, _followup_remaining),
+                                write=min(1.5, _followup_remaining),
+                                pool=min(1.0, _followup_remaining),
+                            )
+                            resp2 = client.post(url, json=payload2, timeout=_followup_timeout)
                             if resp2.status_code == 200:
                                 data2 = resp2.json()
                                 cands2 = data2.get("candidates", [])
