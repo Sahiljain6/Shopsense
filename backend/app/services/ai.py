@@ -197,7 +197,13 @@ def needs_clarification(
     return clarification_question(message, result.intent)
 
 
-from app.services.search import clean_search_terms, extract_budget, normalize_query
+from app.services.search import (
+    clean_search_terms,
+    extract_budget,
+    is_alternative_follow_up,
+    normalize_query,
+    resolve_follow_up_query,
+)
 
 
 def is_prompt_injection(message: str) -> bool:
@@ -1437,6 +1443,7 @@ class AIOrchestrator:
         """Main tool-calling answer method: let the LLM decide which tools to call."""
         self._tool_products = []
         self._live_deals = []
+        fallback_message = resolve_follow_up_query(message, history)
         self._live_search_prefetched = should_use_live_search(message)
         self._current_history = history
         self._current_cart = cart
@@ -1520,6 +1527,14 @@ class AIOrchestrator:
             "4. Follow-Up Question: End with a single, thoughtful follow-up question (e.g., asking what they value most between battery, camera, or specific ecosystem) only if helpful to narrow down their choice.\n"
         )
         system_prompt += "\n\n" + self._active_prompt_plan.prompt_addendum
+        if is_alternative_follow_up(message) and fallback_message != message:
+            system_prompt += (
+                "\n\nCONTEXT-RESOLVED ALTERNATIVE REQUEST:\n"
+                f"Interpret this short follow-up as a request for different products in: {fallback_message}. "
+                "Keep applicable features and use-case from earlier user turns, treat the inherited budget as a hard ceiling, "
+                "and avoid repeating products named in the latest assistant recommendation when other valid choices exist. "
+                "Do not ask the user to repeat the category already established in the conversation."
+            )
 
         if self._live_deals:
             current_listing_context = [
@@ -1549,7 +1564,7 @@ class AIOrchestrator:
         if answer is None:
             if self._live_search_prefetched:
                 response = self._general_ai_response(
-                    message,
+                    fallback_message,
                     history,
                     cart=cart,
                     live_deals_override=self._live_deals,
@@ -1569,7 +1584,7 @@ class AIOrchestrator:
 
             # LLM is offline / no API key configured — resolve catalog products before generic fallback
             from app.services.search import resolve_products
-            resolved = resolve_products(message=message, history=history, cart=cart, db=self.db, limit=8)
+            resolved = resolve_products(message=fallback_message, history=history, cart=cart, db=self.db, limit=8)
             fallback_products = filter_and_rank_products(
                 resolved.products,
                 getattr(self, "_active_constraints", extract_constraints(message)),
@@ -1580,7 +1595,7 @@ class AIOrchestrator:
                 response.live_deals = [LiveDeal.model_validate(deal) for deal in getattr(self, "_live_deals", [])]
                 return response
 
-            response = self._general_ai_response(message, history, cart=cart)
+            response = self._general_ai_response(fallback_message, history, cart=cart)
             response.live_deals = [LiveDeal.model_validate(deal) for deal in getattr(self, "_live_deals", [])]
             return response
 
@@ -1970,6 +1985,14 @@ class AIOrchestrator:
 
         prompt_plan = build_prompt_context(message, history)
         products = filter_and_rank_products(products, prompt_plan.constraints)
+        effective_request = message
+        if is_alternative_follow_up(message):
+            resolved_query = resolve_follow_up_query(message, history)
+            if resolved_query != message:
+                effective_request = (
+                    f"{message}\nInterpret this as a request for different options in: {resolved_query}. "
+                    "Keep relevant constraints from earlier user turns and avoid repeating the latest recommendation."
+                )
         if not products:
             return ChatResponse(
                 answer="No catalog products matched all of the explicit requirements. "
@@ -1996,7 +2019,7 @@ class AIOrchestrator:
 You are ShopSense, an intelligent Indian shopping assistant.
 
 User request:
-{message}
+{effective_request}
 
 Available products from the ShopSense catalog:
 
