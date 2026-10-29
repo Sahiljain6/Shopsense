@@ -7,10 +7,13 @@ from app.services import ai
 
 
 def test_high_headroom_text_models_are_prioritized() -> None:
-    assert ai.ACTIVE_GEMINI_MODELS[:2] == [
+    assert ai.ACTIVE_GEMINI_MODELS[:4] == [
+        "gemini-2.5-flash-lite",
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
+        "gemini-2.5-flash",
     ]
+    assert not any(model.startswith("gemini-2.0-") for model in ai.ACTIVE_GEMINI_MODELS)
 
 
 def test_discovery_keeps_preferred_text_models_and_excludes_live_api(monkeypatch) -> None:
@@ -33,6 +36,14 @@ def test_discovery_keeps_preferred_text_models_and_excludes_live_api(monkeypatch
                     },
                     {
                         "name": "models/gemini-3.5-transcribe",
+                        "supportedGenerationMethods": ["generateContent"],
+                    },
+                    {
+                        "name": "models/gemini-2.5-flash-image",
+                        "supportedGenerationMethods": ["generateContent"],
+                    },
+                    {
+                        "name": "models/gemini-2.0-flash-lite",
                         "supportedGenerationMethods": ["generateContent"],
                     },
                 ]
@@ -58,6 +69,8 @@ def test_discovery_keeps_preferred_text_models_and_excludes_live_api(monkeypatch
     assert "gemini-3.8-flash" in models
     assert not any("live" in model.lower() for model in models)
     assert not any("transcribe" in model.lower() for model in models)
+    assert not any("image" in model.lower() for model in models)
+    assert not any(model.startswith("gemini-2.0-") for model in models)
 
 
 def test_gemini_429_fails_over_to_next_text_model(monkeypatch, db_session) -> None:
@@ -98,8 +111,8 @@ def test_gemini_429_fails_over_to_next_text_model(monkeypatch, db_session) -> No
     orchestrator.provider = "gemini"
     orchestrator.gemini_api_key = "test-only-key"
     orchestrator.active_gemini_models = [
+        "gemini-2.5-flash-lite",
         "gemini-3.5-flash-lite",
-        "gemini-3.1-flash-lite",
     ]
     orchestrator.hf_token = None
 
@@ -107,5 +120,5 @@ def test_gemini_429_fails_over_to_next_text_model(monkeypatch, db_session) -> No
 
     assert result == "Answer from fallback model."
     assert len(calls) == 2
-    assert "/models/gemini-3.5-flash-lite:" in calls[0]
-    assert "/models/gemini-3.1-flash-lite:" in calls[1]
+    assert "/models/gemini-2.5-flash-lite:" in calls[0]
+    assert "/models/gemini-3.5-flash-lite:" in calls[1]
