@@ -310,9 +310,14 @@ def get_active_groq_models(api_key: str) -> list[str]:
     return fallback
 
 
+# Prefer text-generation models with the strongest headroom shown in this project's
+# AI Studio quota dashboard. "Live" API models use a different real-time interface
+# and must not be sent to the REST generateContent endpoint used by ShopSense.
 ACTIVE_GEMINI_MODELS = [
-    "gemini-3.8-flash",
     "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
     "gemini-3.1-pro-preview",
 ]
 PRIMARY_GEMINI_MODELS = ACTIVE_GEMINI_MODELS
@@ -320,9 +325,13 @@ IMAGE_GEMINI_MODEL = "gemini-3.1-flash-image"
 
 
 def get_active_gemini_models(api_key: str) -> list[str]:
-    """Dynamically fetch live Gemini models supporting generateContent from Google's ListModels API,
-    strictly prioritizing ACTIVE_GEMINI_MODELS (gemini-3.8-flash, gemini-3.5-flash-lite, gemini-3.1-pro-preview)
-    and filtering out TTS, audio-only, and embedding models."""
+    """Discover Gemini models while preferring high-headroom text-out models.
+
+    The dashboard can show generous or unlimited quotas for Live API models, but
+    those use a separate real-time interface. ShopSense uses REST generateContent,
+    so Live/audio-only endpoints are excluded. Preferred text-out IDs are attempted
+    first even if ListModels omits them; an unavailable ID falls through on 404.
+    """
     clean_key = api_key.strip().strip("'").strip('"')
     if not clean_key:
         return list(ACTIVE_GEMINI_MODELS)
@@ -343,7 +352,11 @@ def get_active_gemini_models(api_key: str) -> list[str]:
                 data = resp.json()
                 models_data = data.get("models", [])
                 valid_ids = []
-                EXCLUDE_SUBSTRINGS = ["tts", "embedding", "whisper", "imagen", "learnlm", "aqa", "realtime", "robotics", "preview-tts"]
+                EXCLUDE_SUBSTRINGS = [
+                    "tts", "embedding", "whisper", "imagen", "learnlm", "aqa",
+                    "realtime", "robotics", "preview-tts", "live", "transcribe",
+                    "translate",
+                ]
                 for m in models_data:
                     methods = m.get("supportedGenerationMethods", [])
                     name = m.get("name", "").removeprefix("models/")
@@ -352,12 +365,15 @@ def get_active_gemini_models(api_key: str) -> list[str]:
                             continue
                         valid_ids.append(name)
                 if valid_ids:
-                    prioritized = []
-                    for preferred in ACTIVE_GEMINI_MODELS:
-                        if preferred in valid_ids and preferred not in prioritized:
-                            prioritized.append(preferred)
+                    # Keep known text-out fallbacks at the front even when the
+                    # model-list endpoint returns an incomplete/stale inventory.
+                    # Missing/inaccessible IDs are skipped naturally on provider 404.
+                    prioritized = list(ACTIVE_GEMINI_MODELS)
                     for other in valid_ids:
-                        if other not in prioritized and not any(ex in other.lower() for ex in EXCLUDE_SUBSTRINGS):
+                        if (
+                            other not in prioritized
+                            and not any(ex in other.lower() for ex in EXCLUDE_SUBSTRINGS)
+                        ):
                             prioritized.append(other)
                     if prioritized:
                         with _MODEL_CACHE_LOCK:
