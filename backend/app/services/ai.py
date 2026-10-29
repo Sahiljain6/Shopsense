@@ -940,8 +940,16 @@ class AIOrchestrator:
                             candidates = data.get("candidates", [])
                             if candidates:
                                 parts = candidates[0].get("content", {}).get("parts", [])
-                                if parts:
-                                    return parts[0].get("text")
+                                text_parts = [part["text"] for part in parts if part.get("text")]
+                                if text_parts:
+                                    return "\n".join(text_parts)
+                            logger.warning(
+                                "ai_provider request_id=%s provider=gemini outcome=empty_response model=%s",
+                                current_request_id(),
+                                model_name,
+                            )
+                            continue
+
                         _cooldown_gemini_model(
                             model_name,
                             resp.status_code,
