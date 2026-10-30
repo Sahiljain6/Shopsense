@@ -1,0 +1,16 @@
+.homepage-wrapper { color: white; background: transparent; padding-top: 80px; }
+.scroll-progress-bar { position: fixed; top: 0; left: 0; height: 3px; background: #009688; z-index: 1000; transition: width 0.1s; }
+.home-hero-section { text-align: center; padding: 100px 20px; }
+.home-hero-title { font-size: 3rem; margin-bottom: 20px; }
+.gradient-text { background: linear-gradient(90deg, #61DAFB, #009688); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.home-hero-cta-group { margin-top: 40px; display: flex; gap: 15px; justify-content: center; }
+.primary-enter-btn { background: #009688; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.home-ticker-section { padding: 40px 0; background: rgba(0,0,0,0.3); border-top: 1px solid #333; border-bottom: 1px solid #333; overflow: hidden; }
+.ticker-track { display: flex; gap: 50px; animation: ticker-scroll 30s linear infinite; }
+@keyframes ticker-scroll { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+.features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 30px; padding: 50px 20px; }
+.feature-card { background: rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); }
+.enterprise-footer { padding: 60px 40px; background: #0a0a0a; border-top: 1px solid #222; }
+.footer-content { display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; }
+.footer-col a { display: block; color: #888; text-decoration: none; margin-bottom: 10px; }
+.footer-bottom { margin-top: 40px; border-top: 1px solid #222; padding-top: 20px; text-align: center; color: #555; }

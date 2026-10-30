@@ -4,12 +4,15 @@ import Hero from "./components/Hero";
 import ErrorBanner from "./components/ErrorBanner";
 import AuthModal from "./components/AuthModal";
 import ChatPanel from "./components/ChatPanel";
+import HomePage from "./components/HomePage";
+import "./styles/homepage.css";
 
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [error, setError] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState("signin");
+  const [inChat, setInChat] = useState(false);
 
   useEffect(() => {
     const handleAuthExpired = () => {
@@ -60,16 +63,26 @@ export default function App() {
           onLogout={handleLogout}
           onOpenAuth={handleOpenAuth}
         />
-        <ErrorBanner message={error} />
-        <ChatPanel
-          onError={handleError}
-          onClearError={handleClearError}
-          isLoggedIn={authed}
-          onOpenAuth={handleOpenAuth}
-        />
+        
+        {inChat ? (
+          <>
+            <ErrorBanner message={error} />
+            <ChatPanel
+              onError={handleError}
+              onClearError={handleClearError}
+              isLoggedIn={authed}
+              onOpenAuth={handleOpenAuth}
+            />
+          </>
+        ) : (
+          <HomePage 
+            onEnterChat={() => setInChat(true)} 
+            authed={authed}
+            onOpenAuth={handleOpenAuth}
+          />
+        )}
       </section>
 
-      {/* Lightweight Auth Modal Overlay */}
       <AuthModal
         isOpen={showAuthModal}
         initialMode={authModalMode}
