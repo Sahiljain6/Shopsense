@@ -39,7 +39,7 @@ ShopSense is a modular example of how to combine a chat interface, a backend API
 | Catalog recommendations | The backend searches and ranks the local product catalog against extracted constraints. |
 | Current retailer listings | Optional SerpApi Google Shopping integration fetches structured listings, retailer links, images, prices, ratings, and available old-price fields. |
 | Search fallback | If SerpApi is not configured or unavailable, ShopSense can fall back to DuckDuckGo search when the dependency is available. Fallback results may not have structured prices or images. |
-| Model-provider flexibility | Supports configured OpenAI-compatible, Gemini, Groq, Hugging Face, and Ollama routes; exact provider selection depends on configured keys and backend precedence. |
+| AI chat provider | Uses the backend-configured Gemini model. Set `GEMINI_API_KEY` and `GEMINI_MODEL` on the backend; never expose provider credentials in Vite variables. |
 | Streaming chat | The backend sends Server-Sent Events (SSE) for response text, product results, live listings, and completion metadata. |
 | Product comparison | Resolves catalog products independently for common “X vs Y” comparisons and prepares a structured explanation. |
 | Shopping utilities | Includes supporting workflows for currency conversion, delivery PIN-code information, EMI planning, image-based product identification, and saved shopping data. |
