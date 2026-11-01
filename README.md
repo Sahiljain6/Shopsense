@@ -401,3 +401,14 @@ See [docs/deployment-hardening.md](./docs/deployment-hardening.md) for managed-h
 ## License
 
 Distributed under the license in [LICENSE](./LICENSE).
+
+
+## Demo and release operations
+
+Use these checklists before presenting or deploying ShopSense:
+
+- [Demo smoke-test checklist](./docs/demo-smoke-test-checklist.md) — startup, shopping flow, AI/live-search behavior, account boundaries, and demo payment safety.
+- [Production release checklist](./docs/production-release-checklist.md) — pre-deploy checks, post-deploy verification, release records, and rollback decisions.
+- [AI provider troubleshooting](./docs/ai-provider-troubleshooting.md) — backend-only credential setup, common provider errors, safe diagnostics, and fallback verification.
+
+These are operational guides, not evidence that the listed checks have been run. Record actual test and deployment results separately.
