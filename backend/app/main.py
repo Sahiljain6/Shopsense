@@ -14,6 +14,7 @@ from app.models.entities import Category, Product, Review, SeedVersion
 from app.core.config import get_settings
 from app.core.http_client import close_http_clients
 from app.core.gateway_middleware import GatewayAuthMiddleware
+from app.core.hidden_path_middleware import BlockGitMetadataMiddleware
 from app.core.observability import RequestBodyLimitMiddleware, RequestObservabilityMiddleware, current_request_id
 
 logger = logging.getLogger("shopsense.api.main")
@@ -709,6 +710,8 @@ app.add_middleware(
     ],
 )
 
+
+app.add_middleware(BlockGitMetadataMiddleware)
 
 app.include_router(router)
 app.include_router(conv_router)
