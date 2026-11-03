@@ -2,6 +2,16 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "routes": [
+    {
+      "src": "^/(?:[^/]+/)*(?:\\\\.|%2e)git(?:/.*|%2f.*)?$",
+      "status": 404,
+      "headers": {
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff"
+      }
+    }
+  ],
   "rewrites": [
     {
       "source": "/privacy",
