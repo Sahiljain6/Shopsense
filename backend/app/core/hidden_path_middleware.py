@@ -5,7 +5,7 @@ from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 
-_GIT_METADATA_SEGMENT = re.compile(r"(?:^|/)\\.git(?:/|$)", re.IGNORECASE)
+_GIT_METADATA_SEGMENT = re.compile(r"(?:^|/)\.git(?:/|$)", re.IGNORECASE)
 
 
 def _is_git_metadata_path(scope: Scope) -> bool:
