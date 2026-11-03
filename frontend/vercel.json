@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "routes": [
     {
-      "src": "^/(?:[^/]+/)*(?:\\\\.|%2e)git(?:/.*|%2f.*)?$",
+      "src": "^/(?:[^/]+/)*(?:\\.|%2e)git(?:/.*|%2f.*)?$",
       "status": 404,
       "headers": {
         "Cache-Control": "no-store",
