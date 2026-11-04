@@ -6,7 +6,7 @@ import UserProfileMenu from "./UserProfileMenu";
 import UiIcon from "./UiIcon";
 import { apiFetch, friendlyError } from "../api.js";
 
-export default function Hero({ authed, onLogout, onOpenAuth }) {
+export default function Hero({ authed, onLogout, onOpenAuth, onEnterChat }) {
   const { cartItems, cartCount, cartTotal, removeFromCart, updateQty, clearCart } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState("cart"); // "cart" | "checkout" | "success"
@@ -133,18 +133,17 @@ export default function Hero({ authed, onLogout, onOpenAuth }) {
           </div>
         </div>
 
-        <div className="navbar-center-links">
-          <span className="nav-feature-pill radar-active" title="Real-time multi-portal price tracking active">
-            <span className="nav-radar-dot" />
-            <span>Deal Radar Live</span>
-          </span>
-          <span className="nav-feature-pill" title="Amazon, Flipkart & Croma price comparison">
-            <span><UiIcon name="scale" size={13} /> 3-Store Compare</span>
-          </span>
-          <span className="nav-feature-pill" title="Verified spec sheets & bank EMI breakdown">
-            <span><UiIcon name="credit-card" size={13} /> No-Cost EMI</span>
-          </span>
-        </div>
+        <nav className="navbar-center-links ss-header-links" aria-label="Main navigation">
+          <button className="ss-header-link" type="button" onClick={onEnterChat}>
+            Explore
+          </button>
+          <a className="ss-header-link" href="#shopsense-benefits">
+            Compare
+          </a>
+          <a className="ss-header-link" href="#shopsense-how-it-works">
+            How it works
+          </a>
+        </nav>
 
         <div className="navbar-right">
           {/* Cart is strictly gated on authed */}
