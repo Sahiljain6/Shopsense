@@ -54,14 +54,19 @@ export default function App() {
     setError(null);
   }, []);
 
+  const handleEnterChat = useCallback(() => {
+    setInChat(true);
+  }, []);
+
   return (
-    <main className="app-shell ambient-mode-active">
+    <main className={`app-shell ambient-mode-active ${inChat ? "is-chat-view" : "is-home-view"}`}>
       <div className="ambient-stage" aria-hidden="true" />
-      <section className="app-container">
+      <section className={`app-container ${inChat ? "app-container-chat" : "app-container-home"}`}>
         <Hero
           authed={authed}
           onLogout={handleLogout}
           onOpenAuth={handleOpenAuth}
+          onEnterChat={handleEnterChat}
         />
         
         {inChat ? (
@@ -76,7 +81,7 @@ export default function App() {
           </>
         ) : (
           <HomePage 
-            onEnterChat={() => setInChat(true)} 
+            onEnterChat={handleEnterChat} 
             authed={authed}
             onOpenAuth={handleOpenAuth}
           />
