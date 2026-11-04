@@ -102,7 +102,7 @@ function BenefitTicket({ benefit, index, progress, reduceMotion }) {
 
 function ShoppingCartArtwork({ progress, reduceMotion }) {
   return (
-    <div className="ss-cart-visual" aria-label="ShopSense shopping cart illustration">
+    <div className="ss-cart-visual" role="img" aria-label="ShopSense shopping cart illustration">
       <svg
         className="ss-cart-base"
         viewBox="0 0 640 270"
